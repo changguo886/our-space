@@ -73,7 +73,11 @@ export default function LoginForm({
     setBusy(false);
 
     if (error) {
-      setError("注册失败：" + error.message);
+      if (error.message.toLowerCase().includes("already")) {
+        setError("这个邮箱已经有账号了。请返回登录，或使用“忘记密码 / 第一次设置密码”。");
+      } else {
+        setError("注册失败：" + error.message);
+      }
       return;
     }
 
@@ -83,8 +87,36 @@ export default function LoginForm({
       return;
     }
 
+    setMessage("账号已创建，请检查邮箱完成首次确认。确认后即可使用邮箱和密码登录。");
+  }
+
+  async function handlePasswordReset() {
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail) {
+      setError("请先输入你的邮箱。");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+
+    const supabase = createClient();
+
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
+    });
+
+    setBusy(false);
+
+    if (error) {
+      setError("发送重置邮件失败：" + error.message);
+      return;
+    }
+
     setMessage(
-      "账号已创建，请检查邮箱并完成首次确认。确认后即可使用邮箱和密码登录。"
+      "重置邮件已经发送。请打开邮件中的链接，回来设置一个新密码。这个步骤只需要做一次。"
     );
   }
 
@@ -166,6 +198,15 @@ export default function LoginForm({
           <button
             type="button"
             className="btn-ghost w-full text-xs"
+            onClick={handlePasswordReset}
+            disabled={busy}
+          >
+            忘记密码 / 第一次设置密码
+          </button>
+
+          <button
+            type="button"
+            className="btn-ghost w-full text-xs"
             onClick={() => switchMode("signup")}
           >
             第一次来？创建账号
@@ -239,4 +280,3 @@ export default function LoginForm({
     </div>
   );
 }
-
