@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-cream text-ink antialiased;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-paper shadow-soft;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ink px-5 py-3 text-[15px] font-medium text-white transition hover:bg-[#3b4753] active:scale-[0.99] disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm text-ink-soft transition hover:bg-black/[0.04];
+  }
+  .input {
+    @apply w-full rounded-xl border border-line bg-white/80 px-4 py-3 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:border-sage-300 focus:outline-none focus:ring-4 focus:ring-sage-100;
+  }
+  .label {
+    @apply mb-2 flex items-center gap-2 text-[15px] font-medium text-ink;
+  }
+}
+
+/* 让 iOS 底部安全区不遮挡导航 */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
