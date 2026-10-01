@@ -9,6 +9,7 @@ import {
   Trash2,
   X,
   Save,
+  Clock3,
 } from "lucide-react";
 
 import { useRouter } from "next/navigation";
@@ -21,12 +22,98 @@ export type Todo = {
   status: string;
   group_id: string | null;
 
-  // 后面 History / Todo 页面会用到
   task_date?: string;
+
   started_at?: string | null;
   elapsed_seconds?: number;
   completed_at?: string | null;
+
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
 };
+
+function toLocalInputValue(
+  iso?: string | null
+) {
+  if (!iso) return "";
+
+  const date = new Date(iso);
+
+  const offset =
+    date.getTimezoneOffset() * 60000;
+
+  return new Date(
+    date.getTime() - offset
+  )
+    .toISOString()
+    .slice(0, 16);
+}
+
+function formatScheduledTime(
+  start?: string | null,
+  end?: string | null
+) {
+  if (!start) return null;
+
+  const startDate =
+    new Date(start);
+
+  const startText =
+    startDate.toLocaleTimeString(
+      [],
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    );
+
+  if (!end) {
+    return startText;
+  }
+
+  const endText =
+    new Date(end).toLocaleTimeString(
+      [],
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    );
+
+  return `${startText} – ${endText}`;
+}
+
+function statusInfo(status: string) {
+  switch (status) {
+    case "running":
+      return {
+        label: "进行中",
+        className:
+          "bg-sage-100 text-sage-700",
+      };
+
+    case "paused":
+      return {
+        label: "已暂停",
+        className:
+          "bg-amber-50 text-amber-700",
+      };
+
+    case "completed":
+      return {
+        label: "已完成",
+        className:
+          "bg-mist-50 text-mist-500",
+      };
+
+    default:
+      return {
+        label: "待开始",
+        className:
+          "bg-black/[0.04] text-ink-faint",
+      };
+  }
+}
 
 export default function TodoList({
   todos,
@@ -35,17 +122,24 @@ export default function TodoList({
 }) {
   const router = useRouter();
 
-  // 当前正在编辑哪一个 Todo
   const [editingId, setEditingId] =
     useState<string | null>(null);
 
-  // 编辑中的标题
   const [editTitle, setEditTitle] =
     useState("");
 
-  // 编辑中的预计时间
   const [editMinutes, setEditMinutes] =
     useState("");
+
+  const [
+    editScheduledStart,
+    setEditScheduledStart,
+  ] = useState("");
+
+  const [
+    editScheduledEnd,
+    setEditScheduledEnd,
+  ] = useState("");
 
   const [busyId, setBusyId] =
     useState<string | null>(null);
@@ -53,9 +147,6 @@ export default function TodoList({
   const [error, setError] =
     useState<string | null>(null);
 
-  /*
-   * 完成 / 恢复 Todo
-   */
   async function toggleTodo(todo: Todo) {
     if (busyId) return;
 
@@ -67,26 +158,28 @@ export default function TodoList({
     const completed =
       todo.status === "completed";
 
-    const { error } = await supabase
-      .from("todos")
-      .update({
-        status: completed
-          ? "pending"
-          : "completed",
+    const { error } =
+      await supabase
+        .from("todos")
+        .update({
+          status: completed
+            ? "pending"
+            : "completed",
 
-        started_at: null,
+          started_at: null,
 
-        completed_at: completed
-          ? null
-          : new Date().toISOString(),
-      })
-      .eq("id", todo.id);
+          completed_at: completed
+            ? null
+            : new Date().toISOString(),
+        })
+        .eq("id", todo.id);
 
     setBusyId(null);
 
     if (error) {
       setError(
-        "更新任务失败：" + error.message
+        "更新任务失败：" +
+          error.message
       );
       return;
     }
@@ -94,16 +187,12 @@ export default function TodoList({
     router.refresh();
   }
 
-  /*
-   * 进入 Focus 页面
-   */
   function openFocus(todoId: string) {
-    router.push(`/focus/${todoId}`);
+    router.push(
+      `/focus/${todoId}`
+    );
   }
 
-  /*
-   * 开始编辑
-   */
   function startEditing(todo: Todo) {
     setEditingId(todo.id);
 
@@ -111,32 +200,46 @@ export default function TodoList({
 
     setEditMinutes(
       todo.estimated_minutes
-        ? String(todo.estimated_minutes)
+        ? String(
+            todo.estimated_minutes
+          )
         : ""
+    );
+
+    setEditScheduledStart(
+      toLocalInputValue(
+        todo.scheduled_start
+      )
+    );
+
+    setEditScheduledEnd(
+      toLocalInputValue(
+        todo.scheduled_end
+      )
     );
 
     setError(null);
   }
 
-  /*
-   * 取消编辑
-   */
   function cancelEditing() {
     setEditingId(null);
     setEditTitle("");
     setEditMinutes("");
+    setEditScheduledStart("");
+    setEditScheduledEnd("");
     setError(null);
   }
 
-  /*
-   * 保存编辑
-   */
-  async function saveEdit(todoId: string) {
+  async function saveEdit(
+    todoId: string
+  ) {
     const cleanTitle =
       editTitle.trim();
 
     if (!cleanTitle) {
-      setError("任务名称不能为空。");
+      setError(
+        "任务名称不能为空。"
+      );
       return;
     }
 
@@ -147,7 +250,9 @@ export default function TodoList({
 
     if (
       parsedMinutes !== null &&
-      (!Number.isFinite(parsedMinutes) ||
+      (!Number.isFinite(
+        parsedMinutes
+      ) ||
         parsedMinutes <= 0)
     ) {
       setError(
@@ -156,40 +261,76 @@ export default function TodoList({
       return;
     }
 
+    if (
+      editScheduledStart &&
+      editScheduledEnd
+    ) {
+      const start =
+        new Date(
+          editScheduledStart
+        );
+
+      const end =
+        new Date(
+          editScheduledEnd
+        );
+
+      if (end <= start) {
+        setError(
+          "结束时间需要晚于开始时间。"
+        );
+        return;
+      }
+    }
+
     setBusyId(todoId);
     setError(null);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
-    const { error } = await supabase
-      .from("todos")
-      .update({
-        title: cleanTitle,
-        estimated_minutes:
-          parsedMinutes,
-      })
-      .eq("id", todoId);
+    const { error } =
+      await supabase
+        .from("todos")
+        .update({
+          title: cleanTitle,
+
+          estimated_minutes:
+            parsedMinutes,
+
+          scheduled_start:
+            editScheduledStart
+              ? new Date(
+                  editScheduledStart
+                ).toISOString()
+              : null,
+
+          scheduled_end:
+            editScheduledEnd
+              ? new Date(
+                  editScheduledEnd
+                ).toISOString()
+              : null,
+        })
+        .eq("id", todoId);
 
     setBusyId(null);
 
     if (error) {
       setError(
-        "保存失败：" + error.message
+        "保存失败：" +
+          error.message
       );
       return;
     }
 
-    setEditingId(null);
-    setEditTitle("");
-    setEditMinutes("");
-
+    cancelEditing();
     router.refresh();
   }
 
-  /*
-   * 删除 Todo
-   */
-  async function deleteTodo(todo: Todo) {
+  async function deleteTodo(
+    todo: Todo
+  ) {
     const confirmed =
       window.confirm(
         `确定删除「${todo.title}」吗？`
@@ -200,24 +341,23 @@ export default function TodoList({
     setBusyId(todo.id);
     setError(null);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
-    const { error } = await supabase
-      .from("todos")
-      .delete()
-      .eq("id", todo.id);
+    const { error } =
+      await supabase
+        .from("todos")
+        .delete()
+        .eq("id", todo.id);
 
     setBusyId(null);
 
     if (error) {
       setError(
-        "删除失败：" + error.message
+        "删除失败：" +
+          error.message
       );
       return;
-    }
-
-    if (editingId === todo.id) {
-      cancelEditing();
     }
 
     router.refresh();
@@ -226,7 +366,7 @@ export default function TodoList({
   if (todos.length === 0) {
     return (
       <p className="text-sm text-ink-faint">
-        今天还没有任务。
+        这里还没有任务。
       </p>
     );
   }
@@ -241,7 +381,8 @@ export default function TodoList({
 
       {todos.map((todo) => {
         const completed =
-          todo.status === "completed";
+          todo.status ===
+          "completed";
 
         const editing =
           editingId === todo.id;
@@ -249,19 +390,24 @@ export default function TodoList({
         const busy =
           busyId === todo.id;
 
-        /*
-         * 编辑模式
-         */
+        const status =
+          statusInfo(todo.status);
+
+        const scheduledTime =
+          formatScheduledTime(
+            todo.scheduled_start,
+            todo.scheduled_end
+          );
+
         if (editing) {
           return (
             <div
               key={todo.id}
-              className="rounded-xl border border-sage-200 bg-white p-4"
+              className="rounded-2xl border border-sage-300 bg-white p-4 shadow-soft"
             >
-              <div className="space-y-3">
-                {/* 标题 */}
+              <div className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-xs text-ink-faint">
+                  <label className="mb-1.5 block text-xs text-ink-faint">
                     任务名称
                   </label>
 
@@ -273,14 +419,13 @@ export default function TodoList({
                         e.target.value
                       )
                     }
-                    autoFocus
                     disabled={busy}
+                    autoFocus
                   />
                 </div>
 
-                {/* 时间 */}
                 <div>
-                  <label className="mb-1 block text-xs text-ink-faint">
+                  <label className="mb-1.5 block text-xs text-ink-faint">
                     预计时间（分钟）
                   </label>
 
@@ -289,18 +434,59 @@ export default function TodoList({
                     type="number"
                     min="1"
                     step="1"
-                    value={editMinutes}
+                    value={
+                      editMinutes
+                    }
                     onChange={(e) =>
                       setEditMinutes(
                         e.target.value
                       )
                     }
-                    placeholder="例如 30"
+                    placeholder="例如 45"
                     disabled={busy}
                   />
                 </div>
 
-                {/* 编辑按钮 */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs text-ink-faint">
+                      开始时间
+                    </label>
+
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      value={
+                        editScheduledStart
+                      }
+                      onChange={(e) =>
+                        setEditScheduledStart(
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs text-ink-faint">
+                      结束时间
+                    </label>
+
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      value={
+                        editScheduledEnd
+                      }
+                      onChange={(e) =>
+                        setEditScheduledEnd(
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
@@ -317,13 +503,14 @@ export default function TodoList({
                   <button
                     type="button"
                     onClick={() =>
-                      saveEdit(todo.id)
+                      saveEdit(
+                        todo.id
+                      )
                     }
                     disabled={busy}
                     className="btn-primary flex items-center gap-1.5 text-sm"
                   >
                     <Save className="h-4 w-4" />
-
                     {busy
                       ? "保存中…"
                       : "保存"}
@@ -334,15 +521,11 @@ export default function TodoList({
           );
         }
 
-        /*
-         * 普通显示模式
-         */
         return (
           <div
             key={todo.id}
-            className="group flex items-center gap-3 rounded-xl border border-line px-4 py-3 transition hover:bg-white/60"
+            className="group flex items-center gap-3 rounded-2xl border border-line bg-white/50 px-4 py-3 transition hover:bg-white"
           >
-            {/* 完成按钮 */}
             <button
               type="button"
               onClick={() =>
@@ -350,11 +533,6 @@ export default function TodoList({
               }
               disabled={busy}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-              title={
-                completed
-                  ? "标记为未完成"
-                  : "标记完成"
-              }
             >
               {completed ? (
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-white">
@@ -365,32 +543,53 @@ export default function TodoList({
               )}
             </button>
 
-            {/* Todo 信息 */}
             <div className="min-w-0 flex-1">
-              <p
-                className={
-                  completed
-                    ? "truncate text-sm text-ink-faint line-through"
-                    : "truncate text-sm text-ink"
-                }
-              >
-                {todo.title}
-              </p>
-
-              {todo.estimated_minutes && (
-                <p className="mt-1 text-xs text-ink-faint">
-                  预计{" "}
-                  {
-                    todo.estimated_minutes
-                  }{" "}
-                  分钟
+              <div className="flex flex-wrap items-center gap-2">
+                <p
+                  className={
+                    completed
+                      ? "truncate text-sm text-ink-faint line-through"
+                      : "truncate text-sm font-medium text-ink"
+                  }
+                >
+                  {todo.title}
                 </p>
-              )}
+
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] ${status.className}`}
+                >
+                  {status.label}
+                </span>
+              </div>
+
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
+                {todo.estimated_minutes && (
+                  <span>
+                    预计{" "}
+                    {
+                      todo.estimated_minutes
+                    }{" "}
+                    分钟
+                  </span>
+                )}
+
+                {scheduledTime && (
+                  <span className="flex items-center gap-1">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    {scheduledTime}
+                  </span>
+                )}
+
+                {!scheduledTime &&
+                  !completed && (
+                    <span>
+                      未排期
+                    </span>
+                  )}
+              </div>
             </div>
 
-            {/* 操作区 */}
             <div className="flex shrink-0 items-center gap-1">
-              {/* 编辑 */}
               <button
                 type="button"
                 onClick={() =>
@@ -403,7 +602,6 @@ export default function TodoList({
                 <Pencil className="h-4 w-4" />
               </button>
 
-              {/* 删除 */}
               <button
                 type="button"
                 onClick={() =>
@@ -416,15 +614,16 @@ export default function TodoList({
                 <Trash2 className="h-4 w-4" />
               </button>
 
-              {/* Focus */}
               {!completed && (
                 <button
                   type="button"
                   onClick={() =>
-                    openFocus(todo.id)
+                    openFocus(
+                      todo.id
+                    )
                   }
                   disabled={busy}
-                  className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-600"
+                  className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-700"
                   title="开始专注"
                 >
                   <Play className="ml-0.5 h-4 w-4 fill-current" />
