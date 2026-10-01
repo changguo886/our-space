@@ -37,19 +37,22 @@ export default async function TodayPage() {
     .eq("entry_date", today)
     .maybeSingle();
 
-  // 当前用户的 Todo
+  // 当前用户今天的 Todo
   //
-  // 第一版先显示：
+  // 显示：
   // 1. 私人 Todo
   // 2. 当前 Space 的 Todo
   //
-  // 不显示其他 Space 的 Todo
+  // 不显示：
+  // 1. 其他日期的 Todo
+  // 2. 其他 Space 的 Todo
   const { data: todos } = await supabase
     .from("todos")
     .select(
-      "id, title, estimated_minutes, status, group_id"
+      "id, title, estimated_minutes, status, group_id, task_date"
     )
     .eq("user_id", user.id)
+    .eq("task_date", today)
     .or(`group_id.is.null,group_id.eq.${group.id}`)
     .order("created_at", { ascending: false });
 
@@ -114,6 +117,7 @@ export default async function TodayPage() {
             userId={user.id}
             activeSpaceId={group.id}
             activeSpaceName={group.name}
+            taskDate={today}
           />
         </div>
       </section>
