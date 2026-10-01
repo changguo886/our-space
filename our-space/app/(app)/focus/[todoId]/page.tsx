@@ -1,3 +1,5 @@
+
+import SoundSelector from "@/components/SoundSelector";
 import { notFound } from "next/navigation";
 
 import { requireGroup } from "@/lib/session";
@@ -37,9 +39,13 @@ export default async function FocusPage({
     notFound();
   }
 
-  return (
-    <div className="mx-auto max-w-3xl">
-      <FocusTimer todo={todo} />
+ return (
+  <div className="mx-auto max-w-3xl space-y-6">
+    <FocusTimer todo={todo} />
+
+    <div className="mx-auto max-w-md">
+      <SoundSelector />
     </div>
-  );
+  </div>
+);
 }
