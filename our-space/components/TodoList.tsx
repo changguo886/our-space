@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  Check,
+  Circle,
+  Play,
+} from "lucide-react";
+
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -18,15 +24,22 @@ export default function TodoList({
 }) {
   const router = useRouter();
 
-  async function toggleTodo(todo: Todo) {
-    const supabase = createClient();
+  async function toggleTodo(
+    todo: Todo
+  ) {
+    const supabase =
+      createClient();
 
-    const completed = todo.status === "completed";
+    const completed =
+      todo.status === "completed";
 
     await supabase
       .from("todos")
       .update({
-        status: completed ? "pending" : "completed",
+        status: completed
+          ? "pending"
+          : "completed",
+        started_at: null,
         completed_at: completed
           ? null
           : new Date().toISOString(),
@@ -34,6 +47,14 @@ export default function TodoList({
       .eq("id", todo.id);
 
     router.refresh();
+  }
+
+  function openFocus(
+    todoId: string
+  ) {
+    router.push(
+      `/focus/${todoId}`
+    );
   }
 
   if (todos.length === 0) {
@@ -47,25 +68,42 @@ export default function TodoList({
   return (
     <div className="space-y-2">
       {todos.map((todo) => {
-        const completed = todo.status === "completed";
+        const completed =
+          todo.status ===
+          "completed";
 
         return (
-          <button
+          <div
             key={todo.id}
-            type="button"
-            onClick={() => toggleTodo(todo)}
-            className="flex w-full items-center gap-3 rounded-xl border border-line px-4 py-3 text-left"
+            className="flex items-center gap-3 rounded-xl border border-line px-4 py-3"
           >
-            <span className="text-lg">
-              {completed ? "✓" : "○"}
-            </span>
+            <button
+              type="button"
+              onClick={() =>
+                toggleTodo(todo)
+              }
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+              title={
+                completed
+                  ? "标记为未完成"
+                  : "标记完成"
+              }
+            >
+              {completed ? (
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-white">
+                  <Check className="h-4 w-4" />
+                </span>
+              ) : (
+                <Circle className="h-6 w-6 text-ink-faint" />
+              )}
+            </button>
 
             <div className="min-w-0 flex-1">
               <p
                 className={
                   completed
-                    ? "text-sm text-ink-faint line-through"
-                    : "text-sm text-ink"
+                    ? "truncate text-sm text-ink-faint line-through"
+                    : "truncate text-sm text-ink"
                 }
               >
                 {todo.title}
@@ -73,11 +111,28 @@ export default function TodoList({
 
               {todo.estimated_minutes && (
                 <p className="mt-1 text-xs text-ink-faint">
-                  预计 {todo.estimated_minutes} 分钟
+                  预计{" "}
+                  {
+                    todo.estimated_minutes
+                  }{" "}
+                  分钟
                 </p>
               )}
             </div>
-          </button>
+
+            {!completed && (
+              <button
+                type="button"
+                onClick={() =>
+                  openFocus(todo.id)
+                }
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-600"
+                title="开始专注"
+              >
+                <Play className="ml-0.5 h-4 w-4 fill-current" />
+              </button>
+            )}
+          </div>
         );
       })}
     </div>
