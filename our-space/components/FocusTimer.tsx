@@ -3,11 +3,11 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import { useRouter } from "next/navigation";
-
 import { createClient } from "@/lib/supabase/client";
 
 import {
@@ -48,12 +48,10 @@ export default function FocusTimer({
   const [status, setStatus] =
     useState(todo.status);
 
-  const [
-    startedAt,
-    setStartedAt,
-  ] = useState<string | null>(
-    todo.started_at
-  );
+  const [startedAt, setStartedAt] =
+    useState<string | null>(
+      todo.started_at
+    );
 
   const [
     elapsedSeconds,
@@ -69,7 +67,19 @@ export default function FocusTimer({
     useState(false);
 
   /*
-   * 完成页面相关
+   * 时间到状态
+   */
+  const [timeUp, setTimeUp] =
+    useState(false);
+
+  /*
+   * 防止提示音重复播放
+   */
+  const alarmPlayedRef =
+    useRef(false);
+
+  /*
+   * 完成页面
    */
   const [
     showCompletion,
@@ -87,7 +97,7 @@ export default function FocusTimer({
   ] = useState("");
 
   /*
-   * running 状态下每秒刷新一次显示
+   * running 状态下每秒刷新
    */
   useEffect(() => {
     if (status !== "running") {
@@ -99,15 +109,13 @@ export default function FocusTimer({
         setNow(Date.now());
       }, 1000);
 
-    return () =>
+    return () => {
       window.clearInterval(timer);
+    };
   }, [status]);
 
   /*
-   * 实际已经专注的秒数
-   *
-   * = 之前保存的 elapsed_seconds
-   * + 当前这一轮已经运行的时间
+   * 当前实际专注时间
    */
   const currentElapsed =
     useMemo(() => {
@@ -143,7 +151,7 @@ export default function FocusTimer({
     ]);
 
   /*
-   * 用户设定的目标时间
+   * 目标时间
    */
   const targetSeconds =
     todo.estimated_minutes
@@ -177,7 +185,7 @@ export default function FocusTimer({
       : 0;
 
   /*
-   * 格式化秒数
+   * 格式化时间
    */
   function formatTime(
     seconds: number
@@ -224,6 +232,66 @@ export default function FocusTimer({
   }
 
   /*
+   * 播放用户选择的提示音
+   */
+  function playCompleteSound() {
+    const enabled =
+      localStorage.getItem(
+        "focus_sound_enabled"
+      );
+
+    if (enabled === "false") {
+      return;
+    }
+
+    const selectedSound =
+      localStorage.getItem(
+        "focus_sound"
+      ) ?? "chime-1";
+
+    const audio = new Audio(
+      `/sounds/${selectedSound}.mp3`
+    );
+
+    audio.volume = 0.5;
+
+    audio.play().catch(() => {
+      /*
+       * 某些浏览器可能限制自动播放。
+       * 不影响其他功能。
+       */
+    });
+  }
+
+  /*
+   * 到达目标时间
+   *
+   * 只触发一次：
+   * 1. 播放声音
+   * 2. 标记 timeUp
+   *
+   * 不自动完成 Todo
+   */
+  useEffect(() => {
+    if (
+      status !== "running" ||
+      remainingSeconds === null ||
+      remainingSeconds > 0 ||
+      alarmPlayedRef.current
+    ) {
+      return;
+    }
+
+    alarmPlayedRef.current = true;
+
+    playCompleteSound();
+    setTimeUp(true);
+  }, [
+    status,
+    remainingSeconds,
+  ]);
+
+  /*
    * 开始 / 继续
    */
   async function startTimer() {
@@ -264,6 +332,15 @@ export default function FocusTimer({
     setStartedAt(start);
     setStatus("running");
     setNow(Date.now());
+
+    /*
+     * 如果之前时间已经到过，
+     * 继续专注时不立刻重复响。
+     */
+    if (!timeUp) {
+      alarmPlayedRef.current =
+        false;
+    }
   }
 
   /*
@@ -315,6 +392,26 @@ export default function FocusTimer({
   }
 
   /*
+   * 时间到以后继续专注
+   *
+   * 不重置计时，
+   * 只是让计时继续向上累计。
+   */
+  async function continueAfterTimeUp() {
+    if (busy) return;
+
+    setTimeUp(false);
+
+    await startTimer();
+
+    /*
+     * 已经响过一次，
+     * 继续以后不重复响。
+     */
+    alarmPlayedRef.current = true;
+  }
+
+  /*
    * 完成任务
    */
   async function completeTimer() {
@@ -332,14 +429,10 @@ export default function FocusTimer({
       await supabase
         .from("todos")
         .update({
-          status:
-            "completed",
-
+          status: "completed",
           started_at: null,
-
           elapsed_seconds:
             actualElapsed,
-
           completed_at:
             new Date().toISOString(),
         })
@@ -356,8 +449,18 @@ export default function FocusTimer({
     }
 
     /*
-     * 保存最终状态
+     * 如果还没有因为时间到响过，
+     * 手动完成时播放一次。
      */
+    if (
+      !alarmPlayedRef.current
+    ) {
+      playCompleteSound();
+
+      alarmPlayedRef.current =
+        true;
+    }
+
     setElapsedSeconds(
       actualElapsed
     );
@@ -372,8 +475,10 @@ export default function FocusTimer({
       actualElapsed
     );
 
+    setTimeUp(false);
+
     /*
-     * 随机选一句鼓励
+     * 随机鼓励语
      */
     const randomMessage =
       COMPLETION_MESSAGES[
@@ -387,10 +492,6 @@ export default function FocusTimer({
       randomMessage
     );
 
-    /*
-     * 显示完成页面
-     * 不再立即跳走
-     */
     setShowCompletion(true);
   }
 
@@ -430,6 +531,11 @@ export default function FocusTimer({
     setStartedAt(null);
     setStatus("pending");
     setNow(Date.now());
+
+    setTimeUp(false);
+
+    alarmPlayedRef.current =
+      false;
   }
 
   /*
@@ -444,13 +550,12 @@ export default function FocusTimer({
 
   /*
    * ==========================
-   * 完成后的页面
+   * 完成页面
    * ==========================
    */
   if (showCompletion) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 text-center">
-        {/* 完成 icon */}
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-sage-100 text-sage-700">
           <Check className="h-9 w-9" />
         </div>
@@ -486,6 +591,7 @@ export default function FocusTimer({
               router.replace(
                 "/todo"
               );
+
               router.refresh();
             }}
             className="btn-primary"
@@ -499,6 +605,7 @@ export default function FocusTimer({
               router.replace(
                 "/today"
               );
+
               router.refresh();
             }}
             className="btn-ghost"
@@ -512,21 +619,22 @@ export default function FocusTimer({
 
   /*
    * ==========================
-   * 正常计时页面
+   * 正常 Focus 页面
    * ==========================
    */
   return (
-    <div className="flex min-h-[70vh] flex-col items-center justify-center">
+    <div className="flex min-h-[70vh] flex-col items-center justify-center px-4">
       <p className="text-sm text-ink-faint">
-        {status === "running"
-          ? "专注中"
-          : status ===
-              "paused"
-            ? "已暂停"
-            : status ===
-                "completed"
-              ? "已完成"
-              : "准备开始"}
+        {timeUp
+          ? "本轮时间到"
+          : status === "running"
+            ? "专注中"
+            : status === "paused"
+              ? "已暂停"
+              : status ===
+                  "completed"
+                ? "已完成"
+                : "准备开始"}
       </p>
 
       <h1 className="mt-3 max-w-lg text-center text-2xl font-semibold">
@@ -582,71 +690,119 @@ export default function FocusTimer({
           </div>
 
           <p className="mt-3 text-sm text-ink-faint">
-            {targetSeconds
+            {timeUp
               ? `已专注 ${formatTime(
                   currentElapsed
                 )}`
-              : "已专注时间"}
+              : targetSeconds
+                ? `已专注 ${formatTime(
+                    currentElapsed
+                  )}`
+                : "已专注时间"}
           </p>
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="mt-10 flex items-center gap-5">
-        {status ===
-        "running" ? (
+      {/* 时间到 */}
+      {timeUp && (
+        <div className="mt-7 w-full max-w-sm rounded-2xl border border-sage-100 bg-sage-50 px-5 py-5 text-center">
+          <p className="font-medium text-sage-700">
+            时间到啦
+          </p>
+
+          <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
+            可以再继续一会儿，
+            也可以结束这项任务。
+          </p>
+
+          <div className="mt-5 flex justify-center gap-3">
+            <button
+              type="button"
+              onClick={
+                continueAfterTimeUp
+              }
+              disabled={busy}
+              className="rounded-xl bg-sage-100 px-4 py-2.5 text-sm font-medium text-sage-700 transition hover:bg-sage-300/60"
+            >
+              继续专注
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                completeTimer
+              }
+              disabled={busy}
+              className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
+            >
+              完成任务
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 普通控制按钮 */}
+      {!timeUp && (
+        <div className="mt-10 flex items-center gap-5">
+          {status === "running" ? (
+            <button
+              type="button"
+              onClick={
+                pauseTimer
+              }
+              disabled={busy}
+              className="flex h-14 w-14 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-amber-700 shadow-soft transition hover:bg-amber-100"
+              title="暂停"
+            >
+              <Pause className="h-5 w-5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={
+                startTimer
+              }
+              disabled={
+                busy ||
+                status ===
+                  "completed"
+              }
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-sage-100 text-sage-700 shadow-soft transition hover:bg-sage-300/70"
+              title="开始 / 继续"
+            >
+              <Play className="ml-0.5 h-5 w-5 fill-current" />
+            </button>
+          )}
+
           <button
+            type="button"
             onClick={
-              pauseTimer
+              completeTimer
             }
             disabled={busy}
-            className="flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white shadow-soft"
-            title="暂停"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-blush-100 text-blush-500 shadow-soft transition hover:bg-blush-50"
+            title="完成任务"
           >
-            <Pause className="h-5 w-5" />
+            <Square className="h-5 w-5 fill-current" />
           </button>
-        ) : (
+
           <button
+            type="button"
             onClick={
-              startTimer
+              resetTimer
             }
-            disabled={
-              busy ||
-              status ===
-                "completed"
-            }
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-sage-600 text-white shadow-soft"
-            title="开始"
+            disabled={busy}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-mist-100 text-mist-500 shadow-soft transition hover:bg-mist-50"
+            title="重置"
           >
-            <Play className="ml-0.5 h-5 w-5" />
+            <RotateCcw className="h-5 w-5" />
           </button>
-        )}
-
-        <button
-          onClick={
-            completeTimer
-          }
-          disabled={busy}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-blush-400 text-white shadow-soft"
-          title="完成"
-        >
-          <Square className="h-5 w-5 fill-current" />
-        </button>
-
-        <button
-          onClick={
-            resetTimer
-          }
-          disabled={busy}
-          className="flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white shadow-soft"
-          title="重置"
-        >
-          <RotateCcw className="h-5 w-5" />
-        </button>
-      </div>
+        </div>
+      )}
 
       <div className="mt-8">
         <button
+          type="button"
           onClick={() =>
             router.push(
               "/today"
