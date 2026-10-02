@@ -140,10 +140,10 @@ export default function FocusTimer({
   ] = useState(false);
 
   const [
-  floatingCompact,
-  setFloatingCompact,
-] = useState(false);
-  
+    floatingCompact,
+    setFloatingCompact,
+  ] = useState(false);
+
   const [
     floatingError,
     setFloatingError,
@@ -371,6 +371,42 @@ export default function FocusTimer({
               "completed"
             ? "已完成"
             : "准备开始";
+
+  function toggleFloatingCompact() {
+    const pipWindow =
+      floatingWindowRef.current;
+
+    if (
+      !pipWindow ||
+      pipWindow.closed
+    ) {
+      return;
+    }
+
+    const next =
+      !floatingCompact;
+
+    setFloatingCompact(next);
+
+    try {
+      if (next) {
+        pipWindow.resizeTo(
+          120,
+          150
+        );
+      } else {
+        pipWindow.resizeTo(
+          320,
+          190
+        );
+      }
+    } catch {
+      /*
+       * 某些浏览器 / 系统可能限制 PiP 窗口尺寸。
+       * 即使 resize 失败，UI 仍然会切换 compact 模式。
+       */
+    }
+  }
 
   /*
    * 关闭桌面悬浮窗
@@ -809,42 +845,6 @@ export default function FocusTimer({
     );
 
     setTimeUp(false);
-
-    function toggleFloatingCompact() {
-  const pipWindow =
-    floatingWindowRef.current;
-
-  if (
-    !pipWindow ||
-    pipWindow.closed
-  ) {
-    return;
-  }
-
-  const next =
-    !floatingCompact;
-
-  setFloatingCompact(next);
-
-  try {
-    if (next) {
-      pipWindow.resizeTo(
-        120,
-        150
-      );
-    } else {
-      pipWindow.resizeTo(
-        320,
-        190
-      );
-    }
-  } catch {
-    /*
-     * 某些系统可能限制窗口尺寸。
-     * UI 仍然会切换 compact 模式。
-     */
-  }
-}
 
     /*
      * 完成任务后自动关闭浮窗。
@@ -1739,6 +1739,19 @@ export default function FocusTimer({
   )
 );
 
+  }, [
+    floatingOpen,
+    floatingCompact,
+    floatingDisplayTime,
+    floatingStatusText,
+    currentElapsed,
+    progress,
+    status,
+    timeUp,
+    busy,
+    targetSeconds,
+  ]);
+
   /*
    * 页面离开时关闭桌面悬浮窗
    */
@@ -2183,4 +2196,3 @@ export default function FocusTimer({
     </div>
   );
 }
-
