@@ -37,19 +37,22 @@ export default function EntryForm({
     setBusy(true);
     setMsg(null);
     const clean = (s: string) => (s.trim() ? s.trim() : null);
-    const { error } = await createClient()
-      .from("daily_entries")
-      .upsert(
-        {
-          user_id: userId,
-          group_id: groupId,
-          entry_date: entryDate,
-          today_tasks: clean(values.today_tasks),
-          today_note: clean(values.today_note),
-          tomorrow_plan: clean(values.tomorrow_plan),
-        },
-        { onConflict: "user_id,entry_date" }
-      );
+   const { error } = await createClient()
+  .from("daily_entries")
+  .upsert(
+    {
+      user_id: userId,
+      group_id: groupId,
+      entry_date: entryDate,
+      today_tasks: clean(values.today_tasks),
+      today_note: clean(values.today_note),
+      tomorrow_plan: clean(values.tomorrow_plan),
+    },
+    {
+      onConflict:
+        "user_id,group_id,entry_date",
+    }
+  );
     setBusy(false);
     if (error) {
       setMsg({ ok: false, text: "没保存上，网络好像不太好，再试一次？" });
