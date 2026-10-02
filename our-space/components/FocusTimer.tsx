@@ -140,6 +140,11 @@ export default function FocusTimer({
   ] = useState(false);
 
   const [
+  floatingCompact,
+  setFloatingCompact,
+] = useState(false);
+  
+  const [
     floatingError,
     setFloatingError,
   ] =
@@ -385,6 +390,7 @@ export default function FocusTimer({
       null;
 
     setFloatingOpen(false);
+    setFloatingCompact(false);
 
     if (
       pipWindow &&
@@ -497,6 +503,7 @@ export default function FocusTimer({
       floatingRootRef.current =
         root;
 
+      setFloatingCompact(false);
       setFloatingOpen(true);
 
       /*
@@ -803,6 +810,42 @@ export default function FocusTimer({
 
     setTimeUp(false);
 
+    function toggleFloatingCompact() {
+  const pipWindow =
+    floatingWindowRef.current;
+
+  if (
+    !pipWindow ||
+    pipWindow.closed
+  ) {
+    return;
+  }
+
+  const next =
+    !floatingCompact;
+
+  setFloatingCompact(next);
+
+  try {
+    if (next) {
+      pipWindow.resizeTo(
+        120,
+        150
+      );
+    } else {
+      pipWindow.resizeTo(
+        320,
+        190
+      );
+    }
+  } catch {
+    /*
+     * 某些系统可能限制窗口尺寸。
+     * UI 仍然会切换 compact 模式。
+     */
+  }
+}
+
     /*
      * 完成任务后自动关闭浮窗。
      */
@@ -976,457 +1019,618 @@ export default function FocusTimer({
           "transform 120ms ease, opacity 120ms ease",
       };
 
-    root.render(
-      <div
+   root.render(
+  floatingCompact ? (
+    /*
+     * ==========================
+     * Side Compact Mode
+     * ==========================
+     */
+    <div
+      style={{
+        boxSizing:
+          "border-box",
+
+        width:
+          "100%",
+
+        height:
+          "100vh",
+
+        padding:
+          "10px 8px",
+
+        display:
+          "flex",
+
+        flexDirection:
+          "column",
+
+        alignItems:
+          "center",
+
+        justifyContent:
+          "space-between",
+
+        background:
+          "#FFFDFA",
+
+        color:
+          "#353934",
+
+        userSelect:
+          "none",
+      }}
+    >
+      {/*
+       * 展开
+       */}
+      <button
+        type="button"
+        onClick={
+          toggleFloatingCompact
+        }
+        title="展开悬浮窗"
         style={{
-          boxSizing:
-            "border-box",
+          ...buttonBase,
 
           width:
-            "100%",
+            "28px",
 
           height:
-            "100vh",
+            "24px",
 
-          padding:
-            "14px 16px 15px",
-
-          display:
-            "flex",
-
-          flexDirection:
-            "column",
+          borderRadius:
+            "9px",
 
           background:
-            "#FFFDFA",
+            "transparent",
+
+          color:
+            "#8B9188",
+
+          fontSize:
+            "15px",
+
+          opacity:
+            busy
+              ? 0.5
+              : 1,
+        }}
+      >
+        ↗
+      </button>
+
+      {/*
+       * 时间
+       */}
+      <div
+        style={{
+          textAlign:
+            "center",
+
+          fontSize:
+            "21px",
+
+          lineHeight:
+            1,
+
+          fontWeight:
+            600,
+
+          fontVariantNumeric:
+            "tabular-nums",
+
+          letterSpacing:
+            "-0.8px",
 
           color:
             "#353934",
-
-          userSelect:
-            "none",
         }}
       >
-        {/*
-         * Header
-         */}
-        <div
-          style={{
-            display:
-              "flex",
+        {
+          floatingDisplayTime
+        }
+      </div>
 
-            alignItems:
-              "center",
+      {/*
+       * 状态
+       */}
+      <div
+        style={{
+          maxWidth:
+            "100%",
 
-            gap:
-              "8px",
+          overflow:
+            "hidden",
 
-            minHeight:
-              "22px",
-          }}
-        >
-          <div
-            title={
-              todo.title
-            }
-            style={{
-              minWidth:
-                0,
+          textOverflow:
+            "ellipsis",
 
-              flex:
-                1,
+          whiteSpace:
+            "nowrap",
 
-              overflow:
-                "hidden",
+          fontSize:
+            "9px",
 
-              textOverflow:
-                "ellipsis",
+          color:
+            timeUp
+              ? "#A66D67"
+              : "#999D96",
+        }}
+      >
+        {
+          floatingStatusText
+        }
+      </div>
 
-              whiteSpace:
-                "nowrap",
-
-              fontSize:
-                "12px",
-
-              fontWeight:
-                500,
-
-              color:
-                "#73786F",
-            }}
-          >
-            {todo.title}
-          </div>
-
-          <button
-            type="button"
-            onClick={
-              closeFloatingTimer
-            }
-            title="关闭悬浮窗"
-            style={{
-              ...buttonBase,
-
-              width:
-                "25px",
-
-              height:
-                "25px",
-
-              borderRadius:
-                "999px",
-
-              background:
-                "transparent",
-
-              color:
-                "#999D96",
-
-              fontSize:
-                "17px",
-
-              lineHeight:
-                1,
-
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "center",
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/*
-         * Time
-         */}
-        <div
-          style={{
-            marginTop:
-              "9px",
-
-            textAlign:
-              "center",
-
-            fontSize:
-              "36px",
-
-            lineHeight:
-              1,
-
-            letterSpacing:
-              "-1.6px",
-
-            fontWeight:
-              550,
-
-            fontVariantNumeric:
-              "tabular-nums",
-
-            color:
-              "#333831",
-          }}
-        >
-          {
-            floatingDisplayTime
+      {/*
+       * Compact 模式只保留暂停 / 继续
+       */}
+      {status ===
+      "running" ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={
+            pauseTimer
           }
-        </div>
-
-        {/*
-         * Progress
-         */}
-        <div
+          title="暂停"
           style={{
-            marginTop:
-              "14px",
+            ...buttonBase,
 
             width:
-              "100%",
+              "34px",
 
             height:
-              "5px",
-
-            overflow:
-              "hidden",
+              "34px",
 
             borderRadius:
               "999px",
 
             background:
-              "#ECEAE5",
+              "#E9F1E7",
+
+            color:
+              "#597356",
+
+            fontSize:
+              "14px",
+
+            fontWeight:
+              700,
+
+            opacity:
+              busy
+                ? 0.5
+                : 1,
           }}
         >
-          <div
-            style={{
-              width:
-                targetSeconds
-                  ? `${Math.round(
-                      progress *
-                        100
-                    )}%`
-                  : "0%",
+          Ⅱ
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={
+            busy ||
+            status ===
+              "completed"
+          }
+          onClick={() =>
+            startTimer(false)
+          }
+          title="继续"
+          style={{
+            ...buttonBase,
 
-              height:
-                "100%",
+            width:
+              "34px",
 
-              borderRadius:
-                "999px",
+            height:
+              "34px",
 
-              background:
-                "#93AC8A",
+            borderRadius:
+              "999px",
 
-              transition:
-                "width 700ms ease",
-            }}
-          />
+            background:
+              "#E9F1E7",
+
+            color:
+              "#597356",
+
+            fontSize:
+              "14px",
+
+            opacity:
+              busy
+                ? 0.5
+                : 1,
+          }}
+        >
+          ▶
+        </button>
+      )}
+    </div>
+  ) : (
+    /*
+     * ==========================
+     * Normal Floating Mode
+     * ==========================
+     */
+    <div
+      style={{
+        boxSizing:
+          "border-box",
+
+        width:
+          "100%",
+
+        height:
+          "100vh",
+
+        padding:
+          "14px 16px 15px",
+
+        display:
+          "flex",
+
+        flexDirection:
+          "column",
+
+        background:
+          "#FFFDFA",
+
+        color:
+          "#353934",
+
+        userSelect:
+          "none",
+      }}
+    >
+      {/*
+       * Header
+       */}
+      <div
+        style={{
+          display:
+            "flex",
+
+          alignItems:
+            "center",
+
+          gap:
+            "8px",
+
+          minHeight:
+            "22px",
+        }}
+      >
+        <div
+          title={
+            todo.title
+          }
+          style={{
+            minWidth:
+              0,
+
+            flex:
+              1,
+
+            overflow:
+              "hidden",
+
+            textOverflow:
+              "ellipsis",
+
+            whiteSpace:
+              "nowrap",
+
+            fontSize:
+              "12px",
+
+            fontWeight:
+              500,
+
+            color:
+              "#73786F",
+          }}
+        >
+          {todo.title}
         </div>
 
         {/*
-         * Status
+         * 收到侧边
          */}
-        <div
+        <button
+          type="button"
+          onClick={
+            toggleFloatingCompact
+          }
+          title="收起到侧边"
           style={{
-            marginTop:
-              "7px",
+            ...buttonBase,
 
-            display:
-              "flex",
+            width:
+              "25px",
 
-            alignItems:
-              "center",
+            height:
+              "25px",
 
-            justifyContent:
-              "space-between",
+            borderRadius:
+              "999px",
 
-            fontSize:
-              "10px",
+            background:
+              "transparent",
 
             color:
               "#999D96",
+
+            fontSize:
+              "14px",
           }}
         >
-          <span>
-            {
-              floatingStatusText
-            }
-          </span>
-
-          <span>
-            已专注{" "}
-            {formatTime(
-              currentElapsed
-            )}
-          </span>
-        </div>
+          ◀
+        </button>
 
         {/*
-         * Controls
+         * 关闭
          */}
-        <div
+        <button
+          type="button"
+          onClick={
+            closeFloatingTimer
+          }
+          title="关闭悬浮窗"
           style={{
-            marginTop:
-              "auto",
+            ...buttonBase,
 
-            display:
-              "flex",
+            width:
+              "25px",
 
-            alignItems:
-              "center",
+            height:
+              "25px",
 
-            justifyContent:
-              "center",
+            borderRadius:
+              "999px",
 
-            gap:
-              "12px",
+            background:
+              "transparent",
+
+            color:
+              "#999D96",
+
+            fontSize:
+              "17px",
+
+            lineHeight:
+              1,
           }}
         >
-          {timeUp ? (
-            <>
+          ×
+        </button>
+      </div>
+
+      {/*
+       * Time
+       */}
+      <div
+        style={{
+          marginTop:
+            "9px",
+
+          textAlign:
+            "center",
+
+          fontSize:
+            "36px",
+
+          lineHeight:
+            1,
+
+          letterSpacing:
+            "-1.6px",
+
+          fontWeight:
+            550,
+
+          fontVariantNumeric:
+            "tabular-nums",
+
+          color:
+            "#333831",
+        }}
+      >
+        {
+          floatingDisplayTime
+        }
+      </div>
+
+      {/*
+       * Progress
+       */}
+      <div
+        style={{
+          marginTop:
+            "14px",
+
+          width:
+            "100%",
+
+          height:
+            "5px",
+
+          overflow:
+            "hidden",
+
+          borderRadius:
+            "999px",
+
+          background:
+            "#ECEAE5",
+        }}
+      >
+        <div
+          style={{
+            width:
+              targetSeconds
+                ? `${Math.round(
+                    progress *
+                      100
+                  )}%`
+                : "0%",
+
+            height:
+              "100%",
+
+            borderRadius:
+              "999px",
+
+            background:
+              "#93AC8A",
+
+            transition:
+              "width 700ms ease",
+          }}
+        />
+      </div>
+
+      {/*
+       * Status
+       */}
+      <div
+        style={{
+          marginTop:
+            "7px",
+
+          display:
+            "flex",
+
+          justifyContent:
+            "space-between",
+
+          fontSize:
+            "10px",
+
+          color:
+            "#999D96",
+        }}
+      >
+        <span>
+          {
+            floatingStatusText
+          }
+        </span>
+
+        <span>
+          已专注{" "}
+          {formatTime(
+            currentElapsed
+          )}
+        </span>
+      </div>
+
+      {/*
+       * Controls
+       */}
+      <div
+        style={{
+          marginTop:
+            "auto",
+
+          display:
+            "flex",
+
+          alignItems:
+            "center",
+
+          justifyContent:
+            "center",
+
+          gap:
+            "12px",
+        }}
+      >
+        {timeUp ? (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={
+                continueAfterTimeUp
+              }
+              style={{
+                ...buttonBase,
+
+                minWidth:
+                  "98px",
+
+                height:
+                  "34px",
+
+                borderRadius:
+                  "12px",
+
+                background:
+                  "#E9F1E7",
+
+                color:
+                  "#597356",
+
+                fontSize:
+                  "11px",
+
+                fontWeight:
+                  600,
+              }}
+            >
+              继续专注
+            </button>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={
+                completeTimer
+              }
+              style={{
+                ...buttonBase,
+
+                minWidth:
+                  "78px",
+
+                height:
+                  "34px",
+
+                borderRadius:
+                  "12px",
+
+                background:
+                  "#F5E8E5",
+
+                color:
+                  "#A66D67",
+
+                fontSize:
+                  "11px",
+
+                fontWeight:
+                  600,
+              }}
+            >
+              完成
+            </button>
+          </>
+        ) : (
+          <>
+            {status ===
+            "running" ? (
               <button
                 type="button"
                 disabled={busy}
                 onClick={
-                  continueAfterTimeUp
+                  pauseTimer
                 }
-                style={{
-                  ...buttonBase,
-
-                  minWidth:
-                    "98px",
-
-                  height:
-                    "34px",
-
-                  borderRadius:
-                    "12px",
-
-                  background:
-                    "#E9F1E7",
-
-                  color:
-                    "#597356",
-
-                  fontSize:
-                    "11px",
-
-                  fontWeight:
-                    600,
-
-                  opacity:
-                    busy
-                      ? 0.5
-                      : 1,
-                }}
-              >
-                继续专注
-              </button>
-
-              <button
-                type="button"
-                disabled={busy}
-                onClick={
-                  completeTimer
-                }
-                style={{
-                  ...buttonBase,
-
-                  minWidth:
-                    "78px",
-
-                  height:
-                    "34px",
-
-                  borderRadius:
-                    "12px",
-
-                  background:
-                    "#F5E8E5",
-
-                  color:
-                    "#A66D67",
-
-                  fontSize:
-                    "11px",
-
-                  fontWeight:
-                    600,
-
-                  opacity:
-                    busy
-                      ? 0.5
-                      : 1,
-                }}
-              >
-                完成
-              </button>
-            </>
-          ) : (
-            <>
-              {status ===
-              "running" ? (
-                <button
-                  type="button"
-                  disabled={
-                    busy
-                  }
-                  onClick={
-                    pauseTimer
-                  }
-                  title="暂停"
-                  style={{
-                    ...buttonBase,
-
-                    width:
-                      "36px",
-
-                    height:
-                      "36px",
-
-                    borderRadius:
-                      "999px",
-
-                    background:
-                      "#E9F1E7",
-
-                    color:
-                      "#597356",
-
-                    fontSize:
-                      "15px",
-
-                    fontWeight:
-                      700,
-
-                    opacity:
-                      busy
-                        ? 0.5
-                        : 1,
-                  }}
-                >
-                  Ⅱ
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    status ===
-                      "completed"
-                  }
-                  onClick={() =>
-                    startTimer(
-                      false
-                    )
-                  }
-                  title="继续"
-                  style={{
-                    ...buttonBase,
-
-                    width:
-                      "36px",
-
-                    height:
-                      "36px",
-
-                    borderRadius:
-                      "999px",
-
-                    background:
-                      "#E9F1E7",
-
-                    color:
-                      "#597356",
-
-                    fontSize:
-                      "15px",
-
-                    paddingLeft:
-                      "2px",
-
-                    opacity:
-                      busy
-                        ? 0.5
-                        : 1,
-                  }}
-                >
-                  ▶
-                </button>
-              )}
-
-              <button
-                type="button"
-                disabled={
-                  busy
-                }
-                onClick={
-                  completeTimer
-                }
-                title="完成任务"
+                title="暂停"
                 style={{
                   ...buttonBase,
 
@@ -1440,41 +1644,100 @@ export default function FocusTimer({
                     "999px",
 
                   background:
-                    "#F5E8E5",
+                    "#E9F1E7",
 
                   color:
-                    "#A66D67",
+                    "#597356",
 
                   fontSize:
-                    "16px",
+                    "15px",
 
                   fontWeight:
                     700,
-
-                  opacity:
-                    busy
-                      ? 0.5
-                      : 1,
                 }}
               >
-                ✓
+                Ⅱ
               </button>
-            </>
-          )}
-        </div>
+            ) : (
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  status ===
+                    "completed"
+                }
+                onClick={() =>
+                  startTimer(
+                    false
+                  )
+                }
+                title="继续"
+                style={{
+                  ...buttonBase,
+
+                  width:
+                    "36px",
+
+                  height:
+                    "36px",
+
+                  borderRadius:
+                    "999px",
+
+                  background:
+                    "#E9F1E7",
+
+                  color:
+                    "#597356",
+
+                  fontSize:
+                    "15px",
+                }}
+              >
+                ▶
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={
+                completeTimer
+              }
+              title="完成任务"
+              style={{
+                ...buttonBase,
+
+                width:
+                  "36px",
+
+                height:
+                  "36px",
+
+                borderRadius:
+                  "999px",
+
+                background:
+                  "#F5E8E5",
+
+                color:
+                  "#A66D67",
+
+                fontSize:
+                  "16px",
+
+                fontWeight:
+                  700,
+              }}
+            >
+              ✓
+            </button>
+          </>
+        )}
       </div>
-    );
-  }, [
-    floatingOpen,
-    floatingDisplayTime,
-    floatingStatusText,
-    currentElapsed,
-    progress,
-    status,
-    timeUp,
-    busy,
-    targetSeconds,
-  ]);
+    </div>
+  )
+);
 
   /*
    * 页面离开时关闭桌面悬浮窗
