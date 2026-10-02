@@ -2,13 +2,47 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NotebookPen, Users, CalendarDays, Settings, Leaf } from "lucide-react";
+import {
+  NotebookPen,
+  Users,
+  CalendarDays,
+  Settings,
+  Leaf,
+  ListTodo,
+  CalendarRange,
+} from "lucide-react";
 
 const ITEMS = [
-  { href: "/today", label: "今天", Icon: NotebookPen },
-  { href: "/friends", label: "朋友们", Icon: Users },
-  { href: "/history", label: "历史记录", Icon: CalendarDays },
-  { href: "/settings", label: "设置", Icon: Settings },
+  {
+    href: "/today",
+    label: "今天",
+    Icon: NotebookPen,
+  },
+  {
+    href: "/todo",
+    label: "Todo",
+    Icon: ListTodo,
+  },
+  {
+    href: "/calendar",
+    label: "日历",
+    Icon: CalendarRange,
+  },
+  {
+    href: "/friends",
+    label: "朋友们",
+    Icon: Users,
+  },
+  {
+    href: "/history",
+    label: "历史记录",
+    Icon: CalendarDays,
+  },
+  {
+    href: "/settings",
+    label: "设置",
+    Icon: Settings,
+  },
 ];
 
 export default function Nav() {
