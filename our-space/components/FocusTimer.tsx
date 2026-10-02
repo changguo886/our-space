@@ -5,21 +5,22 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
+
+import {
+  createRoot,
+  type Root,
+} from "react-dom/client";
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 import {
   Check,
-  Maximize2,
-  Minimize2,
   Pause,
   Play,
   RotateCcw,
   Square,
-  X,
 } from "lucide-react";
 
 type FocusTimerProps = {
@@ -39,10 +40,18 @@ type CompletionLevel =
   | "mostly_done"
   | "fully_done";
 
-type MiniPosition = {
-  x: number;
-  y: number;
+type DocumentPictureInPictureApi = {
+  requestWindow: (options?: {
+    width?: number;
+    height?: number;
+  }) => Promise<Window>;
 };
+
+type WindowWithDocumentPiP =
+  Window & {
+    documentPictureInPicture?:
+      DocumentPictureInPictureApi;
+  };
 
 const COMPLETION_MESSAGES = [
   "今天又向前走了一点。",
@@ -115,45 +124,33 @@ export default function FocusTimer({
 
   /*
    * ==========================
-   * Mini Focus
+   * Floating desktop window
    * ==========================
    */
-  const [miniMode, setMiniMode] =
-    useState(false);
+
+  const floatingWindowRef =
+    useRef<Window | null>(null);
+
+  const floatingRootRef =
+    useRef<Root | null>(null);
 
   const [
-    miniCollapsed,
-    setMiniCollapsed,
+    floatingOpen,
+    setFloatingOpen,
   ] = useState(false);
 
   const [
-    miniPosition,
-    setMiniPosition,
+    floatingError,
+    setFloatingError,
   ] =
-    useState<MiniPosition | null>(
-      null
-    );
-
-  const miniCardRef =
-    useRef<HTMLDivElement | null>(
-      null
-    );
-
-  const dragRef = useRef<{
-    pointerId: number;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
+    useState<string | null>(null);
 
   /*
-   * 时间到状态
+   * 时间到
    */
   const [timeUp, setTimeUp] =
     useState(false);
 
-  /*
-   * 防止提示音重复播放
-   */
   const alarmPlayedRef =
     useRef(false);
 
@@ -199,48 +196,11 @@ export default function FocusTimer({
   const [
     feedbackError,
     setFeedbackError,
-  ] = useState<string | null>(
-    null
-  );
+  ] =
+    useState<string | null>(null);
 
   /*
-   * 读取上次 Mini Window 的位置
-   */
-  useEffect(() => {
-    try {
-      const saved =
-        localStorage.getItem(
-          "focus_mini_position"
-        );
-
-      if (!saved) {
-        return;
-      }
-
-      const parsed =
-        JSON.parse(saved);
-
-      if (
-        typeof parsed?.x ===
-          "number" &&
-        typeof parsed?.y ===
-          "number"
-      ) {
-        setMiniPosition({
-          x: parsed.x,
-          y: parsed.y,
-        });
-      }
-    } catch {
-      /*
-       * 位置读取失败时，
-       * 使用默认右下角位置即可。
-       */
-    }
-  }, []);
-
-  /*
-   * running 状态下每秒刷新
+   * Running 时每秒刷新
    */
   useEffect(() => {
     if (status !== "running") {
@@ -294,7 +254,7 @@ export default function FocusTimer({
     ]);
 
   /*
-   * 目标时间
+   * 预计时间
    */
   const targetSeconds =
     todo.estimated_minutes
@@ -327,9 +287,6 @@ export default function FocusTimer({
         )
       : 0;
 
-  /*
-   * 格式化时间
-   */
   function formatTime(
     seconds: number
   ) {
@@ -375,13 +332,15 @@ export default function FocusTimer({
   }
 
   /*
-   * Mini Timer 显示时间
+   * 浮窗显示时间
    *
-   * 到达预计时间以后，
-   * 不一直停在 00:00，
-   * 而显示 +00:01、+00:02...
+   * 在预计时间内：
+   * 25:00 → 24:59 → ...
+   *
+   * 超过预计时间：
+   * +00:01 → +00:02
    */
-  const miniDisplayTime =
+  const floatingDisplayTime =
     targetSeconds !== null
       ? currentElapsed >
         targetSeconds
@@ -396,10 +355,7 @@ export default function FocusTimer({
           currentElapsed
         );
 
-  /*
-   * Mini 状态文字
-   */
-  const miniStatusText =
+  const floatingStatusText =
     timeUp
       ? "时间到"
       : status === "running"
@@ -412,192 +368,170 @@ export default function FocusTimer({
             : "准备开始";
 
   /*
-   * Mini Window 位置限制
+   * 关闭桌面悬浮窗
    *
-   * 防止拖出屏幕以后找不到。
+   * 注意：
+   * 这里只关窗口。
+   * 不会暂停 / 完成任务。
    */
-  function clampMiniPosition(
-    x: number,
-    y: number
-  ) {
-    const rect =
-      miniCardRef.current?.getBoundingClientRect();
+  function closeFloatingTimer() {
+    const pipWindow =
+      floatingWindowRef.current;
 
-    const width =
-      rect?.width ??
-      (miniCollapsed
-        ? 230
-        : 320);
+    floatingWindowRef.current =
+      null;
 
-    const height =
-      rect?.height ??
-      (miniCollapsed
-        ? 64
-        : 200);
+    floatingRootRef.current =
+      null;
 
-    const padding = 12;
+    setFloatingOpen(false);
 
-    const maxX =
-      Math.max(
-        padding,
-        window.innerWidth -
-          width -
-          padding
-      );
-
-    const maxY =
-      Math.max(
-        padding,
-        window.innerHeight -
-          height -
-          padding
-      );
-
-    return {
-      x: Math.min(
-        Math.max(
-          x,
-          padding
-        ),
-        maxX
-      ),
-
-      y: Math.min(
-        Math.max(
-          y,
-          padding
-        ),
-        maxY
-      ),
-    };
+    if (
+      pipWindow &&
+      !pipWindow.closed
+    ) {
+      pipWindow.close();
+    }
   }
 
   /*
-   * 开始拖动 Mini Window
+   * 打开真正的桌面悬浮窗
+   *
+   * Document Picture-in-Picture
+   * 会由 Chrome / Windows
+   * 创建一个独立的 always-on-top 窗口。
    */
-  function handleMiniDragStart(
-    event: ReactPointerEvent<HTMLDivElement>
-  ) {
-    const target =
-      event.target as HTMLElement;
+  async function openFloatingTimer() {
+    setFloatingError(null);
 
-    /*
-     * 点击按钮时不要触发拖动。
-     */
-    if (
-      target.closest("button")
-    ) {
-      return;
-    }
-
-    const card =
-      miniCardRef.current;
-
-    if (!card) {
-      return;
-    }
-
-    const rect =
-      card.getBoundingClientRect();
-
-    dragRef.current = {
-      pointerId:
-        event.pointerId,
-
-      offsetX:
-        event.clientX -
-        rect.left,
-
-      offsetY:
-        event.clientY -
-        rect.top,
-    };
-
-    event.currentTarget.setPointerCapture(
-      event.pointerId
-    );
-  }
-
-  /*
-   * 拖动中
-   */
-  function handleMiniDragMove(
-    event: ReactPointerEvent<HTMLDivElement>
-  ) {
-    const drag =
-      dragRef.current;
+    const existing =
+      floatingWindowRef.current;
 
     if (
-      !drag ||
-      drag.pointerId !==
-        event.pointerId
+      existing &&
+      !existing.closed
     ) {
+      existing.focus();
       return;
     }
 
-    const next =
-      clampMiniPosition(
-        event.clientX -
-          drag.offsetX,
+    const browserWindow =
+      window as WindowWithDocumentPiP;
 
-        event.clientY -
-          drag.offsetY
+    const api =
+      browserWindow
+        .documentPictureInPicture;
+
+    if (!api) {
+      setFloatingError(
+        "当前浏览器不支持桌面悬浮计时窗，请使用最新版 Chrome。"
       );
 
-    setMiniPosition(next);
-  }
-
-  /*
-   * 拖动结束
-   */
-  function handleMiniDragEnd(
-    event: ReactPointerEvent<HTMLDivElement>
-  ) {
-    const drag =
-      dragRef.current;
-
-    if (
-      !drag ||
-      drag.pointerId !==
-        event.pointerId
-    ) {
       return;
     }
-
-    dragRef.current = null;
 
     try {
-      event.currentTarget.releasePointerCapture(
-        event.pointerId
-      );
-    } catch {
-      /*
-       * pointer capture 已经释放时忽略。
-       */
-    }
+      const pipWindow =
+        await api.requestWindow({
+          width: 320,
+          height: 190,
+        });
 
-    /*
-     * 保存当前 Mini Window 位置。
-     */
-    if (miniPosition) {
-      try {
-        localStorage.setItem(
-          "focus_mini_position",
-          JSON.stringify(
-            miniPosition
-          )
+      pipWindow.document.title =
+        `Focus · ${todo.title}`;
+
+      /*
+       * 清空默认内容
+       */
+      pipWindow.document.head.innerHTML =
+        "";
+
+      pipWindow.document.body.innerHTML =
+        "";
+
+      /*
+       * 设置基础页面样式
+       */
+      pipWindow.document.documentElement.style.background =
+        "#FBF7F1";
+
+      pipWindow.document.body.style.margin =
+        "0";
+
+      pipWindow.document.body.style.padding =
+        "0";
+
+      pipWindow.document.body.style.background =
+        "#FBF7F1";
+
+      pipWindow.document.body.style.overflow =
+        "hidden";
+
+      pipWindow.document.body.style.fontFamily =
+        `Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+
+      /*
+       * React Root
+       */
+      const container =
+        pipWindow.document.createElement(
+          "div"
         );
-      } catch {
-        /*
-         * localStorage 不可用时
-         * 不影响计时。
-         */
-      }
+
+      container.style.width =
+        "100%";
+
+      container.style.height =
+        "100vh";
+
+      pipWindow.document.body.appendChild(
+        container
+      );
+
+      const root =
+        createRoot(container);
+
+      floatingWindowRef.current =
+        pipWindow;
+
+      floatingRootRef.current =
+        root;
+
+      setFloatingOpen(true);
+
+      /*
+       * 用户点系统 X 关闭时，
+       * 不结束计时。
+       */
+      pipWindow.addEventListener(
+        "pagehide",
+        () => {
+          floatingWindowRef.current =
+            null;
+
+          floatingRootRef.current =
+            null;
+
+          setFloatingOpen(false);
+        },
+        {
+          once: true,
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Failed to open floating timer:",
+        error
+      );
+
+      setFloatingError(
+        "没有成功打开悬浮窗，可以再点一次「打开悬浮窗」。"
+      );
     }
   }
 
   /*
-   * 播放用户选择的提示音
+   * 播放结束提示音
    */
   function playCompleteSound() {
     const enabled =
@@ -622,7 +556,8 @@ export default function FocusTimer({
 
     audio.play().catch(() => {
       /*
-       * 某些浏览器可能限制自动播放。
+       * 自动播放被浏览器限制时，
+       * 不影响其他功能。
        */
     });
   }
@@ -643,6 +578,7 @@ export default function FocusTimer({
     alarmPlayedRef.current = true;
 
     playCompleteSound();
+
     setTimeUp(true);
   }, [
     status,
@@ -651,13 +587,34 @@ export default function FocusTimer({
 
   /*
    * 开始 / 继续
+   *
+   * openFloating = true:
+   * 主页面按钮使用。
+   *
+   * openFloating = false:
+   * 浮窗内部的 Continue 使用，
+   * 避免再次打开一个浮窗。
    */
-  async function startTimer() {
+  async function startTimer(
+    openFloating = true
+  ) {
     if (
       busy ||
       status === "running"
     ) {
       return;
+    }
+
+    /*
+     * 非常重要：
+     *
+     * requestWindow 必须尽量直接发生在
+     * 用户点击操作之后。
+     *
+     * 所以一定放在 Supabase await 之前。
+     */
+    if (openFloating) {
+      void openFloatingTimer();
     }
 
     setBusy(true);
@@ -695,7 +652,9 @@ export default function FocusTimer({
     }
 
     setStartedAt(start);
+
     setStatus("running");
+
     setNow(Date.now());
 
     if (!timeUp) {
@@ -757,11 +716,12 @@ export default function FocusTimer({
     );
 
     setStartedAt(null);
+
     setStatus("paused");
   }
 
   /*
-   * 时间到了以后继续专注
+   * 时间到了以后继续
    */
   function continueAfterTimeUp() {
     setTimeUp(false);
@@ -774,7 +734,9 @@ export default function FocusTimer({
    * 完成任务
    */
   async function completeTimer() {
-    if (busy) return;
+    if (busy) {
+      return;
+    }
 
     setBusy(true);
 
@@ -842,12 +804,14 @@ export default function FocusTimer({
     setTimeUp(false);
 
     /*
-     * 完成后关闭 Mini Window。
+     * 完成任务后自动关闭浮窗。
      */
-    setMiniMode(false);
+    closeFloatingTimer();
 
     setCompletionLevel(null);
+
     setFeedbackSaved(false);
+
     setFeedbackError(null);
 
     const randomMessage =
@@ -866,7 +830,7 @@ export default function FocusTimer({
   }
 
   /*
-   * 保存完成度反馈
+   * 保存完成度
    */
   async function saveCompletionLevel(
     level: CompletionLevel
@@ -876,8 +840,11 @@ export default function FocusTimer({
     }
 
     setCompletionLevel(level);
+
     setFeedbackSaving(true);
+
     setFeedbackSaved(false);
+
     setFeedbackError(null);
 
     const supabase =
@@ -912,7 +879,9 @@ export default function FocusTimer({
    * 重置
    */
   async function resetTimer() {
-    if (busy) return;
+    if (busy) {
+      return;
+    }
 
     setBusy(true);
 
@@ -955,22 +924,583 @@ export default function FocusTimer({
     }
 
     setElapsedSeconds(0);
+
     setStartedAt(null);
+
     setStatus("pending");
+
     setNow(Date.now());
 
     setTimeUp(false);
 
     setCompletionLevel(null);
+
     setFeedbackSaved(false);
+
     setFeedbackError(null);
 
     alarmPlayedRef.current =
       false;
+
+    closeFloatingTimer();
   }
 
   /*
-   * 圆环
+   * ==========================
+   * 更新 Floating Window UI
+   * ==========================
+   *
+   * 主页面每秒更新 state，
+   * 然后这里重新 render 浮窗。
+   */
+  useEffect(() => {
+    if (
+      !floatingOpen ||
+      !floatingRootRef.current ||
+      !floatingWindowRef.current ||
+      floatingWindowRef.current.closed
+    ) {
+      return;
+    }
+
+    const root =
+      floatingRootRef.current;
+
+    const buttonBase: React.CSSProperties =
+      {
+        border: "none",
+        cursor: busy
+          ? "default"
+          : "pointer",
+        transition:
+          "transform 120ms ease, opacity 120ms ease",
+      };
+
+    root.render(
+      <div
+        style={{
+          boxSizing:
+            "border-box",
+
+          width:
+            "100%",
+
+          height:
+            "100vh",
+
+          padding:
+            "14px 16px 15px",
+
+          display:
+            "flex",
+
+          flexDirection:
+            "column",
+
+          background:
+            "#FFFDFA",
+
+          color:
+            "#353934",
+
+          userSelect:
+            "none",
+        }}
+      >
+        {/*
+         * Header
+         */}
+        <div
+          style={{
+            display:
+              "flex",
+
+            alignItems:
+              "center",
+
+            gap:
+              "8px",
+
+            minHeight:
+              "22px",
+          }}
+        >
+          <div
+            title={
+              todo.title
+            }
+            style={{
+              minWidth:
+                0,
+
+              flex:
+                1,
+
+              overflow:
+                "hidden",
+
+              textOverflow:
+                "ellipsis",
+
+              whiteSpace:
+                "nowrap",
+
+              fontSize:
+                "12px",
+
+              fontWeight:
+                500,
+
+              color:
+                "#73786F",
+            }}
+          >
+            {todo.title}
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              closeFloatingTimer
+            }
+            title="关闭悬浮窗"
+            style={{
+              ...buttonBase,
+
+              width:
+                "25px",
+
+              height:
+                "25px",
+
+              borderRadius:
+                "999px",
+
+              background:
+                "transparent",
+
+              color:
+                "#999D96",
+
+              fontSize:
+                "17px",
+
+              lineHeight:
+                1,
+
+              display:
+                "flex",
+
+              alignItems:
+                "center",
+
+              justifyContent:
+                "center",
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/*
+         * Time
+         */}
+        <div
+          style={{
+            marginTop:
+              "9px",
+
+            textAlign:
+              "center",
+
+            fontSize:
+              "36px",
+
+            lineHeight:
+              1,
+
+            letterSpacing:
+              "-1.6px",
+
+            fontWeight:
+              550,
+
+            fontVariantNumeric:
+              "tabular-nums",
+
+            color:
+              "#333831",
+          }}
+        >
+          {
+            floatingDisplayTime
+          }
+        </div>
+
+        {/*
+         * Progress
+         */}
+        <div
+          style={{
+            marginTop:
+              "14px",
+
+            width:
+              "100%",
+
+            height:
+              "5px",
+
+            overflow:
+              "hidden",
+
+            borderRadius:
+              "999px",
+
+            background:
+              "#ECEAE5",
+          }}
+        >
+          <div
+            style={{
+              width:
+                targetSeconds
+                  ? `${Math.round(
+                      progress *
+                        100
+                    )}%`
+                  : "0%",
+
+              height:
+                "100%",
+
+              borderRadius:
+                "999px",
+
+              background:
+                "#93AC8A",
+
+              transition:
+                "width 700ms ease",
+            }}
+          />
+        </div>
+
+        {/*
+         * Status
+         */}
+        <div
+          style={{
+            marginTop:
+              "7px",
+
+            display:
+              "flex",
+
+            alignItems:
+              "center",
+
+            justifyContent:
+              "space-between",
+
+            fontSize:
+              "10px",
+
+            color:
+              "#999D96",
+          }}
+        >
+          <span>
+            {
+              floatingStatusText
+            }
+          </span>
+
+          <span>
+            已专注{" "}
+            {formatTime(
+              currentElapsed
+            )}
+          </span>
+        </div>
+
+        {/*
+         * Controls
+         */}
+        <div
+          style={{
+            marginTop:
+              "auto",
+
+            display:
+              "flex",
+
+            alignItems:
+              "center",
+
+            justifyContent:
+              "center",
+
+            gap:
+              "12px",
+          }}
+        >
+          {timeUp ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={
+                  continueAfterTimeUp
+                }
+                style={{
+                  ...buttonBase,
+
+                  minWidth:
+                    "98px",
+
+                  height:
+                    "34px",
+
+                  borderRadius:
+                    "12px",
+
+                  background:
+                    "#E9F1E7",
+
+                  color:
+                    "#597356",
+
+                  fontSize:
+                    "11px",
+
+                  fontWeight:
+                    600,
+
+                  opacity:
+                    busy
+                      ? 0.5
+                      : 1,
+                }}
+              >
+                继续专注
+              </button>
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={
+                  completeTimer
+                }
+                style={{
+                  ...buttonBase,
+
+                  minWidth:
+                    "78px",
+
+                  height:
+                    "34px",
+
+                  borderRadius:
+                    "12px",
+
+                  background:
+                    "#F5E8E5",
+
+                  color:
+                    "#A66D67",
+
+                  fontSize:
+                    "11px",
+
+                  fontWeight:
+                    600,
+
+                  opacity:
+                    busy
+                      ? 0.5
+                      : 1,
+                }}
+              >
+                完成
+              </button>
+            </>
+          ) : (
+            <>
+              {status ===
+              "running" ? (
+                <button
+                  type="button"
+                  disabled={
+                    busy
+                  }
+                  onClick={
+                    pauseTimer
+                  }
+                  title="暂停"
+                  style={{
+                    ...buttonBase,
+
+                    width:
+                      "36px",
+
+                    height:
+                      "36px",
+
+                    borderRadius:
+                      "999px",
+
+                    background:
+                      "#E9F1E7",
+
+                    color:
+                      "#597356",
+
+                    fontSize:
+                      "15px",
+
+                    fontWeight:
+                      700,
+
+                    opacity:
+                      busy
+                        ? 0.5
+                        : 1,
+                  }}
+                >
+                  Ⅱ
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    status ===
+                      "completed"
+                  }
+                  onClick={() =>
+                    startTimer(
+                      false
+                    )
+                  }
+                  title="继续"
+                  style={{
+                    ...buttonBase,
+
+                    width:
+                      "36px",
+
+                    height:
+                      "36px",
+
+                    borderRadius:
+                      "999px",
+
+                    background:
+                      "#E9F1E7",
+
+                    color:
+                      "#597356",
+
+                    fontSize:
+                      "15px",
+
+                    paddingLeft:
+                      "2px",
+
+                    opacity:
+                      busy
+                        ? 0.5
+                        : 1,
+                  }}
+                >
+                  ▶
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={
+                  busy
+                }
+                onClick={
+                  completeTimer
+                }
+                title="完成任务"
+                style={{
+                  ...buttonBase,
+
+                  width:
+                    "36px",
+
+                  height:
+                    "36px",
+
+                  borderRadius:
+                    "999px",
+
+                  background:
+                    "#F5E8E5",
+
+                  color:
+                    "#A66D67",
+
+                  fontSize:
+                    "16px",
+
+                  fontWeight:
+                    700,
+
+                  opacity:
+                    busy
+                      ? 0.5
+                      : 1,
+                }}
+              >
+                ✓
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }, [
+    floatingOpen,
+    floatingDisplayTime,
+    floatingStatusText,
+    currentElapsed,
+    progress,
+    status,
+    timeUp,
+    busy,
+    targetSeconds,
+  ]);
+
+  /*
+   * 页面离开时关闭桌面悬浮窗
+   */
+  useEffect(() => {
+    return () => {
+      const pipWindow =
+        floatingWindowRef.current;
+
+      floatingWindowRef.current =
+        null;
+
+      floatingRootRef.current =
+        null;
+
+      if (
+        pipWindow &&
+        !pipWindow.closed
+      ) {
+        pipWindow.close();
+      }
+    };
+  }, []);
+
+  /*
+   * 主页面圆环
    */
   const circumference =
     2 * Math.PI * 126;
@@ -1154,49 +1684,45 @@ export default function FocusTimer({
    * ==========================
    */
   return (
-    <>
-      <div className="relative flex min-h-[70vh] flex-col items-center justify-center px-4">
-        {/*
-         * Mini Mode 按钮
-         */}
-        <button
-          type="button"
-          onClick={() =>
-            setMiniMode(true)
-          }
-          className="absolute right-3 top-3 flex items-center gap-2 rounded-xl border border-line bg-white/70 px-3 py-2 text-xs font-medium text-ink-soft shadow-sm backdrop-blur transition hover:bg-white"
-        >
-          <Minimize2 className="h-3.5 w-3.5" />
-          Mini
-        </button>
-
-        <p className="text-sm text-ink-faint">
-          {timeUp
-            ? "本轮时间到"
+    <div className="flex min-h-[70vh] flex-col items-center justify-center px-4">
+      <p className="text-sm text-ink-faint">
+        {timeUp
+          ? "本轮时间到"
+          : status ===
+              "running"
+            ? "专注中"
             : status ===
-                "running"
-              ? "专注中"
+                "paused"
+              ? "已暂停"
               : status ===
-                  "paused"
-                ? "已暂停"
-                : status ===
-                    "completed"
-                  ? "已完成"
-                  : "准备开始"}
-        </p>
+                  "completed"
+                ? "已完成"
+                : "准备开始"}
+      </p>
 
-        <h1 className="mt-3 max-w-lg text-center text-2xl font-semibold">
-          {todo.title}
-        </h1>
+      <h1 className="mt-3 max-w-lg text-center text-2xl font-semibold">
+        {todo.title}
+      </h1>
 
-        {/*
-         * Timer
-         */}
-        <div className="relative mt-10 flex h-72 w-72 items-center justify-center">
-          <svg
-            className="absolute inset-0 h-full w-full -rotate-90"
-            viewBox="0 0 280 280"
-          >
+      {/*
+       * Main Timer
+       */}
+      <div className="relative mt-10 flex h-72 w-72 items-center justify-center">
+        <svg
+          className="absolute inset-0 h-full w-full -rotate-90"
+          viewBox="0 0 280 280"
+        >
+          <circle
+            cx="140"
+            cy="140"
+            r="126"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="8"
+            className="text-black/[0.06]"
+          />
+
+          {targetSeconds && (
             <circle
               cx="140"
               cy="140"
@@ -1204,126 +1730,65 @@ export default function FocusTimer({
               fill="none"
               stroke="currentColor"
               strokeWidth="8"
-              className="text-black/[0.06]"
+              strokeLinecap="round"
+              strokeDasharray={
+                circumference
+              }
+              strokeDashoffset={
+                dashOffset
+              }
+              className="text-sage-400 transition-[stroke-dashoffset] duration-700"
             />
+          )}
+        </svg>
 
-            {targetSeconds && (
-              <circle
-                cx="140"
-                cy="140"
-                r="126"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={
-                  circumference
-                }
-                strokeDashoffset={
-                  dashOffset
-                }
-                className="text-sage-400 transition-[stroke-dashoffset] duration-700"
-              />
-            )}
-          </svg>
-
-          <div className="relative text-center">
-            <div className="text-5xl font-medium tracking-tight">
-              {remainingSeconds !==
-              null
-                ? formatTime(
-                    remainingSeconds
-                  )
-                : formatTime(
-                    currentElapsed
-                  )}
-            </div>
-
-            <p className="mt-3 text-sm text-ink-faint">
-              {targetSeconds
-                ? `已专注 ${formatTime(
-                    currentElapsed
-                  )}`
-                : "已专注时间"}
-            </p>
+        <div className="relative text-center">
+          <div className="text-5xl font-medium tracking-tight">
+            {remainingSeconds !==
+            null
+              ? formatTime(
+                  remainingSeconds
+                )
+              : formatTime(
+                  currentElapsed
+                )}
           </div>
+
+          <p className="mt-3 text-sm text-ink-faint">
+            {targetSeconds
+              ? `已专注 ${formatTime(
+                  currentElapsed
+                )}`
+              : "已专注时间"}
+          </p>
         </div>
+      </div>
 
-        {/*
-         * 时间到
-         */}
-        {timeUp && (
-          <div className="mt-7 w-full max-w-sm rounded-2xl border border-sage-100 bg-sage-50 px-5 py-5 text-center">
-            <p className="font-medium text-sage-700">
-              时间到啦
-            </p>
+      {/*
+       * 时间到
+       */}
+      {timeUp && (
+        <div className="mt-7 w-full max-w-sm rounded-2xl border border-sage-100 bg-sage-50 px-5 py-5 text-center">
+          <p className="font-medium text-sage-700">
+            时间到啦
+          </p>
 
-            <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-              可以再继续一会儿，
-              也可以结束这项任务。
-            </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
+            可以再继续一会儿，
+            也可以结束这项任务。
+          </p>
 
-            <div className="mt-5 flex justify-center gap-3">
-              <button
-                type="button"
-                onClick={
-                  continueAfterTimeUp
-                }
-                disabled={busy}
-                className="rounded-xl bg-sage-100 px-4 py-2.5 text-sm font-medium text-sage-700 transition hover:bg-sage-300/60"
-              >
-                继续专注
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  completeTimer
-                }
-                disabled={busy}
-                className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
-              >
-                完成任务
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/*
-         * 普通控制
-         */}
-        {!timeUp && (
-          <div className="mt-10 flex items-center gap-5">
-            {status ===
-            "running" ? (
-              <button
-                type="button"
-                onClick={
-                  pauseTimer
-                }
-                disabled={busy}
-                className="flex h-14 w-14 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-amber-700 shadow-soft transition hover:bg-amber-100"
-                title="暂停"
-              >
-                <Pause className="h-5 w-5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={
-                  startTimer
-                }
-                disabled={
-                  busy ||
-                  status ===
-                    "completed"
-                }
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-sage-100 text-sage-700 shadow-soft transition hover:bg-sage-300/70"
-                title="开始 / 继续"
-              >
-                <Play className="ml-0.5 h-5 w-5 fill-current" />
-              </button>
-            )}
+          <div className="mt-5 flex justify-center gap-3">
+            <button
+              type="button"
+              onClick={
+                continueAfterTimeUp
+              }
+              disabled={busy}
+              className="rounded-xl bg-sage-100 px-4 py-2.5 text-sm font-medium text-sage-700 transition hover:bg-sage-300/60"
+            >
+              继续专注
+            </button>
 
             <button
               type="button"
@@ -1331,354 +1796,127 @@ export default function FocusTimer({
                 completeTimer
               }
               disabled={busy}
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-blush-100 text-blush-500 shadow-soft transition hover:bg-blush-50"
-              title="完成任务"
+              className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
             >
-              <Square className="h-5 w-5 fill-current" />
+              完成任务
             </button>
+          </div>
+        </div>
+      )}
 
+      {/*
+       * 普通控制
+       */}
+      {!timeUp && (
+        <div className="mt-10 flex items-center gap-5">
+          {status ===
+          "running" ? (
             <button
               type="button"
               onClick={
-                resetTimer
+                pauseTimer
               }
               disabled={busy}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-mist-100 text-mist-500 shadow-soft transition hover:bg-mist-50"
-              title="重置"
+              className="flex h-14 w-14 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-amber-700 shadow-soft transition hover:bg-amber-100"
+              title="暂停"
             >
-              <RotateCcw className="h-5 w-5" />
+              <Pause className="h-5 w-5" />
             </button>
-          </div>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={() =>
+                startTimer(true)
+              }
+              disabled={
+                busy ||
+                status ===
+                  "completed"
+              }
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-sage-100 text-sage-700 shadow-soft transition hover:bg-sage-300/70"
+              title="开始 / 继续"
+            >
+              <Play className="ml-0.5 h-5 w-5 fill-current" />
+            </button>
+          )}
 
-        <div className="mt-8">
           <button
             type="button"
-            onClick={() =>
-              router.push(
-                "/today"
-              )
+            onClick={
+              completeTimer
             }
-            className="btn-ghost text-sm"
+            disabled={busy}
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-blush-100 text-blush-500 shadow-soft transition hover:bg-blush-50"
+            title="完成任务"
           >
-            ← 返回 Today
+            <Square className="h-5 w-5 fill-current" />
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              resetTimer
+            }
+            disabled={busy}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-mist-100 text-mist-500 shadow-soft transition hover:bg-mist-50"
+            title="重置"
+          >
+            <RotateCcw className="h-5 w-5" />
           </button>
         </div>
-      </div>
+      )}
 
       {/*
-       * ==========================
-       * Floating Mini Focus
-       * ==========================
+       * Floating window control
+       *
+       * 正常开始时自动打开。
+       * 如果用户自己 × 掉，
+       * 可以在这里重新打开。
        */}
-      {miniMode && (
-        <div
-          ref={miniCardRef}
-          style={
-            miniPosition
-              ? {
-                  left:
-                    miniPosition.x,
-
-                  top:
-                    miniPosition.y,
-                }
-              : {
-                  right: 24,
-                  bottom: 24,
-                }
-          }
-          className={`fixed z-[100] overflow-hidden border border-line bg-[#FFFDFA]/95 shadow-[0_16px_50px_rgba(45,55,45,0.18)] backdrop-blur-xl transition-[width,border-radius] duration-200 ${
-            miniCollapsed
-              ? "w-[230px] rounded-2xl"
-              : "w-[320px] rounded-[22px]"
-          }`}
-        >
-          {miniCollapsed ? (
-            /*
-             * ======================
-             * 最小状态
-             * ======================
-             */
-            <div
-              className="flex h-[62px] touch-none select-none items-center gap-3 px-3.5"
-              onPointerDown={
-                handleMiniDragStart
-              }
-              onPointerMove={
-                handleMiniDragMove
-              }
-              onPointerUp={
-                handleMiniDragEnd
-              }
-              onPointerCancel={
-                handleMiniDragEnd
-              }
+      {status !==
+        "completed" && (
+        <div className="mt-6 text-center">
+          {!floatingOpen && (
+            <button
+              type="button"
+              onClick={() => {
+                void openFloatingTimer();
+              }}
+              className="text-xs text-ink-faint underline decoration-line underline-offset-4 transition hover:text-sage-700"
             >
-              <button
-                type="button"
-                onClick={() =>
-                  setMiniCollapsed(
-                    false
-                  )
-                }
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-                title="展开"
-              >
-                <Maximize2 className="h-4 w-4" />
-              </button>
+              打开桌面悬浮窗
+            </button>
+          )}
 
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[11px] text-ink-faint">
-                  {todo.title}
-                </p>
+          {floatingOpen && (
+            <p className="text-xs text-sage-700">
+              桌面悬浮窗已开启
+            </p>
+          )}
 
-                <p className="font-mono text-lg font-medium tracking-tight text-ink">
-                  {
-                    miniDisplayTime
-                  }
-                </p>
-              </div>
-
-              {status ===
-              "running" ? (
-                <button
-                  type="button"
-                  onClick={
-                    pauseTimer
-                  }
-                  disabled={busy}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage-100 text-sage-700 transition hover:bg-sage-300/70"
-                  title="暂停"
-                >
-                  <Pause className="h-3.5 w-3.5" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={
-                    startTimer
-                  }
-                  disabled={
-                    busy ||
-                    status ===
-                      "completed"
-                  }
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage-100 text-sage-700 transition hover:bg-sage-300/70"
-                  title="继续"
-                >
-                  <Play className="ml-px h-3.5 w-3.5 fill-current" />
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() =>
-                  setMiniMode(false)
-                }
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-faint transition hover:bg-black/[0.04] hover:text-ink"
-                title="关闭 Mini"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : (
-            /*
-             * ======================
-             * 展开状态
-             * ======================
-             */
-            <>
-              {/*
-               * Header 也是拖动区域
-               */}
-              <div
-                className="flex h-11 touch-none select-none items-center border-b border-line/70 px-4"
-                onPointerDown={
-                  handleMiniDragStart
-                }
-                onPointerMove={
-                  handleMiniDragMove
-                }
-                onPointerUp={
-                  handleMiniDragEnd
-                }
-                onPointerCancel={
-                  handleMiniDragEnd
-                }
-              >
-                <span className="text-xs font-medium text-ink-soft">
-                  Our Days
-                </span>
-
-                <span className="ml-2 text-[10px] text-ink-faint">
-                  {
-                    miniStatusText
-                  }
-                </span>
-
-                <div className="ml-auto flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMiniCollapsed(
-                        true
-                      )
-                    }
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint transition hover:bg-black/[0.04] hover:text-ink"
-                    title="最小化"
-                  >
-                    <Minimize2 className="h-3.5 w-3.5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMiniMode(
-                        false
-                      )
-                    }
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint transition hover:bg-black/[0.04] hover:text-ink"
-                    title="关闭 Mini"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="px-5 pb-5 pt-4">
-                {/*
-                 * Task
-                 */}
-                <p className="truncate text-center text-sm text-ink-soft">
-                  {todo.title}
-                </p>
-
-                {/*
-                 * Timer
-                 */}
-                <div className="mt-2 text-center font-mono text-[38px] font-medium leading-none tracking-[-0.04em] text-ink">
-                  {
-                    miniDisplayTime
-                  }
-                </div>
-
-                {/*
-                 * Progress
-                 */}
-                <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-black/[0.06]">
-                  <div
-                    className="h-full rounded-full bg-sage-400 transition-[width] duration-700"
-                    style={{
-                      width:
-                        targetSeconds
-                          ? `${Math.round(
-                              progress *
-                                100
-                            )}%`
-                          : "0%",
-                    }}
-                  />
-                </div>
-
-                <div className="mt-2 flex items-center justify-between text-[10px] text-ink-faint">
-                  <span>
-                    {
-                      miniStatusText
-                    }
-                  </span>
-
-                  <span>
-                    已专注{" "}
-                    {formatTime(
-                      currentElapsed
-                    )}
-                  </span>
-                </div>
-
-                {/*
-                 * 时间到
-                 */}
-                {timeUp ? (
-                  <div className="mt-4 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={
-                        continueAfterTimeUp
-                      }
-                      disabled={busy}
-                      className="flex-1 rounded-xl bg-sage-100 px-3 py-2.5 text-xs font-medium text-sage-700 transition hover:bg-sage-300/70"
-                    >
-                      继续专注
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={
-                        completeTimer
-                      }
-                      disabled={busy}
-                      className="flex-1 rounded-xl bg-blush-100 px-3 py-2.5 text-xs font-medium text-blush-500 transition hover:bg-blush-50"
-                    >
-                      完成
-                    </button>
-                  </div>
-                ) : (
-                  /*
-                   * 普通 Mini 控制
-                   */
-                  <div className="mt-4 flex items-center justify-center gap-3">
-                    {status ===
-                    "running" ? (
-                      <button
-                        type="button"
-                        onClick={
-                          pauseTimer
-                        }
-                        disabled={
-                          busy
-                        }
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-sage-100 text-sage-700 shadow-sm transition hover:bg-sage-300/70"
-                        title="暂停"
-                      >
-                        <Pause className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={
-                          startTimer
-                        }
-                        disabled={
-                          busy ||
-                          status ===
-                            "completed"
-                        }
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-sage-100 text-sage-700 shadow-sm transition hover:bg-sage-300/70"
-                        title="开始 / 继续"
-                      >
-                        <Play className="ml-px h-4 w-4 fill-current" />
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={
-                        completeTimer
-                      }
-                      disabled={busy}
-                      className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white/70 text-ink-soft transition hover:bg-blush-50 hover:text-blush-500"
-                      title="完成任务"
-                    >
-                      <Square className="h-3.5 w-3.5 fill-current" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
+          {floatingError && (
+            <p className="mt-2 max-w-sm text-xs leading-relaxed text-blush-500">
+              {
+                floatingError
+              }
+            </p>
           )}
         </div>
       )}
-    </>
+
+      <div className="mt-7">
+        <button
+          type="button"
+          onClick={() =>
+            router.push(
+              "/today"
+            )
+          }
+          className="btn-ghost text-sm"
+        >
+          ← 返回 Today
+        </button>
+      </div>
+    </div>
   );
 }
