@@ -1,17 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Clock3,
+  GripHorizontal,
   GripVertical,
+  Pencil,
+  Play,
   Plus,
+  Save,
+  X,
 } from "lucide-react";
 
 import {
   useMemo,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import {
@@ -24,6 +33,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -96,22 +106,12 @@ type Props = {
 };
 
 /* =========================================================
-   Calendar constants
+   Calendar layout
 ========================================================= */
 
 const DAY_START_HOUR = 8;
 const DAY_END_HOUR = 24;
 
-/*
- * 现在每小时 96px
- *
- * 15 min = 24px
- * 30 min = 48px
- * 45 min = 72px
- * 60 min = 96px
- *
- * 这样任务之间的“长短”会明显很多。
- */
 const HOUR_HEIGHT = 96;
 
 const SLOT_MINUTES = 15;
@@ -130,26 +130,19 @@ const TOTAL_HEIGHT =
   HOUR_HEIGHT;
 
 /* =========================================================
-   Category style
-   和 Todo 页面保持同一个视觉语义
+   Categories
 ========================================================= */
 
 const CATEGORY_INFO: Record<
   Category,
   {
     label: string;
-
     card: string;
-
     badge: string;
-
+    selected: string;
     drop: string;
   }
 > = {
-  /*
-   * 工作
-   * 淡蓝
-   */
   work: {
     label: "工作",
 
@@ -159,14 +152,13 @@ const CATEGORY_INFO: Record<
     badge:
       "bg-mist-100 text-mist-500",
 
+    selected:
+      "border-mist-500 bg-mist-100 text-mist-500",
+
     drop:
-      "border-mist-100 bg-mist-50/90",
+      "bg-mist-50",
   },
 
-  /*
-   * 学习
-   * 淡绿
-   */
   study: {
     label: "学习",
 
@@ -176,14 +168,13 @@ const CATEGORY_INFO: Record<
     badge:
       "bg-sage-100 text-sage-700",
 
+    selected:
+      "border-sage-500 bg-sage-100 text-sage-700",
+
     drop:
-      "border-sage-100 bg-sage-50/90",
+      "bg-sage-50",
   },
 
-  /*
-   * 生活
-   * 淡暖橙
-   */
   life: {
     label: "生活",
 
@@ -191,16 +182,15 @@ const CATEGORY_INFO: Record<
       "border-amber-100 bg-amber-50/70",
 
     badge:
-      "bg-amber-100/80 text-amber-700",
+      "bg-amber-50 text-amber-700",
+
+    selected:
+      "border-amber-300 bg-amber-50 text-amber-700",
 
     drop:
-      "border-amber-100 bg-amber-50/90",
+      "bg-amber-50",
   },
 
-  /*
-   * 休息
-   * 淡粉
-   */
   rest: {
     label: "休息",
 
@@ -210,14 +200,13 @@ const CATEGORY_INFO: Record<
     badge:
       "bg-blush-100 text-blush-500",
 
+    selected:
+      "border-blush-500 bg-blush-100 text-blush-500",
+
     drop:
-      "border-blush-100 bg-blush-50/90",
+      "bg-blush-50",
   },
 
-  /*
-   * 其他
-   * 淡灰
-   */
   other: {
     label: "其他",
 
@@ -227,8 +216,11 @@ const CATEGORY_INFO: Record<
     badge:
       "bg-black/[0.04] text-ink-soft",
 
+    selected:
+      "border-ink-faint bg-black/[0.04] text-ink-soft",
+
     drop:
-      "border-line bg-black/[0.025]",
+      "bg-black/[0.025]",
   },
 };
 
@@ -245,8 +237,11 @@ function categoryOf(
       badge:
         "bg-black/[0.04] text-ink-faint",
 
+      selected:
+        "border-line bg-white text-ink-soft",
+
       drop:
-        "border-line bg-sage-50/50",
+        "bg-sage-50/50",
     };
   }
 
@@ -325,26 +320,20 @@ function formatDateTitle(
       .split("-")
       .map(Number);
 
-  const date =
+  return new Intl.DateTimeFormat(
+    "zh-CN",
+    {
+      month: "long",
+      day: "numeric",
+      weekday: "long",
+    }
+  ).format(
     new Date(
       year,
       month - 1,
       day
-    );
-
-  return new Intl.DateTimeFormat(
-    "zh-CN",
-    {
-      month:
-        "long",
-
-      day:
-        "numeric",
-
-      weekday:
-        "long",
-    }
-  ).format(date);
+    )
+  );
 }
 
 function localDatePart(
@@ -353,10 +342,10 @@ function localDatePart(
   const date =
     new Date(iso);
 
-  const year =
+  const y =
     date.getFullYear();
 
-  const month =
+  const m =
     String(
       date.getMonth() + 1
     ).padStart(
@@ -364,7 +353,7 @@ function localDatePart(
       "0"
     );
 
-  const day =
+  const d =
     String(
       date.getDate()
     ).padStart(
@@ -372,7 +361,7 @@ function localDatePart(
       "0"
     );
 
-  return `${year}-${month}-${day}`;
+  return `${y}-${m}-${d}`;
 }
 
 function formatTime(
@@ -383,14 +372,9 @@ function formatTime(
   ).toLocaleTimeString(
     [],
     {
-      hour:
-        "2-digit",
-
-      minute:
-        "2-digit",
-
-      hour12:
-        false,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
     }
   );
 }
@@ -420,8 +404,78 @@ function makeLocalDate(
   );
 }
 
+function toLocalInputValue(
+  iso:
+    | string
+    | null
+) {
+  if (!iso) {
+    return "";
+  }
+
+  const date =
+    new Date(iso);
+
+  const offset =
+    date.getTimezoneOffset() *
+    60000;
+
+  return new Date(
+    date.getTime() -
+      offset
+  )
+    .toISOString()
+    .slice(
+      0,
+      16
+    );
+}
+
+function durationMinutes(
+  todo: CalendarTodo
+) {
+  if (
+    todo.scheduled_start &&
+    todo.scheduled_end
+  ) {
+    const result =
+      Math.round(
+        (
+          new Date(
+            todo.scheduled_end
+          ).getTime() -
+          new Date(
+            todo.scheduled_start
+          ).getTime()
+        ) /
+          60000
+      );
+
+    if (result > 0) {
+      return result;
+    }
+  }
+
+  return (
+    todo.estimated_minutes ??
+    30
+  );
+}
+
+function snapMinutes(
+  minutes: number
+) {
+  return (
+    Math.round(
+      minutes /
+        SLOT_MINUTES
+    ) *
+    SLOT_MINUTES
+  );
+}
+
 /* =========================================================
-   Slots
+   Slot helpers
 ========================================================= */
 
 type TimeSlot = {
@@ -430,14 +484,12 @@ type TimeSlot = {
   hour: number;
 
   minute: number;
-
-  minuteFromStart: number;
 };
 
 function buildSlots(
   date: string
-): TimeSlot[] {
-  const slots:
+) {
+  const result:
     TimeSlot[] = [];
 
   for (
@@ -447,34 +499,30 @@ function buildSlots(
     minuteFromStart +=
       SLOT_MINUTES
   ) {
-    const absoluteMinutes =
+    const absolute =
       DAY_START_HOUR *
         60 +
       minuteFromStart;
 
     const hour =
       Math.floor(
-        absoluteMinutes /
-          60
+        absolute / 60
       );
 
     const minute =
-      absoluteMinutes %
-      60;
+      absolute % 60;
 
-    slots.push({
+    result.push({
       id:
         `slot:${date}:${hour}:${minute}`,
 
       hour,
 
       minute,
-
-      minuteFromStart,
     });
   }
 
-  return slots;
+  return result;
 }
 
 function readSlotId(
@@ -492,15 +540,7 @@ function readSlotId(
     id.slice(5);
 
   const lastColon =
-    raw.lastIndexOf(
-      ":"
-    );
-
-  if (
-    lastColon === -1
-  ) {
-    return null;
-  }
+    raw.lastIndexOf(":");
 
   const secondLastColon =
     raw.lastIndexOf(
@@ -509,58 +549,74 @@ function readSlotId(
     );
 
   if (
-    secondLastColon ===
-    -1
-  ) {
-    return null;
-  }
-
-  const date =
-    raw.slice(
-      0,
-      secondLastColon
-    );
-
-  const hour =
-    Number(
-      raw.slice(
-        secondLastColon +
-          1,
-        lastColon
-      )
-    );
-
-  const minute =
-    Number(
-      raw.slice(
-        lastColon + 1
-      )
-    );
-
-  if (
-    !date ||
-    !Number.isFinite(
-      hour
-    ) ||
-    !Number.isFinite(
-      minute
-    )
+    lastColon < 0 ||
+    secondLastColon < 0
   ) {
     return null;
   }
 
   return {
-    date,
-    hour,
-    minute,
+    date:
+      raw.slice(
+        0,
+        secondLastColon
+      ),
+
+    hour:
+      Number(
+        raw.slice(
+          secondLastColon +
+            1,
+          lastColon
+        )
+      ),
+
+    minute:
+      Number(
+        raw.slice(
+          lastColon + 1
+        )
+      ),
   };
 }
 
+function overlaps(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string
+) {
+  const a1 =
+    new Date(
+      startA
+    ).getTime();
+
+  const a2 =
+    new Date(
+      endA
+    ).getTime();
+
+  const b1 =
+    new Date(
+      startB
+    ).getTime();
+
+  const b2 =
+    new Date(
+      endB
+    ).getTime();
+
+  return (
+    a1 < b2 &&
+    a2 > b1
+  );
+}
+
 /* =========================================================
-   Unscheduled draggable task
+   Unscheduled task
 ========================================================= */
 
-function DraggableTask({
+function PoolTask({
   todo,
 }: {
   todo: CalendarTodo;
@@ -574,26 +630,14 @@ function DraggableTask({
     useDraggable({
       id:
         `todo:${todo.id}`,
-
-      data: {
-        type:
-          "todo",
-
-        todoId:
-          todo.id,
-      },
     });
 
   const category =
-    categoryOf(
-      todo
-    );
+    categoryOf(todo);
 
   return (
     <div
-      ref={
-        setNodeRef
-      }
+      ref={setNodeRef}
       {...attributes}
       {...listeners}
       style={{
@@ -602,28 +646,23 @@ function DraggableTask({
 
         userSelect:
           "none",
-
-        WebkitUserSelect:
-          "none",
       }}
       className={`
         flex
         cursor-grab
-        select-none
         items-center
         gap-3
         rounded-2xl
         border
         px-3
         py-3
-        transition-[opacity,box-shadow,transform]
-        duration-150
+        transition
         active:cursor-grabbing
         ${category.card}
 
         ${
           isDragging
-            ? "scale-[0.99] opacity-30"
+            ? "scale-[0.99] opacity-25"
             : "hover:-translate-y-[1px] hover:shadow-soft"
         }
       `}
@@ -662,72 +701,72 @@ function DraggableTask({
 
 /* =========================================================
    Drag overlay
-   不再扭曲，只做柔和“抬起”
 ========================================================= */
 
-function DraggingTask({
+function DragPreview({
   todo,
 }: {
   todo: CalendarTodo;
 }) {
   const category =
-    categoryOf(
-      todo
-    );
+    categoryOf(todo);
 
   return (
     <div
       className={`
-        flex
         w-[280px]
         scale-[1.02]
-        items-center
-        gap-3
         rounded-2xl
         border
         px-3
         py-3
-        shadow-[0_12px_34px_rgba(60,50,40,0.12)]
+        shadow-[0_14px_36px_rgba(60,50,40,0.12)]
         ${category.card}
       `}
     >
-      <GripVertical className="h-4 w-4 shrink-0 text-ink-faint/40" />
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-sm font-medium text-ink">
-            {
-              todo.title
-            }
-          </p>
-
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
-          >
-            {
-              category.label
-            }
-          </span>
-        </div>
-
-        <p className="mt-1 text-[11px] text-ink-faint">
-          预计{" "}
+      <div className="flex items-center justify-between gap-3">
+        <p className="truncate text-sm font-medium text-ink">
           {
-            todo.estimated_minutes ??
-            30
-          }{" "}
-          分钟
+            todo.title
+          }
         </p>
+
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+        >
+          {
+            category.label
+          }
+        </span>
       </div>
+
+      <p className="mt-1 text-[11px] text-ink-faint">
+        {
+          todo.scheduled_start
+            ? `${formatTime(
+                todo.scheduled_start
+              )}${
+                todo.scheduled_end
+                  ? ` – ${formatTime(
+                      todo.scheduled_end
+                    )}`
+                  : ""
+              }`
+            : `预计 ${
+                todo.estimated_minutes ??
+                30
+              } 分钟`
+        }
+      </p>
     </div>
   );
 }
 
 /* =========================================================
-   Droppable 15 min slot
+   Calendar slot
 ========================================================= */
 
-function DroppableSlot({
+function CalendarSlot({
   slot,
   activeTodo,
 }: {
@@ -744,26 +783,7 @@ function DroppableSlot({
     useDroppable({
       id:
         slot.id,
-
-      data: {
-        type:
-          "slot",
-
-        hour:
-          slot.hour,
-
-        minute:
-          slot.minute,
-      },
     });
-
-  const strongLine =
-    slot.minute ===
-    0;
-
-  const halfLine =
-    slot.minute ===
-    30;
 
   const category =
     activeTodo
@@ -774,9 +794,7 @@ function DroppableSlot({
 
   return (
     <div
-      ref={
-        setNodeRef
-      }
+      ref={setNodeRef}
       style={{
         height:
           SLOT_HEIGHT,
@@ -784,20 +802,14 @@ function DroppableSlot({
       className={`
         relative
         transition-colors
-        duration-100
 
         ${
-          strongLine
+          slot.minute === 0
             ? "border-t border-line"
-            : halfLine
+            : slot.minute ===
+                30
               ? "border-t border-line/55"
               : "border-t border-line/20"
-        }
-
-        ${
-          activeTodo
-            ? "bg-white/10"
-            : ""
         }
 
         ${
@@ -810,39 +822,23 @@ function DroppableSlot({
     >
       {isOver &&
         activeTodo && (
-          <div className="pointer-events-none absolute inset-x-2 top-1/2 z-30 -translate-y-1/2">
+          <div className="pointer-events-none absolute inset-x-2 top-1/2 z-10 -translate-y-1/2">
             <div
-              className={`
-                rounded-xl
-                border
-                px-3
-                py-1
-                text-center
-                text-[10px]
-                font-medium
-                shadow-[0_2px_8px_rgba(60,50,40,0.04)]
-                ${category?.card}
-              `}
+              className={`rounded-xl border px-3 py-1 text-center text-[10px] shadow-sm ${category?.card}`}
             >
-              <span className="text-ink-soft">
-                {String(
-                  slot.hour
-                ).padStart(
-                  2,
-                  "0"
-                )}
-                :
-                {String(
-                  slot.minute
-                ).padStart(
-                  2,
-                  "0"
-                )}
-
-                {" · "}
-
-                松开放到这里
-              </span>
+              {String(
+                slot.hour
+              ).padStart(
+                2,
+                "0"
+              )}
+              :
+              {String(
+                slot.minute
+              ).padStart(
+                2,
+                "0"
+              )}
             </div>
           </div>
         )}
@@ -856,16 +852,58 @@ function DroppableSlot({
 
 function ScheduledTask({
   todo,
+  selected,
   justPlaced,
+  onSelect,
+  onResize,
 }: {
   todo: CalendarTodo;
 
+  selected:
+    boolean;
+
   justPlaced:
     boolean;
+
+  onSelect:
+    () => void;
+
+  onResize:
+    (
+      todo: CalendarTodo,
+      newEnd: string
+    ) => void;
 }) {
-  const category =
-    categoryOf(
-      todo
+  const {
+    attributes,
+    listeners,
+    setNodeRef:
+      setDragRef,
+    isDragging,
+  } =
+    useDraggable({
+      id:
+        `todo:${todo.id}`,
+    });
+
+  const {
+    setNodeRef:
+      setDropRef,
+    isOver,
+  } =
+    useDroppable({
+      id:
+        `task:${todo.id}`,
+    });
+
+  const [
+    previewEnd,
+    setPreviewEnd,
+  ] =
+    useState<
+      string | null
+    >(
+      null
     );
 
   if (
@@ -874,203 +912,367 @@ function ScheduledTask({
     return null;
   }
 
+  const category =
+    categoryOf(todo);
+
   const start =
     new Date(
       todo.scheduled_start
     );
 
-  const startMinutes =
+  const startMinute =
     start.getHours() *
       60 +
     start.getMinutes();
 
-  const minutesFromStart =
-    startMinutes -
+  const minuteFromStart =
+    startMinute -
     DAY_START_HOUR *
       60;
 
-  /*
-   * 当前 Day Planner
-   * 只显示 08:00–24:00。
-   */
   if (
-    minutesFromStart <
+    minuteFromStart <
       0 ||
-    minutesFromStart >=
+    minuteFromStart >=
       TOTAL_MINUTES
   ) {
     return null;
   }
 
-  /*
-   * Calendar 块高度：
-   *
-   * 优先用 scheduled_end - scheduled_start。
-   *
-   * 只有 scheduled_end 缺失时，
-   * 才 fallback 到 estimated_minutes。
-   */
-  let scheduledDuration =
+  const effectiveEnd =
+    previewEnd ??
+    todo.scheduled_end;
+
+  let duration =
     todo.estimated_minutes ??
     30;
 
-  if (
-    todo.scheduled_end
-  ) {
-    const end =
-      new Date(
-        todo.scheduled_end
-      );
-
-    const actualWindow =
+  if (effectiveEnd) {
+    const calculated =
       Math.round(
         (
-          end.getTime() -
+          new Date(
+            effectiveEnd
+          ).getTime() -
           start.getTime()
         ) /
           60000
       );
 
     if (
-      actualWindow >
-      0
+      calculated > 0
     ) {
-      scheduledDuration =
-        actualWindow;
+      duration =
+        calculated;
     }
   }
 
   const top =
     (
-      minutesFromStart /
+      minuteFromStart /
       60
     ) *
     HOUR_HEIGHT;
 
-  /*
-   * 最低高度 36px，
-   * 防止 15 分钟任务完全看不见。
-   */
+  const rawHeight =
+    (
+      duration /
+      60
+    ) *
+    HOUR_HEIGHT;
+
   const height =
     Math.max(
       36,
-
-      (
-        scheduledDuration /
-        60
-      ) *
-        HOUR_HEIGHT
+      rawHeight
     );
 
-  /*
-   * 根据高度决定显示多少信息。
-   */
   const compact =
-    height < 58;
+    height < 60;
 
-  const roomy =
-    height >= 78;
+  function beginResize(
+    event:
+      ReactPointerEvent<HTMLButtonElement>
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startY =
+      event.clientY;
+
+    const originalDuration =
+      duration;
+
+    const pointerId =
+      event.pointerId;
+
+    event.currentTarget.setPointerCapture(
+      pointerId
+    );
+
+    const move = (
+      moveEvent:
+        PointerEvent
+    ) => {
+      const deltaY =
+        moveEvent.clientY -
+        startY;
+
+      const deltaMinutes =
+        snapMinutes(
+          (
+            deltaY /
+            HOUR_HEIGHT
+          ) *
+            60
+        );
+
+      const newDuration =
+        Math.max(
+          15,
+          originalDuration +
+            deltaMinutes
+        );
+
+      const newEnd =
+        new Date(
+          start.getTime() +
+            newDuration *
+              60000
+        );
+
+      setPreviewEnd(
+        newEnd.toISOString()
+      );
+    };
+
+    const finish = (
+      upEvent:
+        PointerEvent
+    ) => {
+      document.removeEventListener(
+        "pointermove",
+        move
+      );
+
+      document.removeEventListener(
+        "pointerup",
+        finish
+      );
+
+      const deltaY =
+        upEvent.clientY -
+        startY;
+
+      const deltaMinutes =
+        snapMinutes(
+          (
+            deltaY /
+            HOUR_HEIGHT
+          ) *
+            60
+        );
+
+      const newDuration =
+        Math.max(
+          15,
+          originalDuration +
+            deltaMinutes
+        );
+
+      const newEnd =
+        new Date(
+          start.getTime() +
+            newDuration *
+              60000
+        ).toISOString();
+
+      setPreviewEnd(
+        null
+      );
+
+      onResize(
+        todo,
+        newEnd
+      );
+    };
+
+    document.addEventListener(
+      "pointermove",
+      move
+    );
+
+    document.addEventListener(
+      "pointerup",
+      finish
+    );
+  }
 
   return (
     <div
+      ref={(
+        node
+      ) => {
+        setDragRef(
+          node
+        );
+
+        setDropRef(
+          node
+        );
+      }}
       className={`
         absolute
         left-2
         right-2
         z-20
-        overflow-hidden
         rounded-2xl
         border
-        px-3
         shadow-[0_3px_14px_rgba(60,50,40,0.045)]
-        transition-[transform,box-shadow]
-        duration-200
-        hover:shadow-soft
+        transition-[transform,box-shadow,opacity]
+        duration-150
         ${category.card}
 
         ${
-          compact
-            ? "py-1.5"
-            : "py-2"
+          selected
+            ? "ring-2 ring-sage-300/40"
+            : ""
+        }
+
+        ${
+          isOver
+            ? "ring-2 ring-sage-300/80"
+            : ""
+        }
+
+        ${
+          isDragging
+            ? "opacity-25"
+            : ""
         }
 
         ${
           justPlaced
             ? "scale-[1.018]"
-            : "scale-100"
+            : ""
         }
       `}
       style={{
         top,
         height,
       }}
+      onClick={
+        onSelect
+      }
     >
-      {compact ? (
-        /*
-         * 很短的任务
-         * 一行显示
-         */
-        <div className="flex h-full items-center justify-between gap-2">
-          <p className="truncate text-xs font-medium text-ink">
-            {
-              todo.title
+      <div
+        className={`relative h-full ${
+          compact
+            ? "px-3 py-1.5"
+            : "px-3 py-2"
+        }`}
+      >
+        <div className="flex items-start gap-2">
+          {/* Drag handle */}
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            onClick={(
+              event
+            ) =>
+              event.stopPropagation()
             }
-          </p>
-
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] ${category.badge}`}
+            style={{
+              touchAction:
+                "none",
+            }}
+            className="mt-0.5 shrink-0 cursor-grab rounded-md p-0.5 text-ink-faint/40 hover:bg-black/[0.03] active:cursor-grabbing"
+            title="拖动任务"
           >
-            {
-              category.label
-            }
-          </span>
-        </div>
-      ) : (
-        /*
-         * 正常 / 较长任务
-         */
-        <div className="flex h-full flex-col">
-          <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 truncate text-sm font-medium text-ink">
-              {
-                todo.title
-              }
-            </p>
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
 
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
-            >
-              {
-                category.label
-              }
-            </span>
-          </div>
-
-          <p className="mt-1 text-[11px] text-ink-faint">
-            {
-              formatTime(
-                todo.scheduled_start
-              )
-            }
-
-            {todo.scheduled_end &&
-              ` – ${formatTime(
-                todo.scheduled_end
-              )}`}
-          </p>
-
-          {roomy &&
-            todo.estimated_minutes && (
-              <p className="mt-1 text-[10px] text-ink-faint/85">
-                预计实际工作{" "}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <p
+                className={`truncate font-medium text-ink ${
+                  compact
+                    ? "text-xs"
+                    : "text-sm"
+                }`}
+              >
                 {
-                  todo.estimated_minutes
-                }{" "}
-                分钟
+                  todo.title
+                }
+              </p>
+
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 ${
+                  compact
+                    ? "text-[9px]"
+                    : "text-[10px]"
+                } ${category.badge}`}
+              >
+                {
+                  category.label
+                }
+              </span>
+            </div>
+
+            {!compact && (
+              <p className="mt-1 text-[11px] text-ink-faint">
+                {
+                  formatTime(
+                    todo.scheduled_start
+                  )
+                }
+
+                {" – "}
+
+                {
+                  effectiveEnd
+                    ? formatTime(
+                        effectiveEnd
+                      )
+                    : ""
+                }
               </p>
             )}
+
+            {height >=
+              88 &&
+              todo.estimated_minutes && (
+                <p className="mt-1 text-[10px] text-ink-faint/85">
+                  预计工作{" "}
+                  {
+                    todo.estimated_minutes
+                  }{" "}
+                  分钟
+                </p>
+              )}
+          </div>
         </div>
-      )}
+
+        {/* Resize handle */}
+        {!isDragging && (
+          <button
+            type="button"
+            onPointerDown={
+              beginResize
+            }
+            onClick={(
+              event
+            ) =>
+              event.stopPropagation()
+            }
+            className="absolute bottom-0 left-1/2 flex h-3 w-16 -translate-x-1/2 cursor-ns-resize items-center justify-center rounded-t-md text-ink-faint/35 hover:bg-black/[0.035] hover:text-ink-faint"
+            title="拖动修改结束时间"
+          >
+            <GripHorizontal className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1083,6 +1285,9 @@ export default function CalendarPlanner({
   initialTodos,
   initialDate,
 }: Props) {
+  const router =
+    useRouter();
+
   const [
     todos,
     setTodos,
@@ -1112,8 +1317,28 @@ export default function CalendarPlanner({
     );
 
   const [
-    savingTodoId,
-    setSavingTodoId,
+    selectedTodoId,
+    setSelectedTodoId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
+    editingTodoId,
+    setEditingTodoId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
+    busyId,
+    setBusyId,
   ] =
     useState<
       string | null
@@ -1141,13 +1366,48 @@ export default function CalendarPlanner({
       null
     );
 
-  /*
-   * Desktop：
-   * 移动 4 px 后启动。
-   *
-   * Mobile：
-   * 长按约 150 ms。
-   */
+  /* Edit form */
+
+  const [
+    editTitle,
+    setEditTitle,
+  ] =
+    useState("");
+
+  const [
+    editMinutes,
+    setEditMinutes,
+  ] =
+    useState("");
+
+  const [
+    editCategory,
+    setEditCategory,
+  ] =
+    useState<
+      Category | null
+    >(
+      null
+    );
+
+  const [
+    editCustomTag,
+    setEditCustomTag,
+  ] =
+    useState("");
+
+  const [
+    editStart,
+    setEditStart,
+  ] =
+    useState("");
+
+  const [
+    editEnd,
+    setEditEnd,
+  ] =
+    useState("");
+
   const sensors =
     useSensors(
       useSensor(
@@ -1155,7 +1415,8 @@ export default function CalendarPlanner({
         {
           activationConstraint:
             {
-              distance: 4,
+              distance:
+                4,
             },
         }
       ),
@@ -1165,9 +1426,11 @@ export default function CalendarPlanner({
         {
           activationConstraint:
             {
-              delay: 150,
+              delay:
+                150,
 
-              tolerance: 8,
+              tolerance:
+                8,
             },
         }
       )
@@ -1188,7 +1451,9 @@ export default function CalendarPlanner({
     useMemo(
       () =>
         todos.filter(
-          (todo) =>
+          (
+            todo
+          ) =>
             !todo.scheduled_start
         ),
       [
@@ -1201,7 +1466,9 @@ export default function CalendarPlanner({
       () =>
         todos
           .filter(
-            (todo) =>
+            (
+              todo
+            ) =>
               todo.scheduled_start &&
               localDatePart(
                 todo.scheduled_start
@@ -1227,19 +1494,24 @@ export default function CalendarPlanner({
     );
 
   const activeTodo =
-    useMemo(
-      () =>
-        todos.find(
-          (todo) =>
-            todo.id ===
-            activeTodoId
-        ) ??
-        null,
-      [
-        todos,
-        activeTodoId,
-      ]
-    );
+    todos.find(
+      (
+        todo
+      ) =>
+        todo.id ===
+        activeTodoId
+    ) ??
+    null;
+
+  const selectedTodo =
+    todos.find(
+      (
+        todo
+      ) =>
+        todo.id ===
+        selectedTodoId
+    ) ??
+    null;
 
   const hours =
     Array.from(
@@ -1257,6 +1529,70 @@ export default function CalendarPlanner({
         DAY_START_HOUR +
         index
     );
+
+  /*
+   * 如果鼠标同时位于 task 和 slot，
+   * 优先把 task 当作目标。
+   *
+   * 这样 A 拖到 B 才会触发交换。
+   */
+  const collisionDetection:
+    CollisionDetection =
+    (
+      args
+    ) => {
+      const collisions =
+        pointerWithin(
+          args
+        );
+
+      const task =
+        collisions.find(
+          (
+            collision
+          ) =>
+            String(
+              collision.id
+            ).startsWith(
+              "task:"
+            )
+        );
+
+      if (task) {
+        return [
+          task,
+        ];
+      }
+
+      return collisions;
+    };
+
+  function flashPlaced(
+    id: string
+  ) {
+    setJustPlacedId(
+      id
+    );
+
+    window.setTimeout(
+      () => {
+        setJustPlacedId(
+          (
+            current
+          ) =>
+            current ===
+            id
+              ? null
+              : current
+        );
+      },
+      220
+    );
+  }
+
+  /* =======================================================
+     Drag start
+  ======================================================= */
 
   function handleDragStart(
     event:
@@ -1279,10 +1615,22 @@ export default function CalendarPlanner({
       id.slice(5)
     );
 
+    setSelectedTodoId(
+      null
+    );
+
+    setEditingTodoId(
+      null
+    );
+
     setError(
       null
     );
   }
+
+  /* =======================================================
+     Drag end
+  ======================================================= */
 
   async function handleDragEnd(
     event:
@@ -1314,9 +1662,221 @@ export default function CalendarPlanner({
     }
 
     const todoId =
-      activeId.slice(
-        5
+      activeId.slice(5);
+
+    const source =
+      todos.find(
+        (
+          todo
+        ) =>
+          todo.id ===
+          todoId
       );
+
+    if (!source) {
+      return;
+    }
+
+    /* =====================================================
+       Drop onto another task
+       = swap / replace
+    ===================================================== */
+
+    if (
+      overId.startsWith(
+        "task:"
+      )
+    ) {
+      const targetId =
+        overId.slice(5);
+
+      if (
+        targetId ===
+        todoId
+      ) {
+        return;
+      }
+
+      const target =
+        todos.find(
+          (
+            todo
+          ) =>
+            todo.id ===
+            targetId
+        );
+
+      if (
+        !target ||
+        !target.scheduled_start
+      ) {
+        return;
+      }
+
+      const previous =
+        todos;
+
+      /*
+       * Optimistic update
+       */
+      if (
+        source.scheduled_start
+      ) {
+        /*
+         * 已排期 A → B
+         * 两边交换。
+         */
+        setTodos(
+          (
+            current
+          ) =>
+            current.map(
+              (
+                item
+              ) => {
+                if (
+                  item.id ===
+                  source.id
+                ) {
+                  return {
+                    ...item,
+
+                    scheduled_start:
+                      target.scheduled_start,
+
+                    scheduled_end:
+                      target.scheduled_end,
+
+                    task_date:
+                      target.task_date,
+                  };
+                }
+
+                if (
+                  item.id ===
+                  target.id
+                ) {
+                  return {
+                    ...item,
+
+                    scheduled_start:
+                      source.scheduled_start,
+
+                    scheduled_end:
+                      source.scheduled_end,
+
+                    task_date:
+                      source.task_date,
+                  };
+                }
+
+                return item;
+              }
+            )
+        );
+      } else {
+        /*
+         * 未排期 A → B
+         *
+         * A 占据 B 的位置，
+         * B 回任务池。
+         */
+        setTodos(
+          (
+            current
+          ) =>
+            current.map(
+              (
+                item
+              ) => {
+                if (
+                  item.id ===
+                  source.id
+                ) {
+                  return {
+                    ...item,
+
+                    scheduled_start:
+                      target.scheduled_start,
+
+                    scheduled_end:
+                      target.scheduled_end,
+
+                    task_date:
+                      target.task_date,
+                  };
+                }
+
+                if (
+                  item.id ===
+                  target.id
+                ) {
+                  return {
+                    ...item,
+
+                    scheduled_start:
+                      null,
+
+                    scheduled_end:
+                      null,
+                  };
+                }
+
+                return item;
+              }
+            )
+        );
+      }
+
+      flashPlaced(
+        source.id
+      );
+
+      setBusyId(
+        source.id
+      );
+
+      const supabase =
+        createClient();
+
+      const {
+        error:
+          rpcError,
+      } =
+        await supabase.rpc(
+          "swap_or_replace_todo_schedules",
+          {
+            source_todo_id:
+              source.id,
+
+            target_todo_id:
+              target.id,
+          }
+        );
+
+      setBusyId(
+        null
+      );
+
+      if (
+        rpcError
+      ) {
+        setTodos(
+          previous
+        );
+
+        setError(
+          "交换时间失败：" +
+            rpcError.message
+        );
+      }
+
+      return;
+    }
+
+    /* =====================================================
+       Drop onto empty slot
+    ===================================================== */
 
     const slot =
       readSlotId(
@@ -1327,68 +1887,85 @@ export default function CalendarPlanner({
       return;
     }
 
-    const todo =
-      todos.find(
-        (item) =>
-          item.id ===
-          todoId
-      );
-
-    if (!todo) {
-      return;
-    }
-
     /*
-     * 未排期拖进 Calendar 时，
+     * 已排期任务移动时：
+     * 保留原 schedule window 长度。
      *
-     * 第一版：
-     * scheduled window 默认使用 estimated_minutes。
-     *
-     * 之后我们可以加 resize，
-     * 让用户自己拉长 Calendar 时间块。
+     * 未排期：
+     * 用 estimated_minutes。
      */
     const duration =
-      todo.estimated_minutes ??
-      30;
+      source.scheduled_start
+        ? durationMinutes(
+            source
+          )
+        : source.estimated_minutes ??
+          30;
 
-    const startDate =
+    const start =
       makeLocalDate(
         slot.date,
         slot.hour,
         slot.minute
       );
 
-    const endDate =
+    const end =
       new Date(
-        startDate.getTime() +
+        start.getTime() +
           duration *
-            60 *
-            1000
+            60000
       );
 
     const startIso =
-      startDate.toISOString();
+      start.toISOString();
 
     const endIso =
-      endDate.toISOString();
-
-    const previousTodos =
-      todos;
+      end.toISOString();
 
     /*
-     * Optimistic UI
+     * 如果与别的任务真正重叠，
+     * 先不猜用户想做什么。
      *
-     * 松手就立即显示，
-     * 不等 Supabase。
+     * 要交换就直接拖到任务本身。
      */
+    const conflict =
+      todos.find(
+        (
+          other
+        ) =>
+          other.id !==
+            source.id &&
+          other.scheduled_start &&
+          other.scheduled_end &&
+          overlaps(
+            startIso,
+            endIso,
+            other.scheduled_start,
+            other.scheduled_end
+          )
+      );
+
+    if (conflict) {
+      setError(
+        `这个时间段和「${conflict.title}」重叠。想交换的话，把任务直接拖到它上面。`
+      );
+
+      return;
+    }
+
+    const previous =
+      todos;
+
     setTodos(
       (
         current
       ) =>
         current.map(
-          (item) =>
+          (
+            item
+          ) =>
             item.id ===
-            todoId
+            source.id
               ? {
                   ...item,
 
@@ -1405,34 +1982,12 @@ export default function CalendarPlanner({
         )
     );
 
-    /*
-     * 一个很轻的吸附反馈。
-     */
-    setJustPlacedId(
-      todoId
+    flashPlaced(
+      source.id
     );
 
-    window.setTimeout(
-      () => {
-        setJustPlacedId(
-          (
-            current
-          ) =>
-            current ===
-            todoId
-              ? null
-              : current
-        );
-      },
-      220
-    );
-
-    setSavingTodoId(
-      todoId
-    );
-
-    setError(
-      null
+    setBusyId(
+      source.id
     );
 
     const supabase =
@@ -1458,10 +2013,10 @@ export default function CalendarPlanner({
         })
         .eq(
           "id",
-          todoId
+          source.id
         );
 
-    setSavingTodoId(
+    setBusyId(
       null
     );
 
@@ -1469,14 +2024,650 @@ export default function CalendarPlanner({
       updateError
     ) {
       setTodos(
-        previousTodos
+        previous
       );
 
       setError(
-        "排期保存失败：" +
+        "保存排期失败：" +
           updateError.message
       );
     }
+  }
+
+  /* =======================================================
+     Resize schedule window
+  ======================================================= */
+
+  async function handleResize(
+    todo:
+      CalendarTodo,
+
+    newEnd:
+      string
+  ) {
+    if (
+      !todo.scheduled_start
+    ) {
+      return;
+    }
+
+    const conflict =
+      todos.find(
+        (
+          other
+        ) =>
+          other.id !==
+            todo.id &&
+          other.scheduled_start &&
+          other.scheduled_end &&
+          overlaps(
+            todo.scheduled_start!,
+            newEnd,
+            other.scheduled_start,
+            other.scheduled_end
+          )
+      );
+
+    if (
+      conflict
+    ) {
+      setError(
+        `拉长后会和「${conflict.title}」重叠，所以没有保存。`
+      );
+
+      return;
+    }
+
+    const previous =
+      todos;
+
+    setTodos(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            item
+          ) =>
+            item.id ===
+            todo.id
+              ? {
+                  ...item,
+
+                  scheduled_end:
+                    newEnd,
+                }
+              : item
+        )
+    );
+
+    setBusyId(
+      todo.id
+    );
+
+    const supabase =
+      createClient();
+
+    const {
+      error:
+        resizeError,
+    } =
+      await supabase
+        .from(
+          "todos"
+        )
+        .update({
+          scheduled_end:
+            newEnd,
+        })
+        .eq(
+          "id",
+          todo.id
+        );
+
+    setBusyId(
+      null
+    );
+
+    if (
+      resizeError
+    ) {
+      setTodos(
+        previous
+      );
+
+      setError(
+        "修改时间长度失败：" +
+          resizeError.message
+      );
+    }
+  }
+
+  /* =======================================================
+     Edit
+  ======================================================= */
+
+  function startEditing(
+    todo:
+      CalendarTodo
+  ) {
+    setEditingTodoId(
+      todo.id
+    );
+
+    setEditTitle(
+      todo.title
+    );
+
+    setEditMinutes(
+      todo.estimated_minutes
+        ? String(
+            todo.estimated_minutes
+          )
+        : ""
+    );
+
+    setEditCategory(
+      todo.category
+    );
+
+    setEditCustomTag(
+      todo.custom_tag ??
+        ""
+    );
+
+    setEditStart(
+      toLocalInputValue(
+        todo.scheduled_start
+      )
+    );
+
+    setEditEnd(
+      toLocalInputValue(
+        todo.scheduled_end
+      )
+    );
+
+    setError(
+      null
+    );
+  }
+
+  function cancelEditing() {
+    setEditingTodoId(
+      null
+    );
+  }
+
+  async function saveEdit(
+    todo:
+      CalendarTodo
+  ) {
+    const title =
+      editTitle.trim();
+
+    if (!title) {
+      setError(
+        "任务名称不能为空。"
+      );
+
+      return;
+    }
+
+    const minutes =
+      editMinutes.trim()
+        ? Number(
+            editMinutes
+          )
+        : null;
+
+    if (
+      minutes !== null &&
+      (
+        !Number.isFinite(
+          minutes
+        ) ||
+        minutes <= 0
+      )
+    ) {
+      setError(
+        "预计时间需要是大于 0 的分钟数。"
+      );
+
+      return;
+    }
+
+    if (
+      Boolean(
+        editStart
+      ) !==
+      Boolean(
+        editEnd
+      )
+    ) {
+      setError(
+        "开始时间和结束时间需要一起填写。"
+      );
+
+      return;
+    }
+
+    let startIso:
+      | string
+      | null = null;
+
+    let endIso:
+      | string
+      | null = null;
+
+    if (
+      editStart &&
+      editEnd
+    ) {
+      const start =
+        new Date(
+          editStart
+        );
+
+      const end =
+        new Date(
+          editEnd
+        );
+
+      if (
+        end <= start
+      ) {
+        setError(
+          "结束时间需要晚于开始时间。"
+        );
+
+        return;
+      }
+
+      startIso =
+        start.toISOString();
+
+      endIso =
+        end.toISOString();
+    }
+
+    const previous =
+      todos;
+
+    const updated:
+      CalendarTodo = {
+      ...todo,
+
+      title,
+
+      estimated_minutes:
+        minutes,
+
+      category:
+        editCategory,
+
+      custom_tag:
+        editCategory ===
+          "other" &&
+        editCustomTag.trim()
+          ? editCustomTag.trim()
+          : null,
+
+      scheduled_start:
+        startIso,
+
+      scheduled_end:
+        endIso,
+
+      task_date:
+        editStart
+          ? editStart.slice(
+              0,
+              10
+            )
+          : todo.task_date,
+    };
+
+    /*
+     * 编辑产生的新时间段也检查冲突。
+     */
+    if (
+      startIso &&
+      endIso
+    ) {
+      const conflict =
+        todos.find(
+          (
+            other
+          ) =>
+            other.id !==
+              todo.id &&
+            other.scheduled_start &&
+            other.scheduled_end &&
+            overlaps(
+              startIso!,
+              endIso!,
+              other.scheduled_start,
+              other.scheduled_end
+            )
+        );
+
+      if (
+        conflict
+      ) {
+        setError(
+          `这个时间段和「${conflict.title}」重叠。`
+        );
+
+        return;
+      }
+    }
+
+    setTodos(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            item
+          ) =>
+            item.id ===
+            todo.id
+              ? updated
+              : item
+        )
+    );
+
+    setBusyId(
+      todo.id
+    );
+
+    const supabase =
+      createClient();
+
+    const {
+      error:
+        saveError,
+    } =
+      await supabase
+        .from(
+          "todos"
+        )
+        .update({
+          title,
+
+          estimated_minutes:
+            minutes,
+
+          category:
+            editCategory,
+
+          custom_tag:
+            updated.custom_tag,
+
+          scheduled_start:
+            startIso,
+
+          scheduled_end:
+            endIso,
+
+          task_date:
+            updated.task_date,
+        })
+        .eq(
+          "id",
+          todo.id
+        );
+
+    setBusyId(
+      null
+    );
+
+    if (
+      saveError
+    ) {
+      setTodos(
+        previous
+      );
+
+      setError(
+        "保存修改失败：" +
+          saveError.message
+      );
+
+      return;
+    }
+
+    setEditingTodoId(
+      null
+    );
+  }
+
+  /* =======================================================
+     Complete
+  ======================================================= */
+
+  async function completeTodo(
+    todo:
+      CalendarTodo
+  ) {
+    const previous =
+      todos;
+
+    let elapsed =
+      todo.elapsed_seconds ??
+      0;
+
+    if (
+      todo.status ===
+        "running" &&
+      todo.started_at
+    ) {
+      elapsed +=
+        Math.max(
+          0,
+          Math.floor(
+            (
+              Date.now() -
+              new Date(
+                todo.started_at
+              ).getTime()
+            ) /
+              1000
+          )
+        );
+    }
+
+    setTodos(
+      (
+        current
+      ) =>
+        current.filter(
+          (
+            item
+          ) =>
+            item.id !==
+            todo.id
+        )
+    );
+
+    setSelectedTodoId(
+      null
+    );
+
+    const supabase =
+      createClient();
+
+    const {
+      error:
+        completeError,
+    } =
+      await supabase
+        .from(
+          "todos"
+        )
+        .update({
+          status:
+            "completed",
+
+          started_at:
+            null,
+
+          elapsed_seconds:
+            elapsed,
+
+          completed_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "id",
+          todo.id
+        );
+
+    if (
+      completeError
+    ) {
+      setTodos(
+        previous
+      );
+
+      setError(
+        "完成任务失败：" +
+          completeError.message
+      );
+    }
+  }
+
+  /* =======================================================
+     Focus
+  ======================================================= */
+
+  async function openFocus(
+    todo:
+      CalendarTodo
+  ) {
+    /*
+     * Calendar 是计划，
+     * Focus 是实际。
+     *
+     * 所以提前开始绝不修改：
+     * scheduled_start / scheduled_end。
+     */
+
+    const running =
+      todos.find(
+        (
+          item
+        ) =>
+          item.status ===
+            "running" &&
+          item.id !==
+            todo.id
+      );
+
+    if (
+      running
+    ) {
+      const shouldSwitch =
+        window.confirm(
+          `「${running.title}」还在计时。\n\n要暂停它并开始「${todo.title}」吗？`
+        );
+
+      if (
+        !shouldSwitch
+      ) {
+        return;
+      }
+
+      let elapsed =
+        running.elapsed_seconds ??
+        0;
+
+      if (
+        running.started_at
+      ) {
+        elapsed +=
+          Math.max(
+            0,
+            Math.floor(
+              (
+                Date.now() -
+                new Date(
+                  running.started_at
+                ).getTime()
+              ) /
+                1000
+            )
+          );
+      }
+
+      const supabase =
+        createClient();
+
+      const {
+        error:
+          pauseError,
+      } =
+        await supabase
+          .from(
+            "todos"
+          )
+          .update({
+            status:
+              "paused",
+
+            started_at:
+              null,
+
+            elapsed_seconds:
+              elapsed,
+          })
+          .eq(
+            "id",
+            running.id
+          );
+
+      if (
+        pauseError
+      ) {
+        setError(
+          "暂停当前 Focus 失败：" +
+            pauseError.message
+        );
+
+        return;
+      }
+
+      setTodos(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              item
+            ) =>
+              item.id ===
+              running.id
+                ? {
+                    ...item,
+
+                    status:
+                      "paused",
+
+                    started_at:
+                      null,
+
+                    elapsed_seconds:
+                      elapsed,
+                  }
+                : item
+          )
+      );
+    }
+
+    router.push(
+      `/focus/${todo.id}`
+    );
   }
 
   return (
@@ -1485,7 +2676,7 @@ export default function CalendarPlanner({
         sensors
       }
       collisionDetection={
-        pointerWithin
+        collisionDetection
       }
       onDragStart={
         handleDragStart
@@ -1500,7 +2691,10 @@ export default function CalendarPlanner({
       }
     >
       <div className="mt-6">
-        {/* Header */}
+        {/* =================================================
+            Header
+        ================================================= */}
+
         <header className="mb-5 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">
@@ -1508,7 +2702,7 @@ export default function CalendarPlanner({
             </h1>
 
             <p className="mt-1 text-sm text-ink-faint">
-              把任务轻轻放进今天的时间里。
+              安排时间，也给计划留一点调整的余地。
             </p>
           </div>
 
@@ -1516,14 +2710,18 @@ export default function CalendarPlanner({
             <button
               type="button"
               className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
-              onClick={() =>
+              onClick={() => {
                 setSelectedDate(
                   addDays(
                     selectedDate,
                     -1
                   )
-                )
-              }
+                );
+
+                setSelectedTodoId(
+                  null
+                );
+              }}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -1531,11 +2729,15 @@ export default function CalendarPlanner({
             <button
               type="button"
               className="rounded-xl border border-line bg-white px-4 py-2 text-sm text-ink-soft transition hover:bg-sage-50"
-              onClick={() =>
+              onClick={() => {
                 setSelectedDate(
                   initialDate
-                )
-              }
+                );
+
+                setSelectedTodoId(
+                  null
+                );
+              }}
             >
               今天
             </button>
@@ -1543,14 +2745,18 @@ export default function CalendarPlanner({
             <button
               type="button"
               className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
-              onClick={() =>
+              onClick={() => {
                 setSelectedDate(
                   addDays(
                     selectedDate,
                     1
                   )
-                )
-              }
+                );
+
+                setSelectedTodoId(
+                  null
+                );
+              }}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -1558,16 +2764,29 @@ export default function CalendarPlanner({
         </header>
 
         {error && (
-          <div className="mb-4 rounded-2xl border border-blush-100 bg-blush-50 px-4 py-3 text-sm text-blush-500">
-            {
-              error
-            }
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-blush-100 bg-blush-50 px-4 py-3 text-sm text-blush-500">
+            <span>
+              {
+                error
+              }
+            </span>
+
+            <button
+              type="button"
+              onClick={() =>
+                setError(
+                  null
+                )
+              }
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
 
         <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
           {/* =================================================
-              Task Pool
+              Task pool
           ================================================= */}
 
           <aside className="card h-fit p-4 lg:sticky lg:top-6">
@@ -1578,14 +2797,13 @@ export default function CalendarPlanner({
                 </h2>
 
                 <p className="mt-1 text-xs text-ink-faint">
-                  按住任务，拖到右边安排时间
+                  拖到右侧安排时间
                 </p>
               </div>
 
               <Link
                 href="/todo"
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-sage-100 text-sage-700 transition hover:bg-sage-300/50"
-                title="新建任务"
               >
                 <Plus className="h-4 w-4" />
               </Link>
@@ -1609,7 +2827,7 @@ export default function CalendarPlanner({
                 (
                   todo
                 ) => (
-                  <DraggableTask
+                  <PoolTask
                     key={
                       todo.id
                     }
@@ -1628,7 +2846,7 @@ export default function CalendarPlanner({
 
           <section className="card min-w-0 overflow-hidden">
             <div className="border-b border-line px-5 py-4">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="font-medium">
                     {
@@ -1648,11 +2866,321 @@ export default function CalendarPlanner({
 
                 {activeTodo && (
                   <div className="hidden rounded-full bg-sage-50 px-3 py-1.5 text-xs text-sage-700 sm:block">
-                    找到合适的时间，松手就好
+                    拖到空白处重排，拖到任务上交换
                   </div>
                 )}
               </div>
             </div>
+
+            {/* ===============================================
+                Quick action / editor
+            =============================================== */}
+
+            {selectedTodo &&
+              selectedTodo.scheduled_start && (
+                <div className="border-b border-line bg-paper/50 px-5 py-4">
+                  {editingTodoId ===
+                  selectedTodo.id ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">
+                            编辑任务
+                          </p>
+
+                          <p className="mt-1 text-xs text-ink-faint">
+                            Calendar 时间和预计工作量可以不同。
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={
+                            cancelEditing
+                          }
+                          className="btn-ghost flex h-8 w-8 items-center justify-center p-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <input
+                        value={
+                          editTitle
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setEditTitle(
+                            event.target.value
+                          )
+                        }
+                        className="input w-full"
+                        placeholder="任务名称"
+                      />
+
+                      <div className="flex flex-wrap gap-2">
+                        {(
+                          Object.keys(
+                            CATEGORY_INFO
+                          ) as Category[]
+                        ).map(
+                          (
+                            category
+                          ) => {
+                            const info =
+                              CATEGORY_INFO[
+                                category
+                              ];
+
+                            const selected =
+                              editCategory ===
+                              category;
+
+                            return (
+                              <button
+                                key={
+                                  category
+                                }
+                                type="button"
+                                onClick={() =>
+                                  setEditCategory(
+                                    category
+                                  )
+                                }
+                                className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                  selected
+                                    ? info.selected
+                                    : "border-line bg-white text-ink-soft"
+                                }`}
+                              >
+                                {
+                                  info.label
+                                }
+                              </button>
+                            );
+                          }
+                        )}
+                      </div>
+
+                      {editCategory ===
+                        "other" && (
+                        <input
+                          value={
+                            editCustomTag
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setEditCustomTag(
+                              event.target.value
+                            )
+                          }
+                          className="input w-full"
+                          placeholder="自定义类别"
+                        />
+                      )}
+
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-ink-faint">
+                            预计工作分钟
+                          </span>
+
+                          <input
+                            type="number"
+                            min="1"
+                            value={
+                              editMinutes
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              setEditMinutes(
+                                event.target.value
+                              )
+                            }
+                            className="input w-full"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-ink-faint">
+                            计划开始
+                          </span>
+
+                          <input
+                            type="datetime-local"
+                            value={
+                              editStart
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              setEditStart(
+                                event.target.value
+                              )
+                            }
+                            className="input w-full"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-ink-faint">
+                            计划结束
+                          </span>
+
+                          <input
+                            type="datetime-local"
+                            value={
+                              editEnd
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              setEditEnd(
+                                event.target.value
+                              )
+                            }
+                            className="input w-full"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={
+                            cancelEditing
+                          }
+                          className="btn-ghost"
+                        >
+                          取消
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            busyId ===
+                            selectedTodo.id
+                          }
+                          onClick={() =>
+                            saveEdit(
+                              selectedTodo
+                            )
+                          }
+                          className="btn-primary flex items-center gap-2"
+                        >
+                          <Save className="h-4 w-4" />
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-medium">
+                            {
+                              selectedTodo.title
+                            }
+                          </p>
+
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] ${categoryOf(
+                              selectedTodo
+                            ).badge}`}
+                          >
+                            {
+                              categoryOf(
+                                selectedTodo
+                              ).label
+                            }
+                          </span>
+                        </div>
+
+                        <p className="mt-1 flex items-center gap-1 text-xs text-ink-faint">
+                          <Clock3 className="h-3.5 w-3.5" />
+
+                          {
+                            formatTime(
+                              selectedTodo.scheduled_start
+                            )
+                          }
+
+                          {selectedTodo.scheduled_end &&
+                            ` – ${formatTime(
+                              selectedTodo.scheduled_end
+                            )}`}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openFocus(
+                              selectedTodo
+                            )
+                          }
+                          className="flex items-center gap-2 rounded-xl bg-sage-100 px-3 py-2 text-sm font-medium text-sage-700 transition hover:bg-sage-300/60"
+                        >
+                          <Play className="h-4 w-4 fill-current" />
+
+                          {new Date(
+                            selectedTodo.scheduled_start
+                          ).getTime() >
+                          Date.now()
+                            ? "提前开始"
+                            : "开始专注"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            startEditing(
+                              selectedTodo
+                            )
+                          }
+                          className="btn-ghost flex items-center gap-2"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          编辑
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            completeTodo(
+                              selectedTodo
+                            )
+                          }
+                          className="flex items-center gap-2 rounded-xl bg-blush-50 px-3 py-2 text-sm font-medium text-blush-500 transition hover:bg-blush-100"
+                        >
+                          <Check className="h-4 w-4" />
+                          完成
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedTodoId(
+                              null
+                            )
+                          }
+                          className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            {/* ===============================================
+                Timeline
+            =============================================== */}
 
             <div
               className="relative"
@@ -1661,7 +3189,7 @@ export default function CalendarPlanner({
                   TOTAL_HEIGHT,
               }}
             >
-              {/* 时间标签 */}
+              {/* Hour labels */}
               <div className="pointer-events-none absolute inset-y-0 left-0 w-[64px] border-r border-line">
                 {hours.map(
                   (
@@ -1691,13 +3219,13 @@ export default function CalendarPlanner({
                 )}
               </div>
 
-              {/* Time grid */}
               <div className="absolute inset-y-0 left-[64px] right-0">
+                {/* Slots */}
                 {slots.map(
                   (
                     slot
                   ) => (
-                    <DroppableSlot
+                    <CalendarSlot
                       key={
                         slot.id
                       }
@@ -1711,8 +3239,8 @@ export default function CalendarPlanner({
                   )
                 )}
 
-                {/* Scheduled tasks */}
-                <div className="pointer-events-none absolute inset-0">
+                {/* Tasks */}
+                <div className="absolute inset-0">
                   {scheduledTodos.map(
                     (
                       todo
@@ -1724,9 +3252,35 @@ export default function CalendarPlanner({
                         todo={
                           todo
                         }
+                        selected={
+                          selectedTodoId ===
+                          todo.id
+                        }
                         justPlaced={
                           justPlacedId ===
                           todo.id
+                        }
+                        onSelect={() => {
+                          if (
+                            !activeTodoId
+                          ) {
+                            setSelectedTodoId(
+                              (
+                                current
+                              ) =>
+                                current ===
+                                todo.id
+                                  ? null
+                                  : todo.id
+                            );
+
+                            setEditingTodoId(
+                              null
+                            );
+                          }
+                        }}
+                        onResize={
+                          handleResize
                         }
                       />
                     )
@@ -1735,18 +3289,14 @@ export default function CalendarPlanner({
               </div>
             </div>
 
-            {savingTodoId && (
+            {busyId && (
               <div className="border-t border-line bg-paper/60 px-5 py-2 text-right text-[10px] text-ink-faint">
-                正在保存排期…
+                正在保存…
               </div>
             )}
           </section>
         </div>
       </div>
-
-      {/* =====================================================
-          Drag overlay
-      ====================================================== */}
 
       <DragOverlay
         dropAnimation={{
@@ -1758,7 +3308,7 @@ export default function CalendarPlanner({
         }}
       >
         {activeTodo ? (
-          <DraggingTask
+          <DragPreview
             todo={
               activeTodo
             }
