@@ -26,6 +26,7 @@ export type TodoCategory =
 export type Todo = {
   id: string;
   title: string;
+  description?: string | null;
   estimated_minutes: number | null;
   status: string;
   group_id: string | null;
@@ -243,6 +244,11 @@ export default function TodoList({
   ] = useState("");
 
   const [
+    editDescription,
+    setEditDescription,
+  ] = useState("");
+
+  const [
     editMinutes,
     setEditMinutes,
   ] = useState("");
@@ -357,6 +363,10 @@ export default function TodoList({
       todo.title
     );
 
+    setEditDescription(
+      todo.description ?? ""
+    );
+
     setEditMinutes(
       todo.estimated_minutes
         ? String(
@@ -395,6 +405,7 @@ export default function TodoList({
     setEditingId(null);
 
     setEditTitle("");
+    setEditDescription("");
     setEditMinutes("");
 
     setEditCategory(null);
@@ -474,6 +485,11 @@ export default function TodoList({
         .update({
           title:
             cleanTitle,
+
+          description:
+            editDescription.trim()
+              ? editDescription.trim()
+              : null,
 
           estimated_minutes:
             parsedMinutes,
@@ -649,6 +665,32 @@ export default function TodoList({
                         busy
                       }
                       autoFocus
+                    />
+                  </div>
+
+                  {/* 任务细节 */}
+                  <div>
+                    <label className="mb-1.5 block text-xs text-ink-faint">
+                      任务细节
+                    </label>
+
+                    <textarea
+                      className="input min-h-[100px] w-full resize-y"
+                      value={
+                        editDescription
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setEditDescription(
+                          e.target
+                            .value
+                        )
+                      }
+                      placeholder="写一点具体目标、步骤或备注……"
+                      disabled={
+                        busy
+                      }
                     />
                   </div>
 
@@ -957,6 +999,21 @@ export default function TodoList({
                     }
                   </span>
                 </div>
+
+                {/* 任务细节：普通卡片最多显示两行 */}
+                {todo.description && (
+                  <p
+                    className={`mt-1 line-clamp-2 text-xs leading-relaxed ${
+                      completed
+                        ? "text-ink-faint"
+                        : "text-ink-soft"
+                    }`}
+                  >
+                    {
+                      todo.description
+                    }
+                  </p>
+                )}
 
                 {/* Metadata */}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
