@@ -1,4 +1,5 @@
 import { requireGroup } from "@/lib/session";
+
 import Nav from "@/components/Nav";
 import TimezoneSync from "@/components/TimezoneSync";
 import SpaceSelector from "@/components/SpaceSelector";
@@ -8,13 +9,17 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { profile, groups, group } = await requireGroup();
+  const {
+    profile,
+    groups,
+    group,
+  } = await requireGroup();
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[1040px]">
+    <div className="mx-auto flex min-h-dvh w-full max-w-[1440px]">
       <Nav />
 
-      <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-10 md:pb-12 md:pt-10">
+      <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-10 lg:px-10">
         <SpaceSelector
           spaces={groups}
           activeSpaceId={group.id}
@@ -24,7 +29,9 @@ export default async function AppLayout({
       </main>
 
       {!profile.timezone && (
-        <TimezoneSync userId={profile.id} />
+        <TimezoneSync
+          userId={profile.id}
+        />
       )}
     </div>
   );
