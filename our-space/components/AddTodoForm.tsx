@@ -53,6 +53,11 @@ export default function AddTodoForm({
   const [title, setTitle] =
     useState("");
 
+  const [
+    description,
+    setDescription,
+  ] = useState("");
+
   const [minutes, setMinutes] =
     useState("");
 
@@ -146,6 +151,14 @@ export default function AddTodoForm({
           title:
             cleanTitle,
 
+          /*
+           * 任务细节 / 描述
+           */
+          description:
+            description.trim()
+              ? description.trim()
+              : null,
+
           estimated_minutes:
             parsedMinutes,
 
@@ -175,6 +188,7 @@ export default function AddTodoForm({
      * 成功后清空任务内容
      */
     setTitle("");
+    setDescription("");
     setMinutes("");
     setCustomTag("");
 
@@ -212,6 +226,29 @@ export default function AddTodoForm({
         />
       </div>
 
+      {/* 任务细节 */}
+      <div>
+        <label className="mb-1.5 block text-xs text-ink-faint">
+          任务细节
+        </label>
+
+        <textarea
+          className="input min-h-[96px] w-full resize-y"
+          placeholder="比如：要做到什么程度、重点看什么、需要注意什么……"
+          value={description}
+          onChange={(e) =>
+            setDescription(
+              e.target.value
+            )
+          }
+          disabled={busy}
+        />
+
+        <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
+          可选。适合写步骤、目标、资料位置或提醒。
+        </p>
+      </div>
+
       {/* 分类 */}
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -246,11 +283,24 @@ export default function AddTodoForm({
                   }
                   type="button"
                   disabled={busy}
-                  onClick={() =>
+                  onClick={() => {
                     setCategory(
                       item.value
-                    )
-                  }
+                    );
+
+                    /*
+                     * 如果切换到非 other，
+                     * 自动清掉之前的自定义标签。
+                     */
+                    if (
+                      item.value !==
+                      "other"
+                    ) {
+                      setCustomTag(
+                        ""
+                      );
+                    }
+                  }}
                   className={`rounded-full border px-3 py-1.5 text-xs transition ${
                     selected
                       ? "border-sage-300 bg-sage-100 font-medium text-sage-700"
