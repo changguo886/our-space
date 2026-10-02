@@ -54,7 +54,7 @@ export default function EntryForm({
     }
   );
     setBusy(false);
- if (error) {
+if (error) {
   console.error(
     "Save daily entry failed:",
     error
@@ -66,6 +66,16 @@ export default function EntryForm({
   });
 
   return;
+}
+
+setSaved(values);
+
+setMsg({
+  ok: true,
+  text: "已经保存好啦",
+});
+
+router.refresh();
 }
 
   return (
