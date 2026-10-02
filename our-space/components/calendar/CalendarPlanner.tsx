@@ -58,6 +58,10 @@ type CalendarTodo = {
 
   title: string;
 
+  description:
+  | string
+  | null;
+
   estimated_minutes:
     | number
     | null;
