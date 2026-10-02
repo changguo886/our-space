@@ -44,7 +44,9 @@ export default async function TodoPage() {
         started_at,
         elapsed_seconds,
         completed_at,
-        created_at
+        created_at，
+         scheduled_start,
+        scheduled_end
       `)
       .eq("user_id", user.id)
       .or(
