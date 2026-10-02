@@ -31,34 +31,15 @@ export default async function TodoPage() {
    *
    * 不显示其他 Space 的 Todo。
    */
-  const { data: todos, error } =
-    await supabase
-      .from("todos")
-      .select(`
-        id,
-        title,
-        estimated_minutes,
-        status,
-        group_id,
-        task_date,
-        started_at,
-        elapsed_seconds,
-        completed_at,
-        created_at，
-         scheduled_start,
-        scheduled_end
-      `)
-      .eq("user_id", user.id)
-      .or(
-        `group_id.is.null,group_id.eq.${group.id}`
-      )
-      .order("task_date", {
-        ascending: false,
-      })
-      .order("created_at", {
-        ascending: false,
-      });
-
+const { data: todos } = await supabase
+  .from("todos")
+  .select(
+    "id, title, estimated_minutes, status, group_id, task_date, scheduled_start, scheduled_end"
+  )
+  .eq("user_id", user.id)
+  .eq("task_date", today)
+  .or(`group_id.is.null,group_id.eq.${group.id}`)
+  .order("created_at", { ascending: false });
   if (error) {
     throw new Error(
       `Failed to load todos: ${error.message}`
