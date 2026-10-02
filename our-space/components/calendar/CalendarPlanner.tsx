@@ -28,7 +28,6 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 
-
 import {
   createClient,
 } from "@/lib/supabase/client";
@@ -104,13 +103,17 @@ const DAY_START_HOUR = 8;
 const DAY_END_HOUR = 24;
 
 /*
- * 1 小时 = 72 px
+ * 现在每小时 96px
  *
- * 所以：
- * 15 min = 18 px
- * 30 min = 36 px
+ * 15 min = 24px
+ * 30 min = 48px
+ * 45 min = 72px
+ * 60 min = 96px
+ *
+ * 这样任务之间的“长短”会明显很多。
  */
-const HOUR_HEIGHT = 72;
+const HOUR_HEIGHT = 96;
+
 const SLOT_MINUTES = 15;
 
 const SLOT_HEIGHT =
@@ -127,55 +130,105 @@ const TOTAL_HEIGHT =
   HOUR_HEIGHT;
 
 /* =========================================================
-   Category styles
+   Category style
+   和 Todo 页面保持同一个视觉语义
 ========================================================= */
 
 const CATEGORY_INFO: Record<
   Category,
   {
     label: string;
+
     card: string;
+
     badge: string;
+
+    drop: string;
   }
 > = {
+  /*
+   * 工作
+   * 淡蓝
+   */
   work: {
     label: "工作",
-    card:
-      "border-blush-100 bg-blush-50",
-    badge:
-      "bg-blush-100 text-blush-500",
-  },
 
-  study: {
-    label: "学习",
     card:
       "border-mist-100 bg-mist-50",
+
     badge:
       "bg-mist-100 text-mist-500",
+
+    drop:
+      "border-mist-100 bg-mist-50/90",
   },
 
-  life: {
-    label: "生活",
+  /*
+   * 学习
+   * 淡绿
+   */
+  study: {
+    label: "学习",
+
     card:
       "border-sage-100 bg-sage-50",
+
     badge:
       "bg-sage-100 text-sage-700",
+
+    drop:
+      "border-sage-100 bg-sage-50/90",
   },
 
+  /*
+   * 生活
+   * 淡暖橙
+   */
+  life: {
+    label: "生活",
+
+    card:
+      "border-amber-100 bg-amber-50/70",
+
+    badge:
+      "bg-amber-100/80 text-amber-700",
+
+    drop:
+      "border-amber-100 bg-amber-50/90",
+  },
+
+  /*
+   * 休息
+   * 淡粉
+   */
   rest: {
     label: "休息",
+
     card:
-      "border-[#EEE8F4] bg-[#F9F6FB]",
+      "border-blush-100 bg-blush-50",
+
     badge:
-      "bg-[#F0EAF5] text-[#826F91]",
+      "bg-blush-100 text-blush-500",
+
+    drop:
+      "border-blush-100 bg-blush-50/90",
   },
 
+  /*
+   * 其他
+   * 淡灰
+   */
   other: {
     label: "其他",
+
     card:
-      "border-[#F1E8DC] bg-[#FCF8F2]",
+      "border-line bg-black/[0.018]",
+
     badge:
-      "bg-[#F3EBDD] text-[#8B7763]",
+      "bg-black/[0.04] text-ink-soft",
+
+    drop:
+      "border-line bg-black/[0.025]",
   },
 };
 
@@ -191,6 +244,9 @@ function categoryOf(
 
       badge:
         "bg-black/[0.04] text-ink-faint",
+
+      drop:
+        "border-line bg-sage-50/50",
     };
   }
 
@@ -206,7 +262,7 @@ function categoryOf(
       todo.category ===
         "other" &&
       todo.custom_tag?.trim()
-        ? todo.custom_tag
+        ? todo.custom_tag.trim()
         : base.label,
   };
 }
@@ -339,10 +395,6 @@ function formatTime(
   );
 }
 
-/*
- * selectedDate + hour/minute
- * 转成本地时间 Date。
- */
 function makeLocalDate(
   dateString: string,
   hour: number,
@@ -369,7 +421,7 @@ function makeLocalDate(
 }
 
 /* =========================================================
-   Slot helpers
+   Slots
 ========================================================= */
 
 type TimeSlot = {
@@ -425,55 +477,6 @@ function buildSlots(
   return slots;
 }
 
-function parseSlotId(
-  id: string
-) {
-  const parts =
-    id.split(":");
-
-  if (
-    parts.length !== 5 ||
-    parts[0] !==
-      "slot"
-  ) {
-    return null;
-  }
-
-  const date =
-    parts[1];
-
-  const hour =
-    Number(
-      parts[2]
-    );
-
-  const minute =
-    Number(
-      parts[3]
-    );
-
-  /*
-   * id 格式是：
-   *
-   * slot:YYYY-MM-DD:HH:MM
-   *
-   * 但是 YYYY-MM-DD 本身没有 :
-   * 所以实际上 split 后长度是 4。
-   *
-   * 为了兼容，
-   * 下面重新解析。
-   */
-  return {
-    date,
-    hour,
-    minute,
-  };
-}
-
-/*
- * 上面的 parseSlotId
- * 改用更直接的版本。
- */
 function readSlotId(
   id: string
 ) {
@@ -554,7 +557,7 @@ function readSlotId(
 }
 
 /* =========================================================
-   Draggable task card
+   Unscheduled draggable task
 ========================================================= */
 
 function DraggableTask({
@@ -567,76 +570,99 @@ function DraggableTask({
     listeners,
     setNodeRef,
     isDragging,
-  } = useDraggable({
-    id: `todo:${todo.id}`,
+  } =
+    useDraggable({
+      id:
+        `todo:${todo.id}`,
 
-    data: {
-      type: "todo",
-      todoId: todo.id,
-    },
-  });
+      data: {
+        type:
+          "todo",
+
+        todoId:
+          todo.id,
+      },
+    });
 
   const category =
-    categoryOf(todo);
+    categoryOf(
+      todo
+    );
 
   return (
     <div
-      ref={setNodeRef}
+      ref={
+        setNodeRef
+      }
       {...attributes}
       {...listeners}
       style={{
-        touchAction: "none",
-        userSelect: "none",
+        touchAction:
+          "none",
+
+        userSelect:
+          "none",
+
         WebkitUserSelect:
           "none",
       }}
       className={`
         flex
+        cursor-grab
+        select-none
         items-center
         gap-3
-        rounded-[18px]
+        rounded-2xl
         border
         px-3
         py-3
-        cursor-grab
-        select-none
         transition-[opacity,box-shadow,transform]
         duration-150
         active:cursor-grabbing
         ${category.card}
+
         ${
           isDragging
-            ? "scale-[0.98] opacity-30"
+            ? "scale-[0.99] opacity-30"
             : "hover:-translate-y-[1px] hover:shadow-soft"
         }
       `}
     >
-      <GripVertical className="pointer-events-none h-4 w-4 shrink-0 text-ink-faint/45" />
+      <GripVertical className="pointer-events-none h-4 w-4 shrink-0 text-ink-faint/40" />
 
       <div className="pointer-events-none min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">
-          {todo.title}
-        </p>
-
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-ink-faint">
-            {todo.estimated_minutes ??
-              30}{" "}
-            分钟
-          </span>
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-sm font-medium text-ink">
+            {
+              todo.title
+            }
+          </p>
 
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
           >
-            {category.label}
+            {
+              category.label
+            }
           </span>
         </div>
+
+        <p className="mt-1 text-[11px] text-ink-faint">
+          预计{" "}
+          {
+            todo.estimated_minutes ??
+            30
+          }{" "}
+          分钟
+        </p>
       </div>
     </div>
   );
 }
+
 /* =========================================================
    Drag overlay
+   不再扭曲，只做柔和“抬起”
 ========================================================= */
 
 function DraggingTask({
@@ -654,62 +680,62 @@ function DraggingTask({
       className={`
         flex
         w-[280px]
-        rotate-[0.5deg]
+        scale-[1.02]
         items-center
         gap-3
-        rounded-[20px]
+        rounded-2xl
         border
-        px-4
+        px-3
         py-3
-        shadow-[0_14px_38px_rgba(70,60,50,0.13)]
+        shadow-[0_12px_34px_rgba(60,50,40,0.12)]
         ${category.card}
       `}
-      style={{
-        transform:
-          "scale(1.045, 0.97)",
-      }}
     >
-      <GripVertical className="h-4 w-4 shrink-0 text-ink-faint/45" />
+      <GripVertical className="h-4 w-4 shrink-0 text-ink-faint/40" />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">
-          {
-            todo.title
-          }
-        </p>
-
-        <div className="mt-1 flex items-center gap-2">
-          <span className="text-[11px] text-ink-faint">
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-sm font-medium text-ink">
             {
-              todo.estimated_minutes ??
-              30
-            }{" "}
-            分钟
-          </span>
+              todo.title
+            }
+          </p>
 
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
           >
             {
               category.label
             }
           </span>
         </div>
+
+        <p className="mt-1 text-[11px] text-ink-faint">
+          预计{" "}
+          {
+            todo.estimated_minutes ??
+            30
+          }{" "}
+          分钟
+        </p>
       </div>
     </div>
   );
 }
 
 /* =========================================================
-   Droppable 15-minute slot
+   Droppable 15 min slot
 ========================================================= */
 
 function DroppableSlot({
   slot,
-  dragging,
+  activeTodo,
 }: {
   slot: TimeSlot;
-  dragging: boolean;
+
+  activeTodo:
+    | CalendarTodo
+    | null;
 }) {
   const {
     setNodeRef,
@@ -723,9 +749,6 @@ function DroppableSlot({
         type:
           "slot",
 
-        date:
-          slot.id,
-
         hour:
           slot.hour,
 
@@ -735,10 +758,19 @@ function DroppableSlot({
     });
 
   const strongLine =
-    slot.minute === 0;
+    slot.minute ===
+    0;
 
   const halfLine =
-    slot.minute === 30;
+    slot.minute ===
+    30;
+
+  const category =
+    activeTodo
+      ? categoryOf(
+          activeTodo
+        )
+      : null;
 
   return (
     <div
@@ -751,7 +783,7 @@ function DroppableSlot({
       }}
       className={`
         relative
-        transition
+        transition-colors
         duration-100
 
         ${
@@ -759,55 +791,77 @@ function DroppableSlot({
             ? "border-t border-line"
             : halfLine
               ? "border-t border-line/55"
-              : "border-t border-line/25"
+              : "border-t border-line/20"
         }
 
         ${
-          dragging
-            ? "bg-white/20"
+          activeTodo
+            ? "bg-white/10"
             : ""
         }
 
         ${
-          isOver
-            ? "z-10 bg-sage-100/80"
+          isOver &&
+          category
+            ? category.drop
             : ""
         }
       `}
     >
-      {isOver && (
-        <div className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2">
-          <div className="rounded-full border border-sage-300/70 bg-sage-50 px-3 py-1 text-center text-[10px] font-medium text-sage-700 shadow-sm">
-            {String(
-              slot.hour
-            ).padStart(
-              2,
-              "0"
-            )}
-            :
-            {String(
-              slot.minute
-            ).padStart(
-              2,
-              "0"
-            )}
-            {" · "}
-            松开放到这里
+      {isOver &&
+        activeTodo && (
+          <div className="pointer-events-none absolute inset-x-2 top-1/2 z-30 -translate-y-1/2">
+            <div
+              className={`
+                rounded-xl
+                border
+                px-3
+                py-1
+                text-center
+                text-[10px]
+                font-medium
+                shadow-[0_2px_8px_rgba(60,50,40,0.04)]
+                ${category?.card}
+              `}
+            >
+              <span className="text-ink-soft">
+                {String(
+                  slot.hour
+                ).padStart(
+                  2,
+                  "0"
+                )}
+                :
+                {String(
+                  slot.minute
+                ).padStart(
+                  2,
+                  "0"
+                )}
+
+                {" · "}
+
+                松开放到这里
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }
 
 /* =========================================================
-   Scheduled calendar card
+   Scheduled task
 ========================================================= */
 
 function ScheduledTask({
   todo,
+  justPlaced,
 }: {
   todo: CalendarTodo;
+
+  justPlaced:
+    boolean;
 }) {
   const category =
     categoryOf(
@@ -836,9 +890,8 @@ function ScheduledTask({
       60;
 
   /*
-   * 当前第一版：
-   * 超出 08:00–24:00 的任务
-   * 暂时不画。
+   * 当前 Day Planner
+   * 只显示 08:00–24:00。
    */
   if (
     minutesFromStart <
@@ -849,7 +902,15 @@ function ScheduledTask({
     return null;
   }
 
-  let duration =
+  /*
+   * Calendar 块高度：
+   *
+   * 优先用 scheduled_end - scheduled_start。
+   *
+   * 只有 scheduled_end 缺失时，
+   * 才 fallback 到 estimated_minutes。
+   */
+  let scheduledDuration =
     todo.estimated_minutes ??
     30;
 
@@ -861,7 +922,7 @@ function ScheduledTask({
         todo.scheduled_end
       );
 
-    const calculated =
+    const actualWindow =
       Math.round(
         (
           end.getTime() -
@@ -871,11 +932,11 @@ function ScheduledTask({
       );
 
     if (
-      calculated >
+      actualWindow >
       0
     ) {
-      duration =
-        calculated;
+      scheduledDuration =
+        actualWindow;
     }
   }
 
@@ -886,15 +947,29 @@ function ScheduledTask({
     ) *
     HOUR_HEIGHT;
 
+  /*
+   * 最低高度 36px，
+   * 防止 15 分钟任务完全看不见。
+   */
   const height =
     Math.max(
-      30,
+      36,
+
       (
-        duration /
+        scheduledDuration /
         60
       ) *
         HOUR_HEIGHT
     );
+
+  /*
+   * 根据高度决定显示多少信息。
+   */
+  const compact =
+    height < 58;
+
+  const roomy =
+    height >= 78;
 
   return (
     <div
@@ -904,29 +979,74 @@ function ScheduledTask({
         right-2
         z-20
         overflow-hidden
-        rounded-[18px]
+        rounded-2xl
         border
         px-3
-        py-2
-        shadow-[0_4px_16px_rgba(60,50,40,0.045)]
-        transition
+        shadow-[0_3px_14px_rgba(60,50,40,0.045)]
+        transition-[transform,box-shadow]
+        duration-200
         hover:shadow-soft
         ${category.card}
+
+        ${
+          compact
+            ? "py-1.5"
+            : "py-2"
+        }
+
+        ${
+          justPlaced
+            ? "scale-[1.018]"
+            : "scale-100"
+        }
       `}
       style={{
         top,
         height,
       }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink">
+      {compact ? (
+        /*
+         * 很短的任务
+         * 一行显示
+         */
+        <div className="flex h-full items-center justify-between gap-2">
+          <p className="truncate text-xs font-medium text-ink">
             {
               todo.title
             }
           </p>
 
-          <p className="mt-0.5 text-[11px] text-ink-faint">
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] ${category.badge}`}
+          >
+            {
+              category.label
+            }
+          </span>
+        </div>
+      ) : (
+        /*
+         * 正常 / 较长任务
+         */
+        <div className="flex h-full flex-col">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 truncate text-sm font-medium text-ink">
+              {
+                todo.title
+              }
+            </p>
+
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+            >
+              {
+                category.label
+              }
+            </span>
+          </div>
+
+          <p className="mt-1 text-[11px] text-ink-faint">
             {
               formatTime(
                 todo.scheduled_start
@@ -938,25 +1058,25 @@ function ScheduledTask({
                 todo.scheduled_end
               )}`}
           </p>
-        </div>
 
-        {height >=
-          40 && (
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
-          >
-            {
-              category.label
-            }
-          </span>
-        )}
-      </div>
+          {roomy &&
+            todo.estimated_minutes && (
+              <p className="mt-1 text-[10px] text-ink-faint/85">
+                预计实际工作{" "}
+                {
+                  todo.estimated_minutes
+                }{" "}
+                分钟
+              </p>
+            )}
+        </div>
+      )}
     </div>
   );
 }
 
 /* =========================================================
-   Main Calendar
+   Main
 ========================================================= */
 
 export default function CalendarPlanner({
@@ -1002,6 +1122,16 @@ export default function CalendarPlanner({
     );
 
   const [
+    justPlacedId,
+    setJustPlacedId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
     error,
     setError,
   ] =
@@ -1012,35 +1142,36 @@ export default function CalendarPlanner({
     );
 
   /*
-   * 鼠标稍微移动后才算拖动，
-   * 避免普通点击误触。
+   * Desktop：
+   * 移动 4 px 后启动。
    *
-   * 手机则长按一点点
-   * 再开始拖。
+   * Mobile：
+   * 长按约 150 ms。
    */
-const sensors =
-  useSensors(
-    useSensor(
-      PointerSensor,
-      {
-        activationConstraint:
-          {
-            distance: 6,
-          },
-      }
-    ),
+  const sensors =
+    useSensors(
+      useSensor(
+        MouseSensor,
+        {
+          activationConstraint:
+            {
+              distance: 4,
+            },
+        }
+      ),
 
-    useSensor(
-      TouchSensor,
-      {
-        activationConstraint:
-          {
-            delay: 180,
-            tolerance: 8,
-          },
-      }
-    )
-  );
+      useSensor(
+        TouchSensor,
+        {
+          activationConstraint:
+            {
+              delay: 150,
+
+              tolerance: 8,
+            },
+        }
+      )
+    );
 
   const slots =
     useMemo(
@@ -1053,9 +1184,6 @@ const sensors =
       ]
     );
 
-  /*
-   * 未排期任务。
-   */
   const unscheduledTodos =
     useMemo(
       () =>
@@ -1068,9 +1196,6 @@ const sensors =
       ]
     );
 
-  /*
-   * 当前这一天已经排好的任务。
-   */
   const scheduledTodos =
     useMemo(
       () =>
@@ -1154,7 +1279,9 @@ const sensors =
       id.slice(5)
     );
 
-    setError(null);
+    setError(
+      null
+    );
   }
 
   async function handleDragEnd(
@@ -1211,6 +1338,15 @@ const sensors =
       return;
     }
 
+    /*
+     * 未排期拖进 Calendar 时，
+     *
+     * 第一版：
+     * scheduled window 默认使用 estimated_minutes。
+     *
+     * 之后我们可以加 resize，
+     * 让用户自己拉长 Calendar 时间块。
+     */
     const duration =
       todo.estimated_minutes ??
       30;
@@ -1236,18 +1372,14 @@ const sensors =
     const endIso =
       endDate.toISOString();
 
-    /*
-     * 保存前先留一个旧版本。
-     * 如果 Supabase 失败，
-     * 我们可以恢复。
-     */
     const previousTodos =
       todos;
 
     /*
-     * Optimistic UI：
-     * 松手以后马上“吸进去”，
-     * 不需要等网络请求结束。
+     * Optimistic UI
+     *
+     * 松手就立即显示，
+     * 不等 Supabase。
      */
     setTodos(
       (
@@ -1273,11 +1405,35 @@ const sensors =
         )
     );
 
+    /*
+     * 一个很轻的吸附反馈。
+     */
+    setJustPlacedId(
+      todoId
+    );
+
+    window.setTimeout(
+      () => {
+        setJustPlacedId(
+          (
+            current
+          ) =>
+            current ===
+            todoId
+              ? null
+              : current
+        );
+      },
+      220
+    );
+
     setSavingTodoId(
       todoId
     );
 
-    setError(null);
+    setError(
+      null
+    );
 
     const supabase =
       createClient();
@@ -1312,10 +1468,6 @@ const sensors =
     if (
       updateError
     ) {
-      /*
-       * 保存失败就恢复
-       * 拖动之前的位置。
-       */
       setTodos(
         previousTodos
       );
@@ -1356,7 +1508,7 @@ const sensors =
             </h1>
 
             <p className="mt-1 text-sm text-ink-faint">
-              拖一拖，把今天安排成喜欢的节奏。
+              把任务轻轻放进今天的时间里。
             </p>
           </div>
 
@@ -1426,7 +1578,7 @@ const sensors =
                 </h2>
 
                 <p className="mt-1 text-xs text-ink-faint">
-                  按住任务，拖到右边的时间里
+                  按住任务，拖到右边安排时间
                 </p>
               </div>
 
@@ -1496,7 +1648,7 @@ const sensors =
 
                 {activeTodo && (
                   <div className="hidden rounded-full bg-sage-50 px-3 py-1.5 text-xs text-sage-700 sm:block">
-                    松手即可安排
+                    找到合适的时间，松手就好
                   </div>
                 )}
               </div>
@@ -1539,7 +1691,7 @@ const sensors =
                 )}
               </div>
 
-              {/* 15-minute Drop Zones */}
+              {/* Time grid */}
               <div className="absolute inset-y-0 left-[64px] right-0">
                 {slots.map(
                   (
@@ -1552,58 +1704,57 @@ const sensors =
                       slot={
                         slot
                       }
-                      dragging={
-                        !!activeTodo
+                      activeTodo={
+                        activeTodo
                       }
                     />
                   )
                 )}
 
-                {/* 已排期任务 */}
+                {/* Scheduled tasks */}
                 <div className="pointer-events-none absolute inset-0">
                   {scheduledTodos.map(
                     (
                       todo
                     ) => (
-                      <div
+                      <ScheduledTask
                         key={
                           todo.id
                         }
-                        className="pointer-events-auto"
-                      >
-                        <ScheduledTask
-                          todo={
-                            todo
-                          }
-                        />
-
-                        {savingTodoId ===
-                          todo.id && (
-                          <span className="sr-only">
-                            保存中
-                          </span>
-                        )}
-                      </div>
+                        todo={
+                          todo
+                        }
+                        justPlaced={
+                          justPlacedId ===
+                          todo.id
+                        }
+                      />
                     )
                   )}
                 </div>
               </div>
             </div>
+
+            {savingTodoId && (
+              <div className="border-t border-line bg-paper/60 px-5 py-2 text-right text-[10px] text-ink-faint">
+                正在保存排期…
+              </div>
+            )}
           </section>
         </div>
       </div>
 
       {/* =====================================================
-          Floating drag preview
+          Drag overlay
       ====================================================== */}
 
       <DragOverlay
         dropAnimation={{
           duration:
-            230,
+            180,
 
           easing:
-            "cubic-bezier(0.18, 0.75, 0.35, 1.25)",
+            "cubic-bezier(0.22, 0.8, 0.3, 1)",
         }}
       >
         {activeTodo ? (
