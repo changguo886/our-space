@@ -54,14 +54,19 @@ export default function EntryForm({
     }
   );
     setBusy(false);
-    if (error) {
-      setMsg({ ok: false, text: "没保存上，网络好像不太好，再试一次？" });
-      return;
-    }
-    setSaved(values);
-    setMsg({ ok: true, text: "已经保存好啦" });
-    router.refresh();
-  }
+ if (error) {
+  console.error(
+    "Save daily entry failed:",
+    error
+  );
+
+  setMsg({
+    ok: false,
+    text: `保存失败：${error.message}`,
+  });
+
+  return;
+}
 
   return (
     <form onSubmit={save} className="mt-6 space-y-4">
