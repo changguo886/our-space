@@ -4,6 +4,39 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+type Category =
+  | "work"
+  | "study"
+  | "life"
+  | "rest"
+  | "other";
+
+const CATEGORIES: {
+  value: Category;
+  label: string;
+}[] = [
+  {
+    value: "work",
+    label: "工作",
+  },
+  {
+    value: "study",
+    label: "学习",
+  },
+  {
+    value: "life",
+    label: "生活",
+  },
+  {
+    value: "rest",
+    label: "休息",
+  },
+  {
+    value: "other",
+    label: "其他",
+  },
+];
+
 export default function AddTodoForm({
   userId,
   activeSpaceId,
@@ -17,62 +50,116 @@ export default function AddTodoForm({
 }) {
   const router = useRouter();
 
-  const [title, setTitle] = useState("");
-  const [minutes, setMinutes] = useState("");
-  const [visibility, setVisibility] =
-    useState<"private" | "space">("private");
+  const [title, setTitle] =
+    useState("");
 
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [minutes, setMinutes] =
+    useState("");
 
-  async function submit(e: React.FormEvent) {
+  const [
+    category,
+    setCategory,
+  ] =
+    useState<Category | null>(
+      null
+    );
+
+  const [
+    customTag,
+    setCustomTag,
+  ] = useState("");
+
+  const [
+    visibility,
+    setVisibility,
+  ] =
+    useState<
+      "private" | "space"
+    >("private");
+
+  const [busy, setBusy] =
+    useState(false);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  async function submit(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
 
-    const cleanTitle = title.trim();
+    const cleanTitle =
+      title.trim();
 
     if (!cleanTitle) {
-      setError("请输入任务名称。");
+      setError(
+        "请输入任务名称。"
+      );
       return;
     }
 
-    const parsedMinutes = minutes
-      ? Number(minutes)
-      : null;
+    const parsedMinutes =
+      minutes
+        ? Number(minutes)
+        : null;
 
     if (
       parsedMinutes !== null &&
-      (!Number.isFinite(parsedMinutes) ||
+      (!Number.isFinite(
+        parsedMinutes
+      ) ||
         parsedMinutes <= 0)
     ) {
-      setError("预计时间需要是大于 0 的分钟数。");
+      setError(
+        "预计时间需要是大于 0 的分钟数。"
+      );
       return;
     }
 
     setBusy(true);
     setError(null);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
-    const { error } = await supabase
-      .from("todos")
-      .insert({
-        user_id: userId,
+    const { error } =
+      await supabase
+        .from("todos")
+        .insert({
+          user_id: userId,
 
-        // null = 私人任务
-        // 当前 Space ID = 分享到当前空间
-        group_id:
-          visibility === "space"
-            ? activeSpaceId
-            : null,
+          /*
+           * null = 私人任务
+           * 当前 Space ID = 分享到当前空间
+           */
+          group_id:
+            visibility ===
+            "space"
+              ? activeSpaceId
+              : null,
 
-        title: cleanTitle,
+          title:
+            cleanTitle,
 
-        estimated_minutes:
-          parsedMinutes,
+          estimated_minutes:
+            parsedMinutes,
 
-        // 新增：明确记录这个 Todo 属于哪一天
-        task_date: taskDate,
-      });
+          task_date:
+            taskDate,
+
+          category:
+            category,
+
+          custom_tag:
+            customTag.trim()
+              ? customTag.trim()
+              : null,
+        });
 
     setBusy(false);
 
@@ -84,63 +171,171 @@ export default function AddTodoForm({
       return;
     }
 
-    // 成功以后清空输入框
+    /*
+     * 成功后清空任务内容
+     */
     setTitle("");
     setMinutes("");
+    setCustomTag("");
 
-    // 保留 visibility，
-    // 这样用户连续添加任务时不用每次重新选
+    /*
+     * category 和 visibility
+     * 故意保留。
+     *
+     * 连续创建任务时，
+     * 不需要每次重新选择。
+     */
     router.refresh();
   }
 
   return (
     <form
       onSubmit={submit}
-      className="space-y-3"
+      className="space-y-4"
     >
-      <input
-        className="input"
-        placeholder="今天想完成什么？"
-        value={title}
-        onChange={(e) =>
-          setTitle(e.target.value)
-        }
-        disabled={busy}
-      />
+      {/* 任务名称 */}
+      <div>
+        <label className="mb-1.5 block text-xs text-ink-faint">
+          任务
+        </label>
 
-      <input
-        className="input"
-        type="number"
-        min="1"
-        step="1"
-        placeholder="预计时间（分钟）"
-        value={minutes}
-        onChange={(e) =>
-          setMinutes(e.target.value)
-        }
-        disabled={busy}
-      />
+        <input
+          className="input"
+          placeholder="想做什么？"
+          value={title}
+          onChange={(e) =>
+            setTitle(
+              e.target.value
+            )
+          }
+          disabled={busy}
+        />
+      </div>
 
-      <select
-        className="input"
-        value={visibility}
-        onChange={(e) =>
-          setVisibility(
-            e.target.value as
-              | "private"
-              | "space"
-          )
-        }
-        disabled={busy}
-      >
-        <option value="private">
-          仅自己可见
-        </option>
+      {/* 分类 */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-xs text-ink-faint">
+            分类
+          </label>
 
-        <option value="space">
-          分享到 {activeSpaceName}
-        </option>
-      </select>
+          {category && (
+            <button
+              type="button"
+              onClick={() =>
+                setCategory(null)
+              }
+              className="text-[11px] text-ink-faint transition hover:text-ink-soft"
+            >
+              清除
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {CATEGORIES.map(
+            (item) => {
+              const selected =
+                category ===
+                item.value;
+
+              return (
+                <button
+                  key={
+                    item.value
+                  }
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    setCategory(
+                      item.value
+                    )
+                  }
+                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                    selected
+                      ? "border-sage-300 bg-sage-100 font-medium text-sage-700"
+                      : "border-line bg-white/70 text-ink-soft hover:bg-white"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            }
+          )}
+        </div>
+      </div>
+
+      {/* 其他分类自定义标签 */}
+      {category === "other" && (
+        <div>
+          <label className="mb-1.5 block text-xs text-ink-faint">
+            自定义标签
+          </label>
+
+          <input
+            className="input"
+            placeholder="比如：健身 / 创作 / 社交"
+            value={customTag}
+            onChange={(e) =>
+              setCustomTag(
+                e.target.value
+              )
+            }
+            disabled={busy}
+          />
+        </div>
+      )}
+
+      {/* 预计时间 */}
+      <div>
+        <label className="mb-1.5 block text-xs text-ink-faint">
+          预计时间
+        </label>
+
+        <input
+          className="input"
+          type="number"
+          min="1"
+          step="1"
+          placeholder="例如 30 分钟"
+          value={minutes}
+          onChange={(e) =>
+            setMinutes(
+              e.target.value
+            )
+          }
+          disabled={busy}
+        />
+      </div>
+
+      {/* 可见范围 */}
+      <div>
+        <label className="mb-1.5 block text-xs text-ink-faint">
+          可见范围
+        </label>
+
+        <select
+          className="input"
+          value={visibility}
+          onChange={(e) =>
+            setVisibility(
+              e.target.value as
+                | "private"
+                | "space"
+            )
+          }
+          disabled={busy}
+        >
+          <option value="private">
+            仅自己可见
+          </option>
+
+          <option value="space">
+            分享到{" "}
+            {activeSpaceName}
+          </option>
+        </select>
+      </div>
 
       <button
         type="submit"
