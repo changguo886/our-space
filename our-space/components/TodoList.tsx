@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+
 import {
   Check,
   Circle,
@@ -14,6 +15,13 @@ import {
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+export type TodoCategory =
+  | "work"
+  | "study"
+  | "life"
+  | "rest"
+  | "other";
 
 export type Todo = {
   id: string;
@@ -30,7 +38,58 @@ export type Todo = {
 
   scheduled_start?: string | null;
   scheduled_end?: string | null;
+
+  category?: TodoCategory | null;
+  custom_tag?: string | null;
 };
+
+const CATEGORIES: {
+  value: TodoCategory;
+  label: string;
+  selectedClass: string;
+  badgeClass: string;
+}[] = [
+  {
+    value: "work",
+    label: "工作",
+    selectedClass:
+      "border-mist-500 bg-mist-100 text-mist-500",
+    badgeClass:
+      "bg-mist-100 text-mist-500",
+  },
+  {
+    value: "study",
+    label: "学习",
+    selectedClass:
+      "border-sage-500 bg-sage-100 text-sage-700",
+    badgeClass:
+      "bg-sage-100 text-sage-700",
+  },
+  {
+    value: "life",
+    label: "生活",
+    selectedClass:
+      "border-amber-300 bg-amber-50 text-amber-700",
+    badgeClass:
+      "bg-amber-50 text-amber-700",
+  },
+  {
+    value: "rest",
+    label: "休息",
+    selectedClass:
+      "border-blush-500 bg-blush-100 text-blush-500",
+    badgeClass:
+      "bg-blush-100 text-blush-500",
+  },
+  {
+    value: "other",
+    label: "其他",
+    selectedClass:
+      "border-ink-faint bg-black/[0.04] text-ink-soft",
+    badgeClass:
+      "bg-black/[0.04] text-ink-soft",
+  },
+];
 
 function toLocalInputValue(
   iso?: string | null
@@ -71,8 +130,11 @@ function formatScheduledTime(
     return startText;
   }
 
+  const endDate =
+    new Date(end);
+
   const endText =
-    new Date(end).toLocaleTimeString(
+    endDate.toLocaleTimeString(
       [],
       {
         hour: "2-digit",
@@ -80,10 +142,25 @@ function formatScheduledTime(
       }
     );
 
-  return `${startText} – ${endText}`;
+  /*
+   * 如果跨天，额外显示“次日”
+   */
+  const sameDay =
+    startDate.getFullYear() ===
+      endDate.getFullYear() &&
+    startDate.getMonth() ===
+      endDate.getMonth() &&
+    startDate.getDate() ===
+      endDate.getDate();
+
+  return sameDay
+    ? `${startText} – ${endText}`
+    : `${startText} – ${endText} 次日`;
 }
 
-function statusInfo(status: string) {
+function statusInfo(
+  status: string
+) {
   switch (status) {
     case "running":
       return {
@@ -103,7 +180,7 @@ function statusInfo(status: string) {
       return {
         label: "已完成",
         className:
-          "bg-mist-50 text-mist-500",
+          "bg-mist-100 text-mist-500",
       };
 
     default:
@@ -115,6 +192,36 @@ function statusInfo(status: string) {
   }
 }
 
+function categoryInfo(
+  category?: TodoCategory | null,
+  customTag?: string | null
+) {
+  if (!category) {
+    return null;
+  }
+
+  const config =
+    CATEGORIES.find(
+      (item) =>
+        item.value === category
+    );
+
+  if (!config) {
+    return null;
+  }
+
+  return {
+    label:
+      category === "other" &&
+      customTag?.trim()
+        ? customTag.trim()
+        : config.label,
+
+    className:
+      config.badgeClass,
+  };
+}
+
 export default function TodoList({
   todos,
 }: {
@@ -122,14 +229,36 @@ export default function TodoList({
 }) {
   const router = useRouter();
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [
+    editingId,
+    setEditingId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [editTitle, setEditTitle] =
-    useState("");
+  const [
+    editTitle,
+    setEditTitle,
+  ] = useState("");
 
-  const [editMinutes, setEditMinutes] =
-    useState("");
+  const [
+    editMinutes,
+    setEditMinutes,
+  ] = useState("");
+
+  const [
+    editCategory,
+    setEditCategory,
+  ] =
+    useState<TodoCategory | null>(
+      null
+    );
+
+  const [
+    editCustomTag,
+    setEditCustomTag,
+  ] = useState("");
 
   const [
     editScheduledStart,
@@ -141,22 +270,39 @@ export default function TodoList({
     setEditScheduledEnd,
   ] = useState("");
 
-  const [busyId, setBusyId] =
-    useState<string | null>(null);
+  const [
+    busyId,
+    setBusyId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  async function toggleTodo(todo: Todo) {
+  /*
+   * 完成 / 恢复任务
+   */
+  async function toggleTodo(
+    todo: Todo
+  ) {
     if (busyId) return;
 
     setBusyId(todo.id);
     setError(null);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
     const completed =
-      todo.status === "completed";
+      todo.status ===
+      "completed";
 
     const { error } =
       await supabase
@@ -168,9 +314,10 @@ export default function TodoList({
 
           started_at: null,
 
-          completed_at: completed
-            ? null
-            : new Date().toISOString(),
+          completed_at:
+            completed
+              ? null
+              : new Date().toISOString(),
         })
         .eq("id", todo.id);
 
@@ -187,16 +334,28 @@ export default function TodoList({
     router.refresh();
   }
 
-  function openFocus(todoId: string) {
+  /*
+   * 进入 Focus
+   */
+  function openFocus(
+    todoId: string
+  ) {
     router.push(
       `/focus/${todoId}`
     );
   }
 
-  function startEditing(todo: Todo) {
+  /*
+   * 开始编辑
+   */
+  function startEditing(
+    todo: Todo
+  ) {
     setEditingId(todo.id);
 
-    setEditTitle(todo.title);
+    setEditTitle(
+      todo.title
+    );
 
     setEditMinutes(
       todo.estimated_minutes
@@ -204,6 +363,14 @@ export default function TodoList({
             todo.estimated_minutes
           )
         : ""
+    );
+
+    setEditCategory(
+      todo.category ?? null
+    );
+
+    setEditCustomTag(
+      todo.custom_tag ?? ""
     );
 
     setEditScheduledStart(
@@ -221,15 +388,27 @@ export default function TodoList({
     setError(null);
   }
 
+  /*
+   * 取消编辑
+   */
   function cancelEditing() {
     setEditingId(null);
+
     setEditTitle("");
     setEditMinutes("");
+
+    setEditCategory(null);
+    setEditCustomTag("");
+
     setEditScheduledStart("");
     setEditScheduledEnd("");
+
     setError(null);
   }
 
+  /*
+   * 保存编辑
+   */
   async function saveEdit(
     todoId: string
   ) {
@@ -293,10 +472,21 @@ export default function TodoList({
       await supabase
         .from("todos")
         .update({
-          title: cleanTitle,
+          title:
+            cleanTitle,
 
           estimated_minutes:
             parsedMinutes,
+
+          category:
+            editCategory,
+
+          custom_tag:
+            editCategory ===
+              "other" &&
+            editCustomTag.trim()
+              ? editCustomTag.trim()
+              : null,
 
           scheduled_start:
             editScheduledStart
@@ -328,6 +518,9 @@ export default function TodoList({
     router.refresh();
   }
 
+  /*
+   * 删除任务
+   */
   async function deleteTodo(
     todo: Todo
   ) {
@@ -336,7 +529,9 @@ export default function TodoList({
         `确定删除「${todo.title}」吗？`
       );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     setBusyId(todo.id);
     setError(null);
@@ -360,10 +555,19 @@ export default function TodoList({
       return;
     }
 
+    if (
+      editingId ===
+      todo.id
+    ) {
+      cancelEditing();
+    }
+
     router.refresh();
   }
 
-  if (todos.length === 0) {
+  if (
+    todos.length === 0
+  ) {
     return (
       <p className="text-sm text-ink-faint">
         这里还没有任务。
@@ -379,260 +583,468 @@ export default function TodoList({
         </p>
       )}
 
-      {todos.map((todo) => {
-        const completed =
-          todo.status ===
-          "completed";
+      {todos.map(
+        (todo) => {
+          const completed =
+            todo.status ===
+            "completed";
 
-        const editing =
-          editingId === todo.id;
+          const editing =
+            editingId ===
+            todo.id;
 
-        const busy =
-          busyId === todo.id;
+          const busy =
+            busyId ===
+            todo.id;
 
-        const status =
-          statusInfo(todo.status);
+          const status =
+            statusInfo(
+              todo.status
+            );
 
-        const scheduledTime =
-          formatScheduledTime(
-            todo.scheduled_start,
-            todo.scheduled_end
-          );
+          const category =
+            categoryInfo(
+              todo.category,
+              todo.custom_tag
+            );
 
-        if (editing) {
+          const scheduledTime =
+            formatScheduledTime(
+              todo.scheduled_start,
+              todo.scheduled_end
+            );
+
+          /*
+           * ==========================
+           * 编辑模式
+           * ==========================
+           */
+          if (editing) {
+            return (
+              <div
+                key={todo.id}
+                className="rounded-2xl border border-sage-300 bg-white p-5 shadow-soft"
+              >
+                <div className="space-y-5">
+                  {/* 名称 */}
+                  <div>
+                    <label className="mb-1.5 block text-xs text-ink-faint">
+                      任务名称
+                    </label>
+
+                    <input
+                      className="input"
+                      value={
+                        editTitle
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setEditTitle(
+                          e.target
+                            .value
+                        )
+                      }
+                      disabled={
+                        busy
+                      }
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* 分类 */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-xs text-ink-faint">
+                        分类
+                      </label>
+
+                      {editCategory && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditCategory(
+                              null
+                            );
+
+                            setEditCustomTag(
+                              ""
+                            );
+                          }}
+                          className="text-[11px] text-ink-faint hover:text-ink-soft"
+                        >
+                          清除
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {CATEGORIES.map(
+                        (
+                          item
+                        ) => {
+                          const selected =
+                            editCategory ===
+                            item.value;
+
+                          return (
+                            <button
+                              key={
+                                item.value
+                              }
+                              type="button"
+                              disabled={
+                                busy
+                              }
+                              onClick={() => {
+                                setEditCategory(
+                                  item.value
+                                );
+
+                                if (
+                                  item.value !==
+                                  "other"
+                                ) {
+                                  setEditCustomTag(
+                                    ""
+                                  );
+                                }
+                              }}
+                              className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                selected
+                                  ? item.selectedClass
+                                  : "border-line bg-white/70 text-ink-soft hover:bg-white"
+                              }`}
+                            >
+                              {
+                                item.label
+                              }
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 其他标签 */}
+                  {editCategory ===
+                    "other" && (
+                    <div>
+                      <label className="mb-1.5 block text-xs text-ink-faint">
+                        自定义标签
+                      </label>
+
+                      <input
+                        className="input"
+                        placeholder="比如：健身 / 创作 / 社交"
+                        value={
+                          editCustomTag
+                        }
+                        onChange={(
+                          e
+                        ) =>
+                          setEditCustomTag(
+                            e.target
+                              .value
+                          )
+                        }
+                        disabled={
+                          busy
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {/* 预计时间 */}
+                  <div>
+                    <label className="mb-1.5 block text-xs text-ink-faint">
+                      预计时间（分钟）
+                    </label>
+
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={
+                        editMinutes
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setEditMinutes(
+                          e.target
+                            .value
+                        )
+                      }
+                      placeholder="例如 45"
+                      disabled={
+                        busy
+                      }
+                    />
+                  </div>
+
+                  {/* 排期 */}
+                  <div>
+                    <p className="mb-2 text-xs text-ink-faint">
+                      日程安排
+                    </p>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-[11px] text-ink-faint">
+                          开始
+                        </label>
+
+                        <input
+                          className="input"
+                          type="datetime-local"
+                          value={
+                            editScheduledStart
+                          }
+                          onChange={(
+                            e
+                          ) =>
+                            setEditScheduledStart(
+                              e
+                                .target
+                                .value
+                            )
+                          }
+                          disabled={
+                            busy
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-[11px] text-ink-faint">
+                          结束
+                        </label>
+
+                        <input
+                          className="input"
+                          type="datetime-local"
+                          value={
+                            editScheduledEnd
+                          }
+                          onChange={(
+                            e
+                          ) =>
+                            setEditScheduledEnd(
+                              e
+                                .target
+                                .value
+                            )
+                          }
+                          disabled={
+                            busy
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={
+                        cancelEditing
+                      }
+                      disabled={
+                        busy
+                      }
+                      className="btn-ghost flex items-center gap-1.5 text-sm"
+                    >
+                      <X className="h-4 w-4" />
+                      取消
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        saveEdit(
+                          todo.id
+                        )
+                      }
+                      disabled={
+                        busy
+                      }
+                      className="btn-primary flex items-center gap-1.5 text-sm"
+                    >
+                      <Save className="h-4 w-4" />
+
+                      {busy
+                        ? "保存中…"
+                        : "保存"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          /*
+           * ==========================
+           * 普通任务卡
+           * ==========================
+           */
           return (
             <div
               key={todo.id}
-              className="rounded-2xl border border-sage-300 bg-white p-4 shadow-soft"
+              className="group flex items-center gap-3 rounded-2xl border border-line bg-white/50 px-4 py-3 transition hover:bg-white"
             >
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-xs text-ink-faint">
-                    任务名称
-                  </label>
+              {/* 完成 */}
+              <button
+                type="button"
+                onClick={() =>
+                  toggleTodo(
+                    todo
+                  )
+                }
+                disabled={
+                  busy
+                }
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                title={
+                  completed
+                    ? "标记为未完成"
+                    : "标记完成"
+                }
+              >
+                {completed ? (
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-white">
+                    <Check className="h-4 w-4" />
+                  </span>
+                ) : (
+                  <Circle className="h-6 w-6 text-ink-faint" />
+                )}
+              </button>
 
-                  <input
-                    className="input"
-                    value={editTitle}
-                    onChange={(e) =>
-                      setEditTitle(
-                        e.target.value
-                      )
+              {/* 信息 */}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p
+                    className={
+                      completed
+                        ? "truncate text-sm text-ink-faint line-through"
+                        : "truncate text-sm font-medium text-ink"
                     }
-                    disabled={busy}
-                    autoFocus
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs text-ink-faint">
-                    预计时间（分钟）
-                  </label>
-
-                  <input
-                    className="input"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={
-                      editMinutes
-                    }
-                    onChange={(e) =>
-                      setEditMinutes(
-                        e.target.value
-                      )
-                    }
-                    placeholder="例如 45"
-                    disabled={busy}
-                  />
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-xs text-ink-faint">
-                      开始时间
-                    </label>
-
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={
-                        editScheduledStart
-                      }
-                      onChange={(e) =>
-                        setEditScheduledStart(
-                          e.target.value
-                        )
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-xs text-ink-faint">
-                      结束时间
-                    </label>
-
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={
-                        editScheduledEnd
-                      }
-                      onChange={(e) =>
-                        setEditScheduledEnd(
-                          e.target.value
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={
-                      cancelEditing
-                    }
-                    disabled={busy}
-                    className="btn-ghost flex items-center gap-1.5 text-sm"
                   >
-                    <X className="h-4 w-4" />
-                    取消
-                  </button>
+                    {
+                      todo.title
+                    }
+                  </p>
 
+                  {/* 分类 */}
+                  {category && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${category.className}`}
+                    >
+                      {
+                        category.label
+                      }
+                    </span>
+                  )}
+
+                  {/* 状态 */}
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] ${status.className}`}
+                  >
+                    {
+                      status.label
+                    }
+                  </span>
+                </div>
+
+                {/* Metadata */}
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
+                  {todo.estimated_minutes && (
+                    <span>
+                      预计{" "}
+                      {
+                        todo.estimated_minutes
+                      }{" "}
+                      分钟
+                    </span>
+                  )}
+
+                  {scheduledTime && (
+                    <span className="flex items-center gap-1">
+                      <Clock3 className="h-3.5 w-3.5" />
+
+                      {
+                        scheduledTime
+                      }
+                    </span>
+                  )}
+
+                  {!scheduledTime &&
+                    !completed && (
+                      <span>
+                        未排期
+                      </span>
+                    )}
+                </div>
+              </div>
+
+              {/* 操作 */}
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    startEditing(
+                      todo
+                    )
+                  }
+                  disabled={
+                    busy
+                  }
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
+                  title="编辑任务"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    deleteTodo(
+                      todo
+                    )
+                  }
+                  disabled={
+                    busy
+                  }
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
+                  title="删除任务"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+
+                {!completed && (
                   <button
                     type="button"
                     onClick={() =>
-                      saveEdit(
+                      openFocus(
                         todo.id
                       )
                     }
-                    disabled={busy}
-                    className="btn-primary flex items-center gap-1.5 text-sm"
+                    disabled={
+                      busy
+                    }
+                    className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-700"
+                    title="开始专注"
                   >
-                    <Save className="h-4 w-4" />
-                    {busy
-                      ? "保存中…"
-                      : "保存"}
+                    <Play className="ml-0.5 h-4 w-4 fill-current" />
                   </button>
-                </div>
+                )}
               </div>
             </div>
           );
         }
-
-        return (
-          <div
-            key={todo.id}
-            className="group flex items-center gap-3 rounded-2xl border border-line bg-white/50 px-4 py-3 transition hover:bg-white"
-          >
-            <button
-              type="button"
-              onClick={() =>
-                toggleTodo(todo)
-              }
-              disabled={busy}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-            >
-              {completed ? (
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-white">
-                  <Check className="h-4 w-4" />
-                </span>
-              ) : (
-                <Circle className="h-6 w-6 text-ink-faint" />
-              )}
-            </button>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p
-                  className={
-                    completed
-                      ? "truncate text-sm text-ink-faint line-through"
-                      : "truncate text-sm font-medium text-ink"
-                  }
-                >
-                  {todo.title}
-                </p>
-
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] ${status.className}`}
-                >
-                  {status.label}
-                </span>
-              </div>
-
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
-                {todo.estimated_minutes && (
-                  <span>
-                    预计{" "}
-                    {
-                      todo.estimated_minutes
-                    }{" "}
-                    分钟
-                  </span>
-                )}
-
-                {scheduledTime && (
-                  <span className="flex items-center gap-1">
-                    <Clock3 className="h-3.5 w-3.5" />
-                    {scheduledTime}
-                  </span>
-                )}
-
-                {!scheduledTime &&
-                  !completed && (
-                    <span>
-                      未排期
-                    </span>
-                  )}
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={() =>
-                  startEditing(todo)
-                }
-                disabled={busy}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-                title="编辑任务"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  deleteTodo(todo)
-                }
-                disabled={busy}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
-                title="删除任务"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-
-              {!completed && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    openFocus(
-                      todo.id
-                    )
-                  }
-                  disabled={busy}
-                  className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-700"
-                  title="开始专注"
-                >
-                  <Play className="ml-0.5 h-4 w-4 fill-current" />
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      )}
     </div>
   );
 }
