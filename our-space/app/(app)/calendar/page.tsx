@@ -42,6 +42,7 @@ export default async function CalendarPage() {
     .select(`
       id,
       title,
+      description,
       estimated_minutes,
       status,
       group_id,
