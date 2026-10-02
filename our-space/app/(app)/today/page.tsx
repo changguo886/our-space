@@ -51,6 +51,7 @@ export default async function TodayPage() {
       `
       id,
       today_tasks,
+      description,
       today_note,
       tomorrow_plan,
       reactions(reaction_type),
