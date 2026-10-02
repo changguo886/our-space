@@ -1,5 +1,7 @@
 import Link from "next/link";
+
 import { requireGroup } from "@/lib/session";
+
 import {
   formatLongDate,
   nameOf,
@@ -8,12 +10,19 @@ import {
 } from "@/lib/utils";
 
 import EntryForm from "@/components/EntryForm";
+
 import AddTodoForm from "@/components/AddTodoForm";
-import TodoList, { type Todo } from "@/components/TodoList";
 
-import { MessageCircle } from "lucide-react";
+import TodoList, {
+  type Todo,
+} from "@/components/TodoList";
 
-export const dynamic = "force-dynamic";
+import {
+  MessageCircle,
+} from "lucide-react";
+
+export const dynamic =
+  "force-dynamic";
 
 export default async function TodayPage() {
   const {
@@ -23,46 +32,92 @@ export default async function TodayPage() {
     group,
   } = await requireGroup();
 
-  const tz = tzOf(profile);
-  const today = todayIn(tz);
+  const tz =
+    tzOf(profile);
 
-  // 当前 Space 的今日记录
-  const { data: entry } = await supabase
-    .from("daily_entries")
-    .select(
-      "id, today_tasks, today_note, tomorrow_plan, reactions(reaction_type), comments(count)"
+  const today =
+    todayIn(tz);
+
+  /*
+   * 今日记录
+   */
+  const {
+    data: entry,
+  } = await supabase
+    .from(
+      "daily_entries"
     )
-    .eq("user_id", user.id)
-    .eq("group_id", group.id)
-    .eq("entry_date", today)
+    .select(
+      `
+      id,
+      today_tasks,
+      today_note,
+      tomorrow_plan,
+      reactions(reaction_type),
+      comments(count)
+      `
+    )
+    .eq(
+      "user_id",
+      user.id
+    )
+    .eq(
+      "group_id",
+      group.id
+    )
+    .eq(
+      "entry_date",
+      today
+    )
     .maybeSingle();
 
-  // 当前用户今天的 Todo
-  //
-  // 显示：
-  // 1. 私人 Todo
-  // 2. 当前 Space 的 Todo
-  //
-  // 不显示：
-  // 1. 其他日期的 Todo
-  // 2. 其他 Space 的 Todo
-  const { data: todos } = await supabase
+  /*
+   * 今日 Todo
+   */
+  const {
+    data: todos,
+  } = await supabase
     .from("todos")
-    .select(
-      "id, title, estimated_minutes, status, group_id, task_date"
+    .select(`
+      id,
+      title,
+      estimated_minutes,
+      status,
+      group_id,
+      task_date,
+      scheduled_start,
+      scheduled_end,
+      category,
+      custom_tag
+    `)
+    .eq(
+      "user_id",
+      user.id
     )
-    .eq("user_id", user.id)
-    .eq("task_date", today)
-    .or(`group_id.is.null,group_id.eq.${group.id}`)
-    .order("created_at", { ascending: false });
+    .eq(
+      "task_date",
+      today
+    )
+    .or(
+      `group_id.is.null,group_id.eq.${group.id}`
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false,
+      }
+    );
 
   const reactionCount =
-    entry?.reactions?.length ?? 0;
+    entry?.reactions
+      ?.length ?? 0;
 
   const commentCount =
     (
       entry?.comments as unknown as
-        | { count: number }[]
+        | {
+            count: number;
+          }[]
         | undefined
     )?.[0]?.count ?? 0;
 
@@ -72,15 +127,26 @@ export default async function TodayPage() {
       <header className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">
-            Hi, {nameOf(profile)} ☀️
+            Hi,{" "}
+            {
+              nameOf(
+                profile
+              )
+            }{" "}
+            ☀️
           </h1>
 
           <p className="mt-1 text-sm text-ink-faint">
-            {formatLongDate(today)}
+            {
+              formatLongDate(
+                today
+              )
+            }
           </p>
 
           <p className="mt-1 text-xs text-ink-faint">
-            当前 Space：{group.name}
+            当前 Space：
+            {group.name}
           </p>
         </div>
 
@@ -108,16 +174,27 @@ export default async function TodayPage() {
 
         <div className="mt-5">
           <TodoList
-            todos={(todos ?? []) as Todo[]}
+            todos={
+              (todos ??
+                []) as Todo[]
+            }
           />
         </div>
 
         <div className="mt-6 border-t border-line pt-5">
           <AddTodoForm
-            userId={user.id}
-            activeSpaceId={group.id}
-            activeSpaceName={group.name}
-            taskDate={today}
+            userId={
+              user.id
+            }
+            activeSpaceId={
+              group.id
+            }
+            activeSpaceName={
+              group.name
+            }
+            taskDate={
+              today
+            }
           />
         </div>
       </section>
@@ -125,31 +202,52 @@ export default async function TodayPage() {
       {/* Daily Entry */}
       <section className="mt-8">
         <EntryForm
-          groupId={group.id}
-          userId={user.id}
-          entryDate={today}
+          groupId={
+            group.id
+          }
+          userId={
+            user.id
+          }
+          entryDate={
+            today
+          }
           initial={{
             today_tasks:
-              entry?.today_tasks ?? "",
+              entry
+                ?.today_tasks ??
+              "",
+
             today_note:
-              entry?.today_note ?? "",
+              entry
+                ?.today_note ??
+              "",
+
             tomorrow_plan:
-              entry?.tomorrow_plan ?? "",
+              entry
+                ?.tomorrow_plan ??
+              "",
           }}
         />
       </section>
 
-      {/* Reactions / comments */}
+      {/* reactions */}
       {entry &&
-        (reactionCount > 0 ||
-          commentCount > 0) && (
+        (reactionCount >
+          0 ||
+          commentCount >
+            0) && (
           <Link
             href={`/entry/${entry.id}`}
             className="card mt-6 flex items-center justify-between px-5 py-4 text-sm text-ink-soft transition hover:bg-white"
           >
             <span>
-              朋友们给了你 {reactionCount} 个回应
-              {commentCount > 0 &&
+              朋友们给了你{" "}
+              {
+                reactionCount
+              }{" "}
+              个回应
+              {commentCount >
+                0 &&
                 `、${commentCount} 条留言`}{" "}
               💌
             </span>
