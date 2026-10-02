@@ -24,22 +24,47 @@ export default async function TodoPage() {
   const today = todayIn(tz);
 
   /*
-   * 当前 Todo 页面显示：
+   * Todo 页面显示：
    *
    * 1. 私人 Todo
    * 2. 当前 Space 的 Todo
    *
-   * 不显示其他 Space 的 Todo。
+   * 查询所有日期，
+   * 后面再分成：
+   * - 今天
+   * - 以前没完成
+   * - 最近完成
    */
-const { data: todos } = await supabase
-  .from("todos")
-  .select(
-    "id, title, estimated_minutes, status, group_id, task_date, scheduled_start, scheduled_end"
-  )
-  .eq("user_id", user.id)
-  .eq("task_date", today)
-  .or(`group_id.is.null,group_id.eq.${group.id}`)
-  .order("created_at", { ascending: false });
+  const { data: todos, error } =
+    await supabase
+      .from("todos")
+      .select(
+        `
+        id,
+        title,
+        estimated_minutes,
+        status,
+        group_id,
+        task_date,
+        started_at,
+        elapsed_seconds,
+        completed_at,
+        created_at,
+        scheduled_start,
+        scheduled_end
+      `
+      )
+      .eq("user_id", user.id)
+      .or(
+        `group_id.is.null,group_id.eq.${group.id}`
+      )
+      .order("task_date", {
+        ascending: false,
+      })
+      .order("created_at", {
+        ascending: false,
+      });
+
   if (error) {
     throw new Error(
       `Failed to load todos: ${error.message}`
@@ -49,7 +74,7 @@ const { data: todos } = await supabase
   const allTodos = todos ?? [];
 
   /*
-   * 今天的任务
+   * 今天未完成
    */
   const todayTodos = allTodos.filter(
     (todo) =>
@@ -58,7 +83,7 @@ const { data: todos } = await supabase
   );
 
   /*
-   * 今天已经完成的任务
+   * 今天已完成
    */
   const todayCompleted = allTodos.filter(
     (todo) =>
@@ -76,9 +101,8 @@ const { data: todos } = await supabase
   );
 
   /*
-   * 以前完成的任务。
-   * 第一版只显示最近 20 条，
-   * 完整历史以后放到 History 页面。
+   * 以前完成的任务
+   * 第一版只显示最近 20 条
    */
   const completedHistory = allTodos
     .filter(
