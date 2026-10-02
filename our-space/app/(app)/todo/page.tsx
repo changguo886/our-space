@@ -41,22 +41,23 @@ export default async function TodoPage() {
     error,
   } = await supabase
     .from("todos")
-    .select(`
-      id,
-      title,
-      estimated_minutes,
-      status,
-      group_id,
-      task_date,
-      started_at,
-      elapsed_seconds,
-      completed_at,
-      created_at,
-      scheduled_start,
-      scheduled_end,
-      category,
-      custom_tag
-    `)
+.select(`
+  id,
+  title,
+  description,
+  estimated_minutes,
+  status,
+  group_id,
+  task_date,
+  started_at,
+  elapsed_seconds,
+  completed_at,
+  created_at,
+  scheduled_start,
+  scheduled_end,
+  category,
+  custom_tag
+`)
     .eq(
       "user_id",
       user.id
