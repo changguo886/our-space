@@ -566,104 +566,75 @@ function DraggableTask({
     attributes,
     listeners,
     setNodeRef,
-    transform,
     isDragging,
-  } =
-    useDraggable({
-      id:
-        `todo:${todo.id}`,
+  } = useDraggable({
+    id: `todo:${todo.id}`,
 
-      data: {
-        type:
-          "todo",
-
-        todoId:
-          todo.id,
-      },
-    });
+    data: {
+      type: "todo",
+      todoId: todo.id,
+    },
+  });
 
   const category =
-    categoryOf(
-      todo
-    );
-
-  const style:
-    React.CSSProperties = {
-    transform:
-      CSS.Translate.toString(
-        transform
-      ),
-
-    /*
-     * 手机拖动时，
-     * 不让浏览器把它误认为页面滚动。
-     */
-    touchAction:
-      "none",
-  };
+    categoryOf(todo);
 
   return (
     <div
-      ref={
-        setNodeRef
-      }
-      style={
-        style
-      }
+      ref={setNodeRef}
       {...attributes}
       {...listeners}
+      style={{
+        touchAction: "none",
+        userSelect: "none",
+        WebkitUserSelect:
+          "none",
+      }}
       className={`
         flex
-        cursor-grab
         items-center
         gap-3
         rounded-[18px]
         border
         px-3
         py-3
-        transition
+        cursor-grab
+        select-none
+        transition-[opacity,box-shadow,transform]
         duration-150
         active:cursor-grabbing
         ${category.card}
-
         ${
           isDragging
-            ? "scale-[0.98] opacity-25"
+            ? "scale-[0.98] opacity-30"
             : "hover:-translate-y-[1px] hover:shadow-soft"
         }
       `}
     >
-      <GripVertical className="h-4 w-4 shrink-0 text-ink-faint/45" />
+      <GripVertical className="pointer-events-none h-4 w-4 shrink-0 text-ink-faint/45" />
 
-      <div className="min-w-0 flex-1">
+      <div className="pointer-events-none min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-ink">
-          {
-            todo.title
-          }
+          {todo.title}
         </p>
 
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <span className="text-[11px] text-ink-faint">
-            {
-              todo.estimated_minutes ??
-              30
-            }{" "}
+            {todo.estimated_minutes ??
+              30}{" "}
             分钟
           </span>
 
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
           >
-            {
-              category.label
-            }
+            {category.label}
           </span>
         </div>
       </div>
     </div>
   );
 }
-
 /* =========================================================
    Drag overlay
 ========================================================= */
@@ -1047,29 +1018,29 @@ export default function CalendarPlanner({
    * 手机则长按一点点
    * 再开始拖。
    */
-  const sensors =
-    useSensors(
-      useSensor(
-        PointerSensor,
-        {
-          activationConstraint:
-            {
-              distance: 6,
-            },
-        }
-      ),
+const sensors =
+  useSensors(
+    useSensor(
+      PointerSensor,
+      {
+        activationConstraint:
+          {
+            distance: 6,
+          },
+      }
+    ),
 
-      useSensor(
-        TouchSensor,
-        {
-          activationConstraint:
-            {
-              delay: 180,
-              tolerance: 8,
-            },
-        }
-      )
-    );
+    useSensor(
+      TouchSensor,
+      {
+        activationConstraint:
+          {
+            delay: 180,
+            tolerance: 8,
+          },
+      }
+    )
+  );
 
   const slots =
     useMemo(
