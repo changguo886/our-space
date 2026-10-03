@@ -5,7 +5,7 @@ Next.js 15 + Tailwind CSS + Supabase（数据库 / 登录 / 权限），部署�
 
 ---
 
-## 上线步骤（大约 20 分钟，全部免费）
+## 上线步骤
 
 ### 1. 创建 Supabase 项目
 1. 打开 <https://supabase.com> 注册 → **New project**（Region 选离你们都比较近的，比如 `US East` 或 `Singapore`）。
