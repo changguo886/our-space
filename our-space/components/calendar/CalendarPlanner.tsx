@@ -61,63 +61,29 @@ type TodoSession = {
 
 type CalendarTodo = {
   id: string;
-
   title: string;
-
-  description:
-  | string
-  | null;
-
-  estimated_minutes:
-    | number
-    | null;
-
+  description: string | null;
+  estimated_minutes: number | null;
   status: string;
+  group_id: string | null;
+  task_date: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  category: Category | null;
+  custom_tag: string | null;
+  started_at: string | null;
+  elapsed_seconds: number | null;
 
-  group_id:
-    | string
-    | null;
-
-  task_date:
-    | string
-    | null;
-
-  scheduled_start:
-    | string
-    | null;
-
-  scheduled_end:
-    | string
-    | null;
-
-  category:
-    | Category
-    | null;
-
-  custom_tag:
-    | string
-    | null;
-
-  started_at:
-    | string
-    | null;
-
-  elapsed_seconds:
-    | number
-    | null;
+  /*
+   * 一个 Todo 可以对应多个 Calendar Session。
+   * 当前主要用于计算已安排时间 / 剩余时间和任务池视觉进度。
+   */
   todo_sessions: TodoSession[];
 };
 
-
-
 type Props = {
-  initialTodos:
-    CalendarTodo[];
-  
-  
-
-  initialDate:
-    string;
+  initialTodos: CalendarTodo[];
+  initialDate: string;
 };
 
 /* =========================================================
@@ -243,6 +209,10 @@ const CATEGORY_INFO: Record<
   },
 };
 
+/**
+ * 返回 Todo 对应的分类视觉配置。
+ * 对于 other 分类，如果存在 custom_tag，则优先显示自定义标签。
+ */
 function categoryOf(
   todo: CalendarTodo
 ) {
@@ -285,6 +255,10 @@ function categoryOf(
    Date helpers
 ========================================================= */
 
+/**
+ * 在 YYYY-MM-DD 日期字符串上增加或减少天数。
+ * 使用本地 Date 构造，避免 UTC 解析造成日期偏移。
+ */
 function addDays(
   dateString: string,
   amount: number
@@ -327,6 +301,9 @@ function addDays(
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * 将 YYYY-MM-DD 格式化为 Calendar 顶部显示的中文日期标题。
+ */
 function formatDateTitle(
   dateString: string
 ) {
@@ -355,6 +332,9 @@ function formatDateTitle(
   );
 }
 
+/**
+ * 从 ISO 时间中提取用户本地时区对应的 YYYY-MM-DD。
+ */
 function localDatePart(
   iso: string
 ) {
@@ -383,6 +363,9 @@ function localDatePart(
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * 将 ISO 时间格式化为 24 小时制 HH:mm。
+ */
 function formatTime(
   iso: string
 ) {
@@ -398,6 +381,10 @@ function formatTime(
   );
 }
 
+/**
+ * 根据本地日期、小时和分钟创建 Date。
+ * Calendar 拖拽落点会通过它转换成真实时间。
+ */
 function makeLocalDate(
   dateString: string,
   hour: number,
@@ -423,6 +410,9 @@ function makeLocalDate(
   );
 }
 
+/**
+ * 将 ISO 时间转换成 datetime-local 输入框需要的本地值。
+ */
 function toLocalInputValue(
   iso:
     | string
@@ -450,6 +440,13 @@ function toLocalInputValue(
     );
 }
 
+/**
+ * 返回旧版 Todo 排期的时长（分钟）。
+ *
+ * 迁移期仍保留 scheduled_start / scheduled_end，
+ * 因此旧 Calendar 时间块继续通过这个函数计算持续时间。
+ * 如果没有有效排期，则退回 estimated_minutes，最后默认 30 分钟。
+ */
 function durationMinutes(
   todo: CalendarTodo
 ) {
@@ -481,39 +478,42 @@ function durationMinutes(
   );
 }
 
+/**
+ * 计算单个 todo_session 的计划时长（分钟）。
+ *
+ * 这里只计算排期长度，不表示任务已经完成了多少。
+ */
 function sessionDurationMinutes(
   session: TodoSession
 ) {
-  const start =
-    new Date(
-      session.scheduled_start
-    ).getTime();
+  const start = new Date(
+    session.scheduled_start
+  ).getTime();
 
-  const end =
-    new Date(
-      session.scheduled_end
-    ).getTime();
+  const end = new Date(
+    session.scheduled_end
+  ).getTime();
 
   return Math.max(
     0,
     Math.round(
-      (end - start) /
-        60000
+      (end - start) / 60000
     )
   );
 }
 
+/**
+ * 汇总一个 Todo 的所有 Session，计算已经安排进 Calendar 的总分钟数。
+ *
+ * 注意：scheduledMinutes 表示“已排期时间”，不是“已完成时间”。
+ */
 function scheduledMinutes(
   todo: CalendarTodo
 ) {
   return (
-    todo.todo_sessions ??
-    []
+    todo.todo_sessions ?? []
   ).reduce(
-    (
-      total,
-      session
-    ) =>
+    (total, session) =>
       total +
       sessionDurationMinutes(
         session
@@ -522,12 +522,16 @@ function scheduledMinutes(
   );
 }
 
+/**
+ * 计算 Todo 尚未安排的预计时间。
+ *
+ * remaining = estimated_minutes - scheduledMinutes(todo)
+ * 没有 estimated_minutes 时返回 null；已排满或超排时最低显示 0。
+ */
 function remainingMinutes(
   todo: CalendarTodo
 ) {
-  if (
-    !todo.estimated_minutes
-  ) {
+  if (!todo.estimated_minutes) {
     return null;
   }
 
@@ -538,6 +542,13 @@ function remainingMinutes(
   );
 }
 
+/**
+ * 返回任务的排期比例，范围固定在 0~1。
+ *
+ * 该比例用于任务池卡片背景的深浅填充：
+ * 深色部分 = 已安排时间；浅色部分 = 尚未安排时间。
+ * 它不是任务完成度。
+ */
 function scheduledRatio(
   todo: CalendarTodo
 ) {
@@ -555,21 +566,20 @@ function scheduledRatio(
   );
 }
 
+/**
+ * 将分钟数格式化为紧凑的可读文本。
+ *
+ * 例：30 -> "30m"；90 -> "1h 30m"；120 -> "2h"。
+ */
 function formatMinutes(
   minutes: number
 ) {
   const hours =
-    Math.floor(
-      minutes / 60
-    );
+    Math.floor(minutes / 60);
 
-  const mins =
-    minutes % 60;
+  const mins = minutes % 60;
 
-  if (
-    hours > 0 &&
-    mins > 0
-  ) {
+  if (hours > 0 && mins > 0) {
     return `${hours}h ${mins}m`;
   }
 
@@ -580,7 +590,10 @@ function formatMinutes(
   return `${mins}m`;
 }
 
-
+/**
+ * 将任意分钟数吸附到 SLOT_MINUTES 的固定时间粒度。
+ * 当前为 15 分钟，用于拖拽和 resize 对齐。
+ */
 function snapMinutes(
   minutes: number
 ) {
@@ -605,6 +618,9 @@ type TimeSlot = {
   minute: number;
 };
 
+/**
+ * 根据当前日期生成 Calendar 的全部 15 分钟时间槽。
+ */
 function buildSlots(
   date: string
 ) {
@@ -644,6 +660,10 @@ function buildSlots(
   return result;
 }
 
+/**
+ * 解析 CalendarSlot 的 droppable id。
+ * 非法或非 slot id 会返回 null。
+ */
 function readSlotId(
   id: string
 ) {
@@ -699,6 +719,10 @@ function readSlotId(
   };
 }
 
+/**
+ * 判断两个 ISO 时间区间是否真正重叠。
+ * 相邻但首尾相接的区间不视为冲突。
+ */
 function overlaps(
   startA: string,
   endA: string,
@@ -735,6 +759,15 @@ function overlaps(
    Unscheduled task
 ========================================================= */
 
+/**
+ * 任务池中的可拖拽任务卡。
+ *
+ * 卡片本身就是排期进度可视化：
+ * - 左侧较深区域：已经安排到 Calendar 的时间；
+ * - 右侧较浅区域：尚未安排的预计时间。
+ *
+ * 同时保留“已安排 / 剩余”的数字文本，避免只靠颜色表达信息。
+ */
 function PoolTask({
   todo,
 }: {
@@ -745,16 +778,14 @@ function PoolTask({
     listeners,
     setNodeRef,
     isDragging,
-  } =
-    useDraggable({
-      id:
-        `todo:${todo.id}`,
-    });
+  } = useDraggable({
+    id: `todo:${todo.id}`,
+  });
 
   const category =
     categoryOf(todo);
 
-    const scheduled =
+  const scheduled =
     scheduledMinutes(todo);
 
   const remaining =
@@ -769,21 +800,22 @@ function PoolTask({
       {...attributes}
       {...listeners}
       style={{
-        touchAction:
-          "none",
+        touchAction: "none",
+        userSelect: "none",
 
-        userSelect:
-          "none",
-
-    background: `
-    linear-gradient(
-      to right,
-      rgba(147, 169, 142, 0.26) 0%,
-      rgba(147, 169, 142, 0.26) ${progress}%,
-      rgba(251, 247, 241, 0.72) ${progress}%,
-      rgba(251, 247, 241, 0.72) 100%
-    )
-  `,
+        /*
+         * 用整张卡片的背景填充表示排期比例，
+         * 不再额外增加独立 progress bar，降低任务池视觉噪音。
+         */
+        background: `
+          linear-gradient(
+            to right,
+            rgba(147, 169, 142, 0.26) 0%,
+            rgba(147, 169, 142, 0.26) ${progress}%,
+            rgba(251, 247, 241, 0.72) ${progress}%,
+            rgba(251, 247, 241, 0.72) 100%
+          )
+        `,
       }}
       className={`
         flex
@@ -792,11 +824,11 @@ function PoolTask({
         gap-3
         rounded-2xl
         border
+        border-line
         px-3
         py-3
         transition
         active:cursor-grabbing
-        border-line
 
         ${
           isDragging
@@ -810,32 +842,30 @@ function PoolTask({
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <p className="truncate text-sm font-medium text-ink">
-            {
-              todo.title
-            }
+            {todo.title}
           </p>
 
           <span
             className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
           >
-            {
-              category.label
-            }
+            {category.label}
           </span>
         </div>
 
-      <p className="mt-1 text-[11px] text-ink-faint">
-        已安排{" "}
-        {formatMinutes(scheduled)}
+        <p className="mt-1 text-[11px] text-ink-faint">
+          已安排{" "}
+          {formatMinutes(scheduled)}
 
-        {remaining !== null && (
-        <>
-        {" · "}
-        剩余{" "}
-        {formatMinutes(remaining)}
-          </>
+          {remaining !== null && (
+            <>
+              {" · "}
+              剩余{" "}
+              {formatMinutes(
+                remaining
+              )}
+            </>
           )}
-      </p>
+        </p>
       </div>
     </div>
   );
@@ -845,6 +875,10 @@ function PoolTask({
    Drag overlay
 ========================================================= */
 
+/**
+ * 拖拽过程中跟随指针显示的任务预览。
+ * 仅提供视觉反馈，不写入数据库。
+ */
 function DragPreview({
   todo,
 }: {
@@ -908,6 +942,10 @@ function DragPreview({
    Calendar slot
 ========================================================= */
 
+/**
+ * 单个 Calendar 时间槽。
+ * 同时作为 dnd-kit droppable，接收任务拖入并显示落点反馈。
+ */
 function CalendarSlot({
   slot,
   activeTodo,
@@ -992,6 +1030,10 @@ function CalendarSlot({
    Scheduled task
 ========================================================= */
 
+/**
+ * Calendar 中的旧版 Todo 时间块。
+ * 当前仍读取 todo.scheduled_start / scheduled_end，以保证迁移期兼容。
+ */
 function ScheduledTask({
   todo,
   selected,
@@ -1054,14 +1096,12 @@ function ScheduledTask({
     return null;
   }
 
-    /*
+  /*
    * 当前任务的分类视觉配置。
    * Calendar 中任务块的背景、边框和标签都由这里决定。
    */
   const category =
     categoryOf(todo);
-
-
 
   const start =
     new Date(
@@ -1138,6 +1178,10 @@ function ScheduledTask({
   const compact =
     height < 60;
 
+  /**
+   * 开始调整时间块高度。
+   * Pointer Move 只更新预览，Pointer Up 才把最终结束时间交给 onResize 保存。
+   */
   function beginResize(
     event:
       ReactPointerEvent<HTMLButtonElement>
@@ -1430,6 +1474,12 @@ function ScheduledTask({
    Main
 ========================================================= */
 
+/**
+ * Calendar 主组件。
+ *
+ * 负责日期切换、任务池、拖拽排期、时间块交换/移动、resize、
+ * 任务编辑以及进入 Focus。当前处于旧排期字段向 todo_sessions 迁移阶段。
+ */
 export default function CalendarPlanner({
   initialTodos,
   initialDate,
@@ -1716,6 +1766,9 @@ export default function CalendarPlanner({
       return collisions;
     };
 
+  /**
+   * 短暂标记刚刚放入 Calendar 的任务，用于播放轻量视觉反馈。
+   */
   function flashPlaced(
     id: string
   ) {
@@ -1743,6 +1796,9 @@ export default function CalendarPlanner({
      Drag start
   ======================================================= */
 
+  /**
+   * 处理拖拽开始：记录当前 Todo，供 DragOverlay 和落点预览使用。
+   */
   function handleDragStart(
     event:
       DragStartEvent
@@ -1781,6 +1837,15 @@ export default function CalendarPlanner({
      Drag end
   ======================================================= */
 
+  /**
+   * 处理拖拽结束。
+   *
+   * 当前仍维护旧版 scheduled_start / scheduled_end：
+   * - 拖到空时间槽：首次安排或移动任务；
+   * - 拖到另一任务：交换 / 替换时间段。
+   *
+   * todo_sessions 完全接管 Calendar 后，这里会改为创建或移动 Session。
+   */
   async function handleDragEnd(
     event:
       DragEndEvent
@@ -2187,6 +2252,10 @@ export default function CalendarPlanner({
      Resize schedule window
   ======================================================= */
 
+  /**
+   * 保存 resize 后的新结束时间。
+   * 保存前会检查时间范围和与其他任务的冲突。
+   */
   async function handleResize(
     todo:
       CalendarTodo,
@@ -2296,6 +2365,9 @@ export default function CalendarPlanner({
      Edit
   ======================================================= */
 
+  /**
+   * 打开任务编辑面板，并把 Todo 当前值同步到编辑 state。
+   */
   function startEditing(
     todo:
       CalendarTodo
@@ -2342,12 +2414,19 @@ export default function CalendarPlanner({
     );
   }
 
+  /**
+   * 关闭任务编辑面板，并清空编辑期间的临时 state。
+   */
   function cancelEditing() {
     setEditingTodoId(
       null
     );
   }
 
+  /**
+   * 校验并保存任务编辑结果。
+   * 当前迁移期仍会写入 Todo 的旧 scheduled_start / scheduled_end。
+   */
   async function saveEdit(
     todo:
       CalendarTodo
@@ -2596,6 +2675,9 @@ export default function CalendarPlanner({
      Complete
   ======================================================= */
 
+  /**
+   * 将 Todo 标记为已完成，并清理任务的运行中计时状态。
+   */
   async function completeTodo(
     todo:
       CalendarTodo
@@ -2691,6 +2773,9 @@ export default function CalendarPlanner({
      Focus
   ======================================================= */
 
+  /**
+   * 进入指定 Todo 的 Focus 页面。这里只负责导航，不在 Calendar 内启动计时。
+   */
   async function openFocus(
     todo:
       CalendarTodo
