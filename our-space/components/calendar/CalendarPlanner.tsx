@@ -555,6 +555,31 @@ function scheduledRatio(
   );
 }
 
+function formatMinutes(
+  minutes: number
+) {
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
+
+  const mins =
+    minutes % 60;
+
+  if (
+    hours > 0 &&
+    mins > 0
+  ) {
+    return `${hours}h ${mins}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${mins}m`;
+}
+
 
 function snapMinutes(
   minutes: number
@@ -729,6 +754,15 @@ function PoolTask({
   const category =
     categoryOf(todo);
 
+    const scheduled =
+    scheduledMinutes(todo);
+
+  const remaining =
+    remainingMinutes(todo);
+
+  const progress =
+    scheduledRatio(todo) * 100;
+
   return (
     <div
       ref={setNodeRef}
@@ -740,6 +774,16 @@ function PoolTask({
 
         userSelect:
           "none",
+
+    background: `
+    linear-gradient(
+      to right,
+      rgba(147, 169, 142, 0.26) 0%,
+      rgba(147, 169, 142, 0.26) ${progress}%,
+      rgba(251, 247, 241, 0.72) ${progress}%,
+      rgba(251, 247, 241, 0.72) 100%
+    )
+  `,
       }}
       className={`
         flex
@@ -1010,17 +1054,7 @@ function ScheduledTask({
     return null;
   }
 
-  const category =
-    categoryOf(todo);
 
-    const scheduled =
-    scheduledMinutes(todo);
-
-  const remaining =
-    remainingMinutes(todo);
-
-  const progress =
-    scheduledRatio(todo) * 100;
 
   const start =
     new Date(
