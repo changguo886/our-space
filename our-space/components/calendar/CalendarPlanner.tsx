@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
 import {
   Check,
   ChevronLeft,
@@ -10,19 +9,20 @@ import {
   Clock3,
   GripHorizontal,
   GripVertical,
+  LoaderCircle,
   Pencil,
   Play,
   Plus,
   Save,
+  Trash2,
   X,
 } from "lucide-react";
-
 import {
+  useEffect,
   useMemo,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-
 import {
   DndContext,
   DragOverlay,
@@ -33,25 +33,17 @@ import {
   useDroppable,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 
-import {
-  createClient,
-} from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 
 /* =========================================================
    Types
 ========================================================= */
 
-type Category =
-  | "work"
-  | "study"
-  | "life"
-  | "rest"
-  | "other";
+type Category = "work" | "study" | "life" | "rest" | "other";
 
 type TodoSession = {
   id: string;
@@ -67,16 +59,22 @@ type CalendarTodo = {
   status: string;
   group_id: string | null;
   task_date: string | null;
+
+  /*
+   * 旧版 Calendar 字段暂时保留在类型里，方便迁移期兼容。
+   * 新版 Calendar 的排期显示和拖拽不再依赖这两个字段。
+   */
   scheduled_start: string | null;
   scheduled_end: string | null;
+
   category: Category | null;
   custom_tag: string | null;
   started_at: string | null;
   elapsed_seconds: number | null;
 
   /*
-   * 一个 Todo 可以对应多个 Calendar Session。
-   * 当前主要用于计算已安排时间 / 剩余时间和任务池视觉进度。
+   * 一个 Todo 可以拥有多个 Calendar Session。
+   * Calendar v2 的排期、移动、resize 都以这里的数据为准。
    */
   todo_sessions: TodoSession[];
 };
@@ -86,33 +84,28 @@ type Props = {
   initialDate: string;
 };
 
+type SessionWithTodo = {
+  session: TodoSession;
+  todo: CalendarTodo;
+};
+
 /* =========================================================
    Calendar layout
 ========================================================= */
 
 const DAY_START_HOUR = 8;
 const DAY_END_HOUR = 24;
-
 const HOUR_HEIGHT = 96;
-
 const SLOT_MINUTES = 15;
-
+const SLOT_HEIGHT = HOUR_HEIGHT / 4;
 const TIMELINE_BOTTOM_SPACE = 32;
-
-const SLOT_HEIGHT =
-  HOUR_HEIGHT / 4;
+const DEFAULT_SESSION_MINUTES = 30;
 
 const TOTAL_MINUTES =
-  (DAY_END_HOUR -
-    DAY_START_HOUR) *
-  60;
+  (DAY_END_HOUR - DAY_START_HOUR) * 60;
 
 const TOTAL_HEIGHT =
-  (DAY_END_HOUR -
-    DAY_START_HOUR) *
-  HOUR_HEIGHT;
-
-
+  (DAY_END_HOUR - DAY_START_HOUR) * HOUR_HEIGHT;
 
 /* =========================================================
    Categories
@@ -130,235 +123,107 @@ const CATEGORY_INFO: Record<
 > = {
   work: {
     label: "工作",
-
-    card:
-      "border-mist-100 bg-mist-50",
-
-    badge:
-      "bg-mist-100 text-mist-500",
-
-    selected:
-      "border-mist-500 bg-mist-100 text-mist-500",
-
-    drop:
-      "bg-mist-50",
+    card: "border-mist-100 bg-mist-50",
+    badge: "bg-mist-100 text-mist-500",
+    selected: "border-mist-500 bg-mist-100 text-mist-500",
+    drop: "bg-mist-50",
   },
-
   study: {
     label: "学习",
-
-    card:
-      "border-sage-100 bg-sage-50",
-
-    badge:
-      "bg-sage-100 text-sage-700",
-
-    selected:
-      "border-sage-500 bg-sage-100 text-sage-700",
-
-    drop:
-      "bg-sage-50",
+    card: "border-sage-100 bg-sage-50",
+    badge: "bg-sage-100 text-sage-700",
+    selected: "border-sage-500 bg-sage-100 text-sage-700",
+    drop: "bg-sage-50",
   },
-
   life: {
     label: "生活",
-
-    card:
-      "border-amber-100 bg-amber-50/70",
-
-    badge:
-      "bg-amber-50 text-amber-700",
-
-    selected:
-      "border-amber-300 bg-amber-50 text-amber-700",
-
-    drop:
-      "bg-amber-50",
+    card: "border-amber-100 bg-amber-50/70",
+    badge: "bg-amber-50 text-amber-700",
+    selected: "border-amber-300 bg-amber-50 text-amber-700",
+    drop: "bg-amber-50",
   },
-
   rest: {
     label: "休息",
-
-    card:
-      "border-blush-100 bg-blush-50",
-
-    badge:
-      "bg-blush-100 text-blush-500",
-
-    selected:
-      "border-blush-500 bg-blush-100 text-blush-500",
-
-    drop:
-      "bg-blush-50",
+    card: "border-blush-100 bg-blush-50",
+    badge: "bg-blush-100 text-blush-500",
+    selected: "border-blush-500 bg-blush-100 text-blush-500",
+    drop: "bg-blush-50",
   },
-
   other: {
     label: "其他",
-
-    card:
-      "border-line bg-black/[0.018]",
-
-    badge:
-      "bg-black/[0.04] text-ink-soft",
-
-    selected:
-      "border-ink-faint bg-black/[0.04] text-ink-soft",
-
-    drop:
-      "bg-black/[0.025]",
+    card: "border-line bg-black/[0.018]",
+    badge: "bg-black/[0.04] text-ink-soft",
+    selected: "border-ink-faint bg-black/[0.04] text-ink-soft",
+    drop: "bg-black/[0.025]",
   },
 };
 
 /**
  * 返回 Todo 对应的分类视觉配置。
- * 对于 other 分类，如果存在 custom_tag，则优先显示自定义标签。
+ * other 分类存在 custom_tag 时，优先显示用户自定义标签。
  */
-function categoryOf(
-  todo: CalendarTodo
-) {
+function categoryOf(todo: CalendarTodo) {
   if (!todo.category) {
     return {
       label: "未分类",
-
-      card:
-        "border-line bg-white",
-
-      badge:
-        "bg-black/[0.04] text-ink-faint",
-
-      selected:
-        "border-line bg-white text-ink-soft",
-
-      drop:
-        "bg-sage-50/50",
+      card: "border-line bg-white",
+      badge: "bg-black/[0.04] text-ink-faint",
+      selected: "border-line bg-white text-ink-soft",
+      drop: "bg-sage-50/50",
     };
   }
 
-  const base =
-    CATEGORY_INFO[
-      todo.category
-    ];
+  const base = CATEGORY_INFO[todo.category];
 
   return {
     ...base,
-
     label:
-      todo.category ===
-        "other" &&
-      todo.custom_tag?.trim()
+      todo.category === "other" && todo.custom_tag?.trim()
         ? todo.custom_tag.trim()
         : base.label,
   };
 }
 
 /* =========================================================
-   Date helpers
+   Date / time helpers
 ========================================================= */
 
 /**
  * 在 YYYY-MM-DD 日期字符串上增加或减少天数。
- * 使用本地 Date 构造，避免 UTC 解析造成日期偏移。
+ * 使用本地 Date 构造，避免 UTC 解析导致日期偏移。
  */
-function addDays(
-  dateString: string,
-  amount: number
-) {
-  const [
-    year,
-    month,
-    day,
-  ] =
-    dateString
-      .split("-")
-      .map(Number);
+function addDays(dateString: string, amount: number) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(year, month - 1, day + amount);
 
-  const date =
-    new Date(
-      year,
-      month - 1,
-      day + amount
-    );
-
-  const y =
-    date.getFullYear();
-
-  const m =
-    String(
-      date.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    );
-
-  const d =
-    String(
-      date.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
 
   return `${y}-${m}-${d}`;
 }
 
 /**
- * 将 YYYY-MM-DD 格式化为 Calendar 顶部显示的中文日期标题。
+ * 将 YYYY-MM-DD 格式化为 Calendar 顶部使用的中文日期标题。
  */
-function formatDateTitle(
-  dateString: string
-) {
-  const [
-    year,
-    month,
-    day,
-  ] =
-    dateString
-      .split("-")
-      .map(Number);
+function formatDateTitle(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number);
 
-  return new Intl.DateTimeFormat(
-    "zh-CN",
-    {
-      month: "long",
-      day: "numeric",
-      weekday: "long",
-    }
-  ).format(
-    new Date(
-      year,
-      month - 1,
-      day
-    )
-  );
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(new Date(year, month - 1, day));
 }
 
 /**
- * 从 ISO 时间中提取用户本地时区对应的 YYYY-MM-DD。
+ * 从 ISO 时间提取用户本地时区下的 YYYY-MM-DD。
  */
-function localDatePart(
-  iso: string
-) {
-  const date =
-    new Date(iso);
-
-  const y =
-    date.getFullYear();
-
-  const m =
-    String(
-      date.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    );
-
-  const d =
-    String(
-      date.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
+function localDatePart(iso: string) {
+  const date = new Date(iso);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
 
   return `${y}-${m}-${d}`;
 }
@@ -366,217 +231,33 @@ function localDatePart(
 /**
  * 将 ISO 时间格式化为 24 小时制 HH:mm。
  */
-function formatTime(
-  iso: string
-) {
-  return new Date(
-    iso
-  ).toLocaleTimeString(
-    [],
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }
-  );
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 /**
  * 根据本地日期、小时和分钟创建 Date。
- * Calendar 拖拽落点会通过它转换成真实时间。
+ * Calendar drop slot 会通过它转换成真正的时间点。
  */
 function makeLocalDate(
   dateString: string,
   hour: number,
   minute: number
 ) {
-  const [
-    year,
-    month,
-    day,
-  ] =
-    dateString
-      .split("-")
-      .map(Number);
-
-  return new Date(
-    year,
-    month - 1,
-    day,
-    hour,
-    minute,
-    0,
-    0
-  );
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
 }
 
 /**
- * 将 ISO 时间转换成 datetime-local 输入框需要的本地值。
+ * 将分钟数格式化成紧凑文本。
+ * 例如：30 -> 30m，90 -> 1h 30m，120 -> 2h。
  */
-function toLocalInputValue(
-  iso:
-    | string
-    | null
-) {
-  if (!iso) {
-    return "";
-  }
-
-  const date =
-    new Date(iso);
-
-  const offset =
-    date.getTimezoneOffset() *
-    60000;
-
-  return new Date(
-    date.getTime() -
-      offset
-  )
-    .toISOString()
-    .slice(
-      0,
-      16
-    );
-}
-
-/**
- * 返回旧版 Todo 排期的时长（分钟）。
- *
- * 迁移期仍保留 scheduled_start / scheduled_end，
- * 因此旧 Calendar 时间块继续通过这个函数计算持续时间。
- * 如果没有有效排期，则退回 estimated_minutes，最后默认 30 分钟。
- */
-function durationMinutes(
-  todo: CalendarTodo
-) {
-  if (
-    todo.scheduled_start &&
-    todo.scheduled_end
-  ) {
-    const result =
-      Math.round(
-        (
-          new Date(
-            todo.scheduled_end
-          ).getTime() -
-          new Date(
-            todo.scheduled_start
-          ).getTime()
-        ) /
-          60000
-      );
-
-    if (result > 0) {
-      return result;
-    }
-  }
-
-  return (
-    todo.estimated_minutes ??
-    30
-  );
-}
-
-/**
- * 计算单个 todo_session 的计划时长（分钟）。
- *
- * 这里只计算排期长度，不表示任务已经完成了多少。
- */
-function sessionDurationMinutes(
-  session: TodoSession
-) {
-  const start = new Date(
-    session.scheduled_start
-  ).getTime();
-
-  const end = new Date(
-    session.scheduled_end
-  ).getTime();
-
-  return Math.max(
-    0,
-    Math.round(
-      (end - start) / 60000
-    )
-  );
-}
-
-/**
- * 汇总一个 Todo 的所有 Session，计算已经安排进 Calendar 的总分钟数。
- *
- * 注意：scheduledMinutes 表示“已排期时间”，不是“已完成时间”。
- */
-function scheduledMinutes(
-  todo: CalendarTodo
-) {
-  return (
-    todo.todo_sessions ?? []
-  ).reduce(
-    (total, session) =>
-      total +
-      sessionDurationMinutes(
-        session
-      ),
-    0
-  );
-}
-
-/**
- * 计算 Todo 尚未安排的预计时间。
- *
- * remaining = estimated_minutes - scheduledMinutes(todo)
- * 没有 estimated_minutes 时返回 null；已排满或超排时最低显示 0。
- */
-function remainingMinutes(
-  todo: CalendarTodo
-) {
-  if (!todo.estimated_minutes) {
-    return null;
-  }
-
-  return Math.max(
-    0,
-    todo.estimated_minutes -
-      scheduledMinutes(todo)
-  );
-}
-
-/**
- * 返回任务的排期比例，范围固定在 0~1。
- *
- * 该比例用于任务池卡片背景的深浅填充：
- * 深色部分 = 已安排时间；浅色部分 = 尚未安排时间。
- * 它不是任务完成度。
- */
-function scheduledRatio(
-  todo: CalendarTodo
-) {
-  if (
-    !todo.estimated_minutes ||
-    todo.estimated_minutes <= 0
-  ) {
-    return 0;
-  }
-
-  return Math.min(
-    1,
-    scheduledMinutes(todo) /
-      todo.estimated_minutes
-  );
-}
-
-/**
- * 将分钟数格式化为紧凑的可读文本。
- *
- * 例：30 -> "30m"；90 -> "1h 30m"；120 -> "2h"。
- */
-function formatMinutes(
-  minutes: number
-) {
-  const hours =
-    Math.floor(minutes / 60);
-
+function formatMinutes(minutes: number) {
+  const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
 
   if (hours > 0 && mins > 0) {
@@ -591,18 +272,250 @@ function formatMinutes(
 }
 
 /**
- * 将任意分钟数吸附到 SLOT_MINUTES 的固定时间粒度。
- * 当前为 15 分钟，用于拖拽和 resize 对齐。
+ * 将任意分钟数吸附到当前 Calendar 的时间粒度。
+ * resize 时使用，当前粒度为 15 分钟。
  */
-function snapMinutes(
-  minutes: number
+function snapMinutes(minutes: number) {
+  return Math.round(minutes / SLOT_MINUTES) * SLOT_MINUTES;
+}
+
+/* =========================================================
+   Session helpers
+========================================================= */
+
+/**
+ * 计算单个 Session 的计划时长（分钟）。
+ * 这是“排进 Calendar 的时长”，不代表实际完成时长。
+ */
+function sessionDurationMinutes(session: TodoSession) {
+  const start = new Date(session.scheduled_start).getTime();
+  const end = new Date(session.scheduled_end).getTime();
+
+  return Math.max(0, Math.round((end - start) / 60000));
+}
+
+/**
+ * 汇总 Todo 的全部 Session，得到总已安排分钟数。
+ */
+function scheduledMinutes(todo: CalendarTodo) {
+  return (todo.todo_sessions ?? []).reduce(
+    (total, session) => total + sessionDurationMinutes(session),
+    0
+  );
+}
+
+/**
+ * 计算 Todo 尚未排进 Calendar 的预计分钟数。
+ * 没有 estimated_minutes 时返回 null；超排时最低为 0。
+ */
+function remainingMinutes(todo: CalendarTodo) {
+  if (!todo.estimated_minutes) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    todo.estimated_minutes - scheduledMinutes(todo)
+  );
+}
+
+/**
+ * 返回任务的排期比例，范围固定为 0~1。
+ * 仅用于“已安排 / 尚未安排”的视觉表达，不是完成度。
+ */
+function scheduledRatio(todo: CalendarTodo) {
+  if (!todo.estimated_minutes || todo.estimated_minutes <= 0) {
+    return 0;
+  }
+
+  return Math.min(
+    1,
+    scheduledMinutes(todo) / todo.estimated_minutes
+  );
+}
+
+/**
+ * 新建 Session 时决定默认长度。
+ * 默认 30 分钟；如果任务剩余预计时间不足 30 分钟，就只安排剩余部分。
+ * 没有 estimated_minutes 的任务仍默认安排 30 分钟。
+ */
+function defaultSessionMinutes(todo: CalendarTodo) {
+  const remaining = remainingMinutes(todo);
+
+  if (remaining === null || remaining === 0) {
+    return DEFAULT_SESSION_MINUTES;
+  }
+
+  return Math.min(DEFAULT_SESSION_MINUTES, remaining);
+}
+
+/**
+ * 计算任务超出预计时间的已安排分钟数。
+ * 允许用户主动“多排一点”，因此超排只做信息提示，不视为错误。
+ */
+function overplannedMinutes(todo: CalendarTodo) {
+  if (!todo.estimated_minutes) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    scheduledMinutes(todo) - todo.estimated_minutes
+  );
+}
+
+/**
+ * 判断两个 ISO 时间区间是否真正重叠。
+ * 首尾刚好相接不算冲突。
+ */
+function overlaps(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string
 ) {
-  return (
-    Math.round(
-      minutes /
-        SLOT_MINUTES
-    ) *
-    SLOT_MINUTES
+  const a1 = new Date(startA).getTime();
+  const a2 = new Date(endA).getTime();
+  const b1 = new Date(startB).getTime();
+  const b2 = new Date(endB).getTime();
+
+  return a1 < b2 && a2 > b1;
+}
+
+/**
+ * 在所有 Todo Session 中寻找时间冲突。
+ * ignoreSessionId 用于移动 / resize 当前 Session 时排除它自己。
+ */
+function findSessionConflict(
+  todos: CalendarTodo[],
+  start: string,
+  end: string,
+  ignoreSessionId?: string
+): SessionWithTodo | null {
+  for (const todo of todos) {
+    for (const session of todo.todo_sessions ?? []) {
+      if (session.id === ignoreSessionId) {
+        continue;
+      }
+
+      if (
+        overlaps(
+          start,
+          end,
+          session.scheduled_start,
+          session.scheduled_end
+        )
+      ) {
+        return { todo, session };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 根据 Session ID 找到它所属的 Todo。
+ * Calendar 选中、拖动 Session 时都通过这个 helper 解析 owner。
+ */
+function findSessionOwner(
+  todos: CalendarTodo[],
+  sessionId: string
+): SessionWithTodo | null {
+  for (const todo of todos) {
+    const session = (todo.todo_sessions ?? []).find(
+      (item) => item.id === sessionId
+    );
+
+    if (session) {
+      return { todo, session };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 向指定 Todo 的 todo_sessions 中追加一个 Session。
+ * 用于 optimistic UI：数据库返回前先让用户立即看到落位结果。
+ */
+function addSessionLocally(
+  todos: CalendarTodo[],
+  todoId: string,
+  session: TodoSession
+) {
+  return todos.map((todo) =>
+    todo.id === todoId
+      ? {
+          ...todo,
+          todo_sessions: [...(todo.todo_sessions ?? []), session],
+        }
+      : todo
+  );
+}
+
+/**
+ * 修改指定 Session，同时保持 React state 的不可变更新。
+ */
+function updateSessionLocally(
+  todos: CalendarTodo[],
+  todoId: string,
+  sessionId: string,
+  patch: Partial<TodoSession>
+) {
+  return todos.map((todo) =>
+    todo.id === todoId
+      ? {
+          ...todo,
+          todo_sessions: (todo.todo_sessions ?? []).map((session) =>
+            session.id === sessionId
+              ? { ...session, ...patch }
+              : session
+          ),
+        }
+      : todo
+  );
+}
+
+/**
+ * 删除指定 Session 的本地副本。
+ * 创建失败回滚和“取消排期”都会使用这个 helper。
+ */
+function removeSessionLocally(
+  todos: CalendarTodo[],
+  todoId: string,
+  sessionId: string
+) {
+  return todos.map((todo) =>
+    todo.id === todoId
+      ? {
+          ...todo,
+          todo_sessions: (todo.todo_sessions ?? []).filter(
+            (session) => session.id !== sessionId
+          ),
+        }
+      : todo
+  );
+}
+
+/**
+ * 将 optimistic 临时 Session ID 替换成数据库真正返回的 Session。
+ */
+function replaceSessionLocally(
+  todos: CalendarTodo[],
+  todoId: string,
+  temporaryId: string,
+  savedSession: TodoSession
+) {
+  return todos.map((todo) =>
+    todo.id === todoId
+      ? {
+          ...todo,
+          todo_sessions: (todo.todo_sessions ?? []).map((session) =>
+            session.id === temporaryId ? savedSession : session
+          ),
+        }
+      : todo
   );
 }
 
@@ -612,47 +525,30 @@ function snapMinutes(
 
 type TimeSlot = {
   id: string;
-
+  date: string;
   hour: number;
-
   minute: number;
 };
 
 /**
- * 根据当前日期生成 Calendar 的全部 15 分钟时间槽。
+ * 根据当前日期生成 15 分钟粒度的 Calendar slots。
  */
-function buildSlots(
-  date: string
-) {
-  const result:
-    TimeSlot[] = [];
+function buildSlots(date: string) {
+  const result: TimeSlot[] = [];
 
   for (
     let minuteFromStart = 0;
-    minuteFromStart <
-    TOTAL_MINUTES;
-    minuteFromStart +=
-      SLOT_MINUTES
+    minuteFromStart < TOTAL_MINUTES;
+    minuteFromStart += SLOT_MINUTES
   ) {
-    const absolute =
-      DAY_START_HOUR *
-        60 +
-      minuteFromStart;
-
-    const hour =
-      Math.floor(
-        absolute / 60
-      );
-
-    const minute =
-      absolute % 60;
+    const absolute = DAY_START_HOUR * 60 + minuteFromStart;
+    const hour = Math.floor(absolute / 60);
+    const minute = absolute % 60;
 
     result.push({
-      id:
-        `slot:${date}:${hour}:${minute}`,
-
+      id: `slot:${date}:${hour}:${minute}`,
+      date,
       hour,
-
       minute,
     });
   }
@@ -661,118 +557,38 @@ function buildSlots(
 }
 
 /**
- * 解析 CalendarSlot 的 droppable id。
- * 非法或非 slot id 会返回 null。
+ * 解析 slot droppable ID。
+ * 非 slot ID 返回 null。
  */
-function readSlotId(
-  id: string
-) {
-  if (
-    !id.startsWith(
-      "slot:"
-    )
-  ) {
+function readSlotId(id: string) {
+  if (!id.startsWith("slot:")) {
     return null;
   }
 
-  const raw =
-    id.slice(5);
+  const raw = id.slice(5);
+  const lastColon = raw.lastIndexOf(":");
+  const secondLastColon = raw.lastIndexOf(":", lastColon - 1);
 
-  const lastColon =
-    raw.lastIndexOf(":");
-
-  const secondLastColon =
-    raw.lastIndexOf(
-      ":",
-      lastColon - 1
-    );
-
-  if (
-    lastColon < 0 ||
-    secondLastColon < 0
-  ) {
+  if (lastColon < 0 || secondLastColon < 0) {
     return null;
   }
 
   return {
-    date:
-      raw.slice(
-        0,
-        secondLastColon
-      ),
-
-    hour:
-      Number(
-        raw.slice(
-          secondLastColon +
-            1,
-          lastColon
-        )
-      ),
-
-    minute:
-      Number(
-        raw.slice(
-          lastColon + 1
-        )
-      ),
+    date: raw.slice(0, secondLastColon),
+    hour: Number(raw.slice(secondLastColon + 1, lastColon)),
+    minute: Number(raw.slice(lastColon + 1)),
   };
 }
 
-/**
- * 判断两个 ISO 时间区间是否真正重叠。
- * 相邻但首尾相接的区间不视为冲突。
- */
-function overlaps(
-  startA: string,
-  endA: string,
-  startB: string,
-  endB: string
-) {
-  const a1 =
-    new Date(
-      startA
-    ).getTime();
-
-  const a2 =
-    new Date(
-      endA
-    ).getTime();
-
-  const b1 =
-    new Date(
-      startB
-    ).getTime();
-
-  const b2 =
-    new Date(
-      endB
-    ).getTime();
-
-  return (
-    a1 < b2 &&
-    a2 > b1
-  );
-}
-
 /* =========================================================
-   Unscheduled task
+   Task pool card
 ========================================================= */
 
 /**
- * 任务池中的可拖拽任务卡。
- *
- * 卡片本身就是排期进度可视化：
- * - 左侧较深区域：已经安排到 Calendar 的时间；
- * - 右侧较浅区域：尚未安排的预计时间。
- *
- * 同时保留“已安排 / 剩余”的数字文本，避免只靠颜色表达信息。
+ * 左侧任务池中的可拖拽 Todo。
+ * 整张卡片背景表示“排期比例”，并实时展示已安排 / 剩余时间。
  */
-function PoolTask({
-  todo,
-}: {
-  todo: CalendarTodo;
-}) {
+function PoolTask({ todo }: { todo: CalendarTodo }) {
   const {
     attributes,
     listeners,
@@ -782,17 +598,11 @@ function PoolTask({
     id: `todo:${todo.id}`,
   });
 
-  const category =
-    categoryOf(todo);
-
-  const scheduled =
-    scheduledMinutes(todo);
-
-  const remaining =
-    remainingMinutes(todo);
-
-  const progress =
-    scheduledRatio(todo) * 100;
+  const category = categoryOf(todo);
+  const scheduled = scheduledMinutes(todo);
+  const remaining = remainingMinutes(todo);
+  const overplanned = overplannedMinutes(todo);
+  const progress = scheduledRatio(todo) * 100;
 
   return (
     <div
@@ -802,11 +612,6 @@ function PoolTask({
       style={{
         touchAction: "none",
         userSelect: "none",
-
-        /*
-         * 用整张卡片的背景填充表示排期比例，
-         * 不再额外增加独立 progress bar，降低任务池视觉噪音。
-         */
         background: `
           linear-gradient(
             to right,
@@ -818,21 +623,12 @@ function PoolTask({
         `,
       }}
       className={`
-        flex
-        cursor-grab
-        items-center
-        gap-3
-        rounded-2xl
-        border
-        border-line
-        px-3
-        py-3
-        transition
+        flex cursor-grab items-center gap-3 rounded-2xl border border-line
+        px-3 py-3 transition-[transform,box-shadow,opacity] duration-150
         active:cursor-grabbing
-
         ${
           isDragging
-            ? "scale-[0.99] opacity-25"
+            ? "scale-[0.985] opacity-30"
             : "hover:-translate-y-[1px] hover:shadow-soft"
         }
       `}
@@ -853,17 +649,13 @@ function PoolTask({
         </div>
 
         <p className="mt-1 text-[11px] text-ink-faint">
-          已安排{" "}
-          {formatMinutes(scheduled)}
-
-          {remaining !== null && (
-            <>
-              {" · "}
-              剩余{" "}
-              {formatMinutes(
-                remaining
-              )}
-            </>
+          已安排 {formatMinutes(scheduled)}
+          {overplanned > 0 ? (
+            <> · 多安排 {formatMinutes(overplanned)}</>
+          ) : (
+            remaining !== null && (
+              <> · 剩余 {formatMinutes(remaining)}</>
+            )
           )}
         </p>
       </div>
@@ -872,67 +664,43 @@ function PoolTask({
 }
 
 /* =========================================================
-   Drag overlay
+   Drag preview
 ========================================================= */
 
 /**
- * 拖拽过程中跟随指针显示的任务预览。
- * 仅提供视觉反馈，不写入数据库。
+ * 拖拽过程中跟随指针的轻量预览。
+ * Todo 和 Session 都复用这张卡，避免拖拽过程中视觉跳变。
  */
 function DragPreview({
   todo,
+  durationMinutes,
 }: {
   todo: CalendarTodo;
+  durationMinutes: number;
 }) {
-  const category =
-    categoryOf(todo);
+  const category = categoryOf(todo);
 
   return (
     <div
       className={`
-        w-[280px]
-        scale-[1.02]
-        rounded-2xl
-        border
-        px-3
-        py-3
-        shadow-[0_14px_36px_rgba(60,50,40,0.12)]
-        ${category.card}
+        w-[280px] scale-[1.015] rounded-2xl border px-3 py-3
+        shadow-[0_14px_36px_rgba(60,50,40,0.12)] ${category.card}
       `}
     >
       <div className="flex items-center justify-between gap-3">
         <p className="truncate text-sm font-medium text-ink">
-          {
-            todo.title
-          }
+          {todo.title}
         </p>
 
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
         >
-          {
-            category.label
-          }
+          {category.label}
         </span>
       </div>
 
       <p className="mt-1 text-[11px] text-ink-faint">
-        {
-          todo.scheduled_start
-            ? `${formatTime(
-                todo.scheduled_start
-              )}${
-                todo.scheduled_end
-                  ? ` – ${formatTime(
-                      todo.scheduled_end
-                    )}`
-                  : ""
-              }`
-            : `预计 ${
-                todo.estimated_minutes ??
-                30
-              } 分钟`
-        }
+        本次安排 {formatMinutes(durationMinutes)}
       </p>
     </div>
   );
@@ -943,445 +711,228 @@ function DragPreview({
 ========================================================= */
 
 /**
- * 单个 Calendar 时间槽。
- * 同时作为 dnd-kit droppable，接收任务拖入并显示落点反馈。
+ * 一个 15 分钟 Calendar droppable slot。
+ * 拖拽悬停时直接显示“开始 → 结束”，让用户在松手前知道会落在哪里。
  */
 function CalendarSlot({
   slot,
   activeTodo,
+  activeDurationMinutes,
 }: {
   slot: TimeSlot;
-
-  activeTodo:
-    | CalendarTodo
-    | null;
+  activeTodo: CalendarTodo | null;
+  activeDurationMinutes: number;
 }) {
-  const {
-    setNodeRef,
-    isOver,
-  } =
-    useDroppable({
-      id:
-        slot.id,
-    });
+  const { setNodeRef, isOver } = useDroppable({
+    id: slot.id,
+  });
 
-  const category =
-    activeTodo
-      ? categoryOf(
-          activeTodo
-        )
-      : null;
+  const category = activeTodo ? categoryOf(activeTodo) : null;
+
+  const previewStart = makeLocalDate(
+    slot.date,
+    slot.hour,
+    slot.minute
+  );
+  const previewEnd = new Date(
+    previewStart.getTime() + activeDurationMinutes * 60000
+  );
 
   return (
     <div
       ref={setNodeRef}
-      style={{
-        height:
-          SLOT_HEIGHT,
-      }}
+      style={{ height: SLOT_HEIGHT }}
       className={`
-        relative
-        transition-colors
-
+        relative transition-colors duration-100
         ${
           slot.minute === 0
             ? "border-t border-line"
-            : slot.minute ===
-                30
+            : slot.minute === 30
               ? "border-t border-line/55"
               : "border-t border-line/20"
         }
-
-        ${
-          isOver &&
-          category
-            ? category.drop
-            : ""
-        }
+        ${isOver && category ? category.drop : ""}
       `}
     >
-      {isOver &&
-        activeTodo && (
-          <div className="pointer-events-none absolute inset-x-2 top-1/2 z-10 -translate-y-1/2">
-            <div
-              className={`rounded-xl border px-3 py-1 text-center text-[10px] shadow-sm ${category?.card}`}
-            >
-              {String(
-                slot.hour
-              ).padStart(
-                2,
-                "0"
-              )}
-              :
-              {String(
-                slot.minute
-              ).padStart(
-                2,
-                "0"
-              )}
-            </div>
+      {isOver && activeTodo && (
+        <div className="pointer-events-none absolute inset-x-2 top-1/2 z-40 -translate-y-1/2">
+          <div
+            className={`rounded-xl border px-3 py-1.5 text-center text-[10px] shadow-sm ${category?.card}`}
+          >
+            {previewStart.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })}
+            {" → "}
+            {previewEnd.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })}
           </div>
-        )}
+        </div>
+      )}
     </div>
   );
 }
 
 /* =========================================================
-   Scheduled task
+   Scheduled Session
 ========================================================= */
 
 /**
- * Calendar 中的旧版 Todo 时间块。
- * 当前仍读取 todo.scheduled_start / scheduled_end，以保证迁移期兼容。
+ * Calendar 时间轴上的单个 Session block。
+ *
+ * 这里与 Todo 本体分离：
+ * - Todo 表示“要做什么”；
+ * - Session 表示“什么时候做这一段”。
+ *
+ * Session 可拖动到其他时间，也可从底部 resize 改变时长。
  */
-function ScheduledTask({
+function ScheduledSession({
   todo,
+  session,
   selected,
   justPlaced,
+  saving,
+  starting,
   onSelect,
   onResize,
 }: {
   todo: CalendarTodo;
-
-  selected:
-    boolean;
-
-  justPlaced:
-    boolean;
-
-  onSelect:
-    () => void;
-
-  onResize:
-    (
-      todo: CalendarTodo,
-      newEnd: string
-    ) => void;
+  session: TodoSession;
+  selected: boolean;
+  justPlaced: boolean;
+  saving: boolean;
+  starting: boolean;
+  onSelect: () => void;
+  onResize: (
+    todo: CalendarTodo,
+    session: TodoSession,
+    newEnd: string
+  ) => void;
 }) {
   const {
     attributes,
     listeners,
-    setNodeRef:
-      setDragRef,
+    setNodeRef,
     isDragging,
-  } =
-    useDraggable({
-      id:
-        `todo:${todo.id}`,
-    });
+  } = useDraggable({
+    id: `session:${session.id}`,
+  });
 
-  const {
-    setNodeRef:
-      setDropRef,
-    isOver,
-  } =
-    useDroppable({
-      id:
-        `task:${todo.id}`,
-    });
+  const [previewEnd, setPreviewEnd] = useState<string | null>(null);
+  const category = categoryOf(todo);
+  const start = new Date(session.scheduled_start);
+  const effectiveEnd = previewEnd ?? session.scheduled_end;
 
-  const [
-    previewEnd,
-    setPreviewEnd,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
+  const startMinute = start.getHours() * 60 + start.getMinutes();
+  const minuteFromStart = startMinute - DAY_START_HOUR * 60;
 
-  if (
-    !todo.scheduled_start
-  ) {
+  if (minuteFromStart < 0 || minuteFromStart >= TOTAL_MINUTES) {
     return null;
   }
 
-  /*
-   * 当前任务的分类视觉配置。
-   * Calendar 中任务块的背景、边框和标签都由这里决定。
-   */
-  const category =
-    categoryOf(todo);
+  const duration = Math.max(
+    1,
+    Math.round(
+      (new Date(effectiveEnd).getTime() - start.getTime()) / 60000
+    )
+  );
 
-  const start =
-    new Date(
-      todo.scheduled_start
-    );
-
-  const startMinute =
-    start.getHours() *
-      60 +
-    start.getMinutes();
-
-  const minuteFromStart =
-    startMinute -
-    DAY_START_HOUR *
-      60;
-
-  if (
-    minuteFromStart <
-      0 ||
-    minuteFromStart >=
-      TOTAL_MINUTES
-  ) {
-    return null;
-  }
-
-  const effectiveEnd =
-    previewEnd ??
-    todo.scheduled_end;
-
-  let duration =
-    todo.estimated_minutes ??
-    30;
-
-  if (effectiveEnd) {
-    const calculated =
-      Math.round(
-        (
-          new Date(
-            effectiveEnd
-          ).getTime() -
-          start.getTime()
-        ) /
-          60000
-      );
-
-    if (
-      calculated > 0
-    ) {
-      duration =
-        calculated;
-    }
-  }
-
-  const top =
-    (
-      minuteFromStart /
-      60
-    ) *
-    HOUR_HEIGHT;
-
-  const rawHeight =
-    (
-      duration /
-      60
-    ) *
-    HOUR_HEIGHT;
-
-  const height =
-    Math.max(
-      36,
-      rawHeight
-    );
-
-  const compact =
-    height < 60;
+  const top = (minuteFromStart / 60) * HOUR_HEIGHT;
+  const rawHeight = (duration / 60) * HOUR_HEIGHT;
+  const height = Math.max(36, rawHeight);
+  const compact = height < 62;
+  const running = todo.status === "running";
 
   /**
-   * 开始调整时间块高度。
-   * Pointer Move 只更新预览，Pointer Up 才把最终结束时间交给 onResize 保存。
+   * 开始 resize Session。
+   * pointermove 只更新本地预览；pointerup 时才真正触发数据库保存。
    */
   function beginResize(
-    event:
-      ReactPointerEvent<HTMLButtonElement>
+    event: ReactPointerEvent<HTMLButtonElement>
   ) {
     event.preventDefault();
     event.stopPropagation();
 
-    const startY =
-      event.clientY;
+    const startY = event.clientY;
+    const originalDuration = duration;
+    const pointerId = event.pointerId;
 
-    const originalDuration =
-      duration;
+    event.currentTarget.setPointerCapture(pointerId);
 
-    const pointerId =
-      event.pointerId;
-
-    event.currentTarget.setPointerCapture(
-      pointerId
-    );
-
-    const move = (
-      moveEvent:
-        PointerEvent
-    ) => {
-      const deltaY =
-        moveEvent.clientY -
-        startY;
-
-      const deltaMinutes =
-        snapMinutes(
-          (
-            deltaY /
-            HOUR_HEIGHT
-          ) *
-            60
-        );
-
-      const newDuration =
-        Math.max(
-          15,
-          originalDuration +
-            deltaMinutes
-        );
-
-      const newEnd =
-        new Date(
-          start.getTime() +
-            newDuration *
-              60000
-        );
-
-      setPreviewEnd(
-        newEnd.toISOString()
+    const move = (moveEvent: PointerEvent) => {
+      const deltaY = moveEvent.clientY - startY;
+      const deltaMinutes = snapMinutes(
+        (deltaY / HOUR_HEIGHT) * 60
       );
+      const newDuration = Math.max(
+        SLOT_MINUTES,
+        originalDuration + deltaMinutes
+      );
+      const newEnd = new Date(
+        start.getTime() + newDuration * 60000
+      );
+
+      setPreviewEnd(newEnd.toISOString());
     };
 
-    const finish = (
-      upEvent:
-        PointerEvent
-    ) => {
-      document.removeEventListener(
-        "pointermove",
-        move
+    const finish = (upEvent: PointerEvent) => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", finish);
+
+      const deltaY = upEvent.clientY - startY;
+      const deltaMinutes = snapMinutes(
+        (deltaY / HOUR_HEIGHT) * 60
       );
-
-      document.removeEventListener(
-        "pointerup",
-        finish
+      const newDuration = Math.max(
+        SLOT_MINUTES,
+        originalDuration + deltaMinutes
       );
+      const newEnd = new Date(
+        start.getTime() + newDuration * 60000
+      ).toISOString();
 
-      const deltaY =
-        upEvent.clientY -
-        startY;
-
-      const deltaMinutes =
-        snapMinutes(
-          (
-            deltaY /
-            HOUR_HEIGHT
-          ) *
-            60
-        );
-
-      const newDuration =
-        Math.max(
-          15,
-          originalDuration +
-            deltaMinutes
-        );
-
-      const newEnd =
-        new Date(
-          start.getTime() +
-            newDuration *
-              60000
-        ).toISOString();
-
-      setPreviewEnd(
-        null
-      );
-
-      onResize(
-        todo,
-        newEnd
-      );
+      setPreviewEnd(null);
+      onResize(todo, session, newEnd);
     };
 
-    document.addEventListener(
-      "pointermove",
-      move
-    );
-
-    document.addEventListener(
-      "pointerup",
-      finish
-    );
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", finish);
   }
 
   return (
     <div
-      ref={(
-        node
-      ) => {
-        setDragRef(
-          node
-        );
-
-        setDropRef(
-          node
-        );
-      }}
+      ref={setNodeRef}
+      onClick={onSelect}
+      style={{ top, height }}
       className={`
-        absolute
-        left-2
-        right-2
-        z-20
-        rounded-2xl
-        border
+        absolute left-2 right-2 z-20 rounded-2xl border
         shadow-[0_3px_14px_rgba(60,50,40,0.045)]
-        transition-[transform,box-shadow,opacity]
-        duration-150
+        transition-[transform,box-shadow,opacity,filter] duration-150
         ${category.card}
-
-        ${
-          selected
-            ? "ring-2 ring-sage-300/40"
-            : ""
-        }
-
-        ${
-          isOver
-            ? "ring-2 ring-sage-300/80"
-            : ""
-        }
-
-        ${
-          isDragging
-            ? "opacity-25"
-            : ""
-        }
-
-        ${
-          justPlaced
-            ? "scale-[1.018]"
-            : ""
-        }
+        ${selected ? "ring-2 ring-sage-300/50" : ""}
+        ${isDragging ? "opacity-25" : ""}
+        ${justPlaced ? "scale-[1.02] ring-2 ring-sage-300/45" : ""}
+        ${starting ? "brightness-[0.98] ring-2 ring-sage-500/20" : ""}
       `}
-      style={{
-        top,
-        height,
-      }}
-      onClick={
-        onSelect
-      }
     >
       <div
         className={`relative h-full ${
-          compact
-            ? "px-3 py-1.5"
-            : "px-3 py-2"
+          compact ? "px-3 py-1.5" : "px-3 py-2"
         }`}
       >
         <div className="flex items-start gap-2">
-          {/* Drag handle */}
           <button
             type="button"
             {...attributes}
             {...listeners}
-            onClick={(
-              event
-            ) =>
-              event.stopPropagation()
-            }
-            style={{
-              touchAction:
-                "none",
-   
-            }}
+            onClick={(event) => event.stopPropagation()}
+            style={{ touchAction: "none" }}
             className="mt-0.5 shrink-0 cursor-grab rounded-md p-0.5 text-ink-faint/40 hover:bg-black/[0.03] active:cursor-grabbing"
-            title="拖动任务"
+            title="拖动这个时间段"
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
@@ -1390,75 +941,63 @@ function ScheduledTask({
             <div className="flex items-start justify-between gap-2">
               <p
                 className={`truncate font-medium text-ink ${
-                  compact
-                    ? "text-xs"
-                    : "text-sm"
+                  compact ? "text-xs" : "text-sm"
                 }`}
               >
-                {
-                  todo.title
-                }
+                {todo.title}
               </p>
 
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 ${
-                  compact
-                    ? "text-[9px]"
-                    : "text-[10px]"
-                } ${category.badge}`}
-              >
-                {
-                  category.label
-                }
-              </span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {starting && (
+                  <span className="flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[9px] text-sage-700">
+                    <LoaderCircle className="h-2.5 w-2.5 animate-spin" />
+                    启动中
+                  </span>
+                )}
+
+                {!starting && running && (
+                  <span className="flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[9px] text-sage-700">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sage-500" />
+                    专注中
+                  </span>
+                )}
+
+                {!compact && !starting && !running && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+                  >
+                    {category.label}
+                  </span>
+                )}
+              </div>
             </div>
 
             {!compact && (
               <p className="mt-1 text-[11px] text-ink-faint">
-                {
-                  formatTime(
-                    todo.scheduled_start
-                  )
-                }
-
-                {" – "}
-
-                {
-                  effectiveEnd
-                    ? formatTime(
-                        effectiveEnd
-                      )
-                    : ""
-                }
+                {formatTime(session.scheduled_start)} – {formatTime(effectiveEnd)}
               </p>
             )}
 
-            {height >=
-              88 &&
-              todo.estimated_minutes && (
-                <p className="mt-1 text-[10px] text-ink-faint/85">
-                  预计工作{" "}
-                  {
-                    todo.estimated_minutes
-                  }{" "}
-                  分钟
-                </p>
-              )}
+            {height >= 92 && todo.description && (
+              <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-ink-faint">
+                {todo.description}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Resize handle */}
+        {saving && (
+          <div className="absolute bottom-2 right-3 flex items-center gap-1 text-[9px] text-ink-faint">
+            <LoaderCircle className="h-2.5 w-2.5 animate-spin" />
+            保存中
+          </div>
+        )}
+
         {!isDragging && (
           <button
             type="button"
-            onPointerDown={
-              beginResize
-            }
-            onClick={(
-              event
-            ) =>
-              event.stopPropagation()
-            }
+            onPointerDown={beginResize}
+            onClick={(event) => event.stopPropagation()}
             className="absolute bottom-0 left-1/2 flex h-3 w-16 -translate-x-1/2 cursor-ns-resize items-center justify-center rounded-t-md text-ink-faint/35 hover:bg-black/[0.035] hover:text-ink-faint"
             title="拖动修改结束时间"
           >
@@ -1477,1466 +1016,745 @@ function ScheduledTask({
 /**
  * Calendar 主组件。
  *
- * 负责日期切换、任务池、拖拽排期、时间块交换/移动、resize、
- * 任务编辑以及进入 Focus。当前处于旧排期字段向 todo_sessions 迁移阶段。
+ * 数据模型：Todo 负责任务本体，todo_sessions 负责一个或多个排期时间段。
+ * 交互原则：所有拖拽先 optimistic 更新本地 UI，再后台写 Supabase；
+ * 如果数据库失败则回滚，因此用户不会因为网络延迟而觉得“拖了没反应”。
  */
 export default function CalendarPlanner({
   initialTodos,
   initialDate,
 }: Props) {
-  const router =
-    useRouter();
+  const router = useRouter();
 
-  const [
-    todos,
-    setTodos,
-  ] =
-    useState<
-      CalendarTodo[]
-    >(
-      initialTodos
-    );
+  const [todos, setTodos] = useState<CalendarTodo[]>(initialTodos);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null
+  );
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
+  const [startingFocusTodoId, setStartingFocusTodoId] = useState<
+    string | null
+  >(null);
+  const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
-  const [
-    selectedDate,
-    setSelectedDate,
-  ] =
-    useState(
-      initialDate
-    );
+  /* Edit form: 这里只编辑 Todo 本体，不再编辑 Session 时间。 */
+  const [editTitle, setEditTitle] = useState("");
+  const [editMinutes, setEditMinutes] = useState("");
+  const [editCategory, setEditCategory] = useState<Category | null>(null);
+  const [editCustomTag, setEditCustomTag] = useState("");
 
-  const [
-    activeTodoId,
-    setActiveTodoId,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
-
-  const [
-    selectedTodoId,
-    setSelectedTodoId,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
-
-  const [
-    editingTodoId,
-    setEditingTodoId,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
-
-  const [
-    busyId,
-    setBusyId,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
-
-  const [
-    justPlacedId,
-    setJustPlacedId,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
-
-  const [
-    error,
-    setError,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
-
-  /* Edit form */
-
-  const [
-    editTitle,
-    setEditTitle,
-  ] =
-    useState("");
-
-  const [
-    editMinutes,
-    setEditMinutes,
-  ] =
-    useState("");
-
-  const [
-    editCategory,
-    setEditCategory,
-  ] =
-    useState<
-      Category | null
-    >(
-      null
-    );
-
-  const [
-    editCustomTag,
-    setEditCustomTag,
-  ] =
-    useState("");
-
-  const [
-    editStart,
-    setEditStart,
-  ] =
-    useState("");
-
-  const [
-    editEnd,
-    setEditEnd,
-  ] =
-    useState("");
-
-  const sensors =
-    useSensors(
-      useSensor(
-        MouseSensor,
-        {
-          activationConstraint:
-            {
-              distance:
-                4,
-            },
-        }
-      ),
-
-      useSensor(
-        TouchSensor,
-        {
-          activationConstraint:
-            {
-              delay:
-                150,
-
-              tolerance:
-                8,
-            },
-        }
-      )
-    );
-
-  const slots =
-    useMemo(
-      () =>
-        buildSlots(
-          selectedDate
-        ),
-      [
-        selectedDate,
-      ]
-    );
-
-  const unscheduledTodos =
-    useMemo(
-      () =>
-        todos.filter(
-          (
-            todo
-          ) =>
-            !todo.scheduled_start
-        ),
-      [
-        todos,
-      ]
-    );
-
-  const scheduledTodos =
-    useMemo(
-      () =>
-        todos
-          .filter(
-            (
-              todo
-            ) =>
-              todo.scheduled_start &&
-              localDatePart(
-                todo.scheduled_start
-              ) ===
-                selectedDate
-          )
-          .sort(
-            (
-              a,
-              b
-            ) =>
-              new Date(
-                a.scheduled_start!
-              ).getTime() -
-              new Date(
-                b.scheduled_start!
-              ).getTime()
-          ),
-      [
-        todos,
-        selectedDate,
-      ]
-    );
-
-  const activeTodo =
-    todos.find(
-      (
-        todo
-      ) =>
-        todo.id ===
-        activeTodoId
-    ) ??
-    null;
-
-  const selectedTodo =
-    todos.find(
-      (
-        todo
-      ) =>
-        todo.id ===
-        selectedTodoId
-    ) ??
-    null;
-
-  const hours =
-    Array.from(
-      {
-        length:
-          DAY_END_HOUR -
-          DAY_START_HOUR +
-          1,
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 4 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 8,
       },
+    })
+  );
 
-      (
-        _,
-        index
-      ) =>
-        DAY_START_HOUR +
-        index
+  /**
+   * 每分钟更新一次当前时间线位置。
+   * 不需要每秒刷新，避免 Calendar 页面产生无意义 render。
+   */
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 60_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const slots = useMemo(
+    () => buildSlots(selectedDate),
+    [selectedDate]
+  );
+
+  /**
+   * Task Pool 只显示“仍有时间待安排”的 Todo。
+   * 没有 estimated_minutes 的 Todo 无法判断是否排满，因此一直保留在任务池。
+   */
+  const poolTodos = useMemo(
+    () =>
+      todos.filter((todo) => {
+        if (todo.status === "completed") {
+          return false;
+        }
+
+        const remaining = remainingMinutes(todo);
+        return remaining === null || remaining > 0;
+      }),
+    [todos]
+  );
+
+  /**
+   * 已经达到预计排期量的 Todo。
+   * 它们默认折叠，但仍然可以继续拖拽，从而允许用户主动超排。
+   */
+  const fullyPlannedTodos = useMemo(
+    () =>
+      todos.filter((todo) => {
+        if (todo.status === "completed") {
+          return false;
+        }
+
+        const remaining = remainingMinutes(todo);
+        return remaining !== null && remaining === 0;
+      }),
+    [todos]
+  );
+
+  /**
+   * 将当前日期的 Session flatten 成 timeline 使用的结构。
+   * V1 以 scheduled_start 所在日期作为 Session 的显示日期。
+   */
+  const scheduledSessions = useMemo(() => {
+    const result: SessionWithTodo[] = [];
+
+    for (const todo of todos) {
+      for (const session of todo.todo_sessions ?? []) {
+        if (localDatePart(session.scheduled_start) === selectedDate) {
+          result.push({ todo, session });
+        }
+      }
+    }
+
+    return result.sort(
+      (a, b) =>
+        new Date(a.session.scheduled_start).getTime() -
+        new Date(b.session.scheduled_start).getTime()
+    );
+  }, [todos, selectedDate]);
+
+  const selectedSessionInfo = useMemo(
+    () =>
+      selectedSessionId
+        ? findSessionOwner(todos, selectedSessionId)
+        : null,
+    [todos, selectedSessionId]
+  );
+
+  const activeSessionInfo = useMemo(() => {
+    if (!activeDragId?.startsWith("session:")) {
+      return null;
+    }
+
+    return findSessionOwner(todos, activeDragId.slice(8));
+  }, [activeDragId, todos]);
+
+  const activeTodo = useMemo(() => {
+    if (!activeDragId) {
+      return null;
+    }
+
+    if (activeDragId.startsWith("todo:")) {
+      const todoId = activeDragId.slice(5);
+      return todos.find((todo) => todo.id === todoId) ?? null;
+    }
+
+    return activeSessionInfo?.todo ?? null;
+  }, [activeDragId, activeSessionInfo, todos]);
+
+  const activeDurationMinutes = useMemo(() => {
+    if (activeSessionInfo) {
+      return sessionDurationMinutes(activeSessionInfo.session);
+    }
+
+    if (activeTodo) {
+      return defaultSessionMinutes(activeTodo);
+    }
+
+    return DEFAULT_SESSION_MINUTES;
+  }, [activeSessionInfo, activeTodo]);
+
+  const hours = Array.from(
+    { length: DAY_END_HOUR - DAY_START_HOUR + 1 },
+    (_, index) => DAY_START_HOUR + index
+  );
+
+  /**
+   * 计算“现在”在时间轴中的垂直位置。
+   * 非今天、或当前时间超出显示范围时返回 null。
+   */
+  const currentTimeTop = useMemo(() => {
+    const current = new Date(now);
+
+    if (localDatePart(current.toISOString()) !== selectedDate) {
+      return null;
+    }
+
+    const minutes = current.getHours() * 60 + current.getMinutes();
+    const fromStart = minutes - DAY_START_HOUR * 60;
+
+    if (fromStart < 0 || fromStart > TOTAL_MINUTES) {
+      return null;
+    }
+
+    return (fromStart / 60) * HOUR_HEIGHT;
+  }, [now, selectedDate]);
+
+  /**
+   * 短暂高亮刚创建 / 移动的 Session。
+   * 视觉反馈持续 720ms，比网络响应更早出现。
+   */
+  function flashPlaced(id: string) {
+    setJustPlacedId(id);
+
+    window.setTimeout(() => {
+      setJustPlacedId((current) => (current === id ? null : current));
+    }, 720);
+  }
+
+  /**
+   * 拖拽开始时记录 Todo 或 Session ID。
+   * DragOverlay 和 slot 时间预览都依赖这个 state。
+   */
+  function handleDragStart(event: DragStartEvent) {
+    const id = String(event.active.id);
+
+    if (!id.startsWith("todo:") && !id.startsWith("session:")) {
+      return;
+    }
+
+    setActiveDragId(id);
+    setEditingTodoId(null);
+    setError(null);
+  }
+
+  /**
+   * 创建一个新的 todo_session。
+   *
+   * 交互顺序非常重要：
+   * 1. 先用临时 ID 把 Session 插入本地 state，用户立刻看到落位；
+   * 2. 再写 Supabase；
+   * 3. 成功后把临时 ID 替换成真实 ID；
+   * 4. 失败则回滚本地 Session，并显示错误。
+   */
+  async function createSession(
+    todo: CalendarTodo,
+    startIso: string,
+    endIso: string
+  ) {
+    const conflict = findSessionConflict(
+      todos,
+      startIso,
+      endIso
     );
 
-  /*
-   * 如果鼠标同时位于 task 和 slot，
-   * 优先把 task 当作目标。
-   *
-   * 这样 A 拖到 B 才会触发交换。
-   */
-  const collisionDetection:
-    CollisionDetection =
-    (
-      args
-    ) => {
-      const collisions =
-        pointerWithin(
-          args
-        );
+    if (conflict) {
+      setError(
+        `这个时间段和「${conflict.todo.title}」重叠。请换一个时间。`
+      );
+      return;
+    }
 
-      const task =
-        collisions.find(
-          (
-            collision
-          ) =>
-            String(
-              collision.id
-            ).startsWith(
-              "task:"
-            )
-        );
-
-      if (task) {
-        return [
-          task,
-        ];
-      }
-
-      return collisions;
+    const temporaryId = `temp-${crypto.randomUUID()}`;
+    const optimisticSession: TodoSession = {
+      id: temporaryId,
+      scheduled_start: startIso,
+      scheduled_end: endIso,
     };
 
-  /**
-   * 短暂标记刚刚放入 Calendar 的任务，用于播放轻量视觉反馈。
-   */
-  function flashPlaced(
-    id: string
-  ) {
-    setJustPlacedId(
-      id
+    setTodos((current) =>
+      addSessionLocally(current, todo.id, optimisticSession)
     );
+    setSelectedSessionId(temporaryId);
+    setBusyId(temporaryId);
+    flashPlaced(temporaryId);
 
-    window.setTimeout(
-      () => {
-        setJustPlacedId(
-          (
-            current
-          ) =>
-            current ===
-            id
-              ? null
-              : current
-        );
-      },
-      220
+    const supabase = createClient();
+    const {
+      data,
+      error: insertError,
+    } = await supabase
+      .from("todo_sessions")
+      .insert({
+        todo_id: todo.id,
+        scheduled_start: startIso,
+        scheduled_end: endIso,
+      })
+      .select("id, scheduled_start, scheduled_end")
+      .single();
+
+    setBusyId(null);
+
+    if (insertError || !data) {
+      setTodos((current) =>
+        removeSessionLocally(current, todo.id, temporaryId)
+      );
+      setSelectedSessionId(null);
+      setError(
+        "保存排期失败：" +
+          (insertError?.message ?? "没有返回 Session 数据")
+      );
+      return;
+    }
+
+    const savedSession: TodoSession = {
+      id: data.id,
+      scheduled_start: data.scheduled_start,
+      scheduled_end: data.scheduled_end,
+    };
+
+    setTodos((current) =>
+      replaceSessionLocally(
+        current,
+        todo.id,
+        temporaryId,
+        savedSession
+      )
     );
+    setSelectedSessionId(savedSession.id);
+    flashPlaced(savedSession.id);
   }
 
-  /* =======================================================
-     Drag start
-  ======================================================= */
-
   /**
-   * 处理拖拽开始：记录当前 Todo，供 DragOverlay 和落点预览使用。
+   * 移动已经存在的 Session。
+   * 保留原 Session 时长，只改变 scheduled_start / scheduled_end。
    */
-  function handleDragStart(
-    event:
-      DragStartEvent
+  async function moveSession(
+    todo: CalendarTodo,
+    session: TodoSession,
+    startIso: string,
+    endIso: string
   ) {
-    const id =
-      String(
-        event.active.id
-      );
-
-    if (
-      !id.startsWith(
-        "todo:"
-      )
-    ) {
+    if (startIso === session.scheduled_start) {
       return;
     }
 
-    setActiveTodoId(
-      id.slice(5)
+    const conflict = findSessionConflict(
+      todos,
+      startIso,
+      endIso,
+      session.id
     );
 
-    setSelectedTodoId(
-      null
-    );
+    if (conflict) {
+      setError(
+        `这个时间段和「${conflict.todo.title}」重叠。请换一个时间。`
+      );
+      return;
+    }
 
-    setEditingTodoId(
-      null
-    );
+    const previousStart = session.scheduled_start;
+    const previousEnd = session.scheduled_end;
 
-    setError(
-      null
+    setTodos((current) =>
+      updateSessionLocally(current, todo.id, session.id, {
+        scheduled_start: startIso,
+        scheduled_end: endIso,
+      })
     );
+    setSelectedSessionId(session.id);
+    setBusyId(session.id);
+    flashPlaced(session.id);
+
+    const supabase = createClient();
+    const { error: updateError } = await supabase
+      .from("todo_sessions")
+      .update({
+        scheduled_start: startIso,
+        scheduled_end: endIso,
+      })
+      .eq("id", session.id);
+
+    setBusyId(null);
+
+    if (updateError) {
+      setTodos((current) =>
+        updateSessionLocally(current, todo.id, session.id, {
+          scheduled_start: previousStart,
+          scheduled_end: previousEnd,
+        })
+      );
+      setError("移动时间段失败：" + updateError.message);
+    }
   }
 
-  /* =======================================================
-     Drag end
-  ======================================================= */
-
   /**
-   * 处理拖拽结束。
-   *
-   * 当前仍维护旧版 scheduled_start / scheduled_end：
-   * - 拖到空时间槽：首次安排或移动任务；
-   * - 拖到另一任务：交换 / 替换时间段。
-   *
-   * todo_sessions 完全接管 Calendar 后，这里会改为创建或移动 Session。
+   * 统一处理 Todo / Session drop 到时间槽。
+   * Todo -> 新建 Session；Session -> 移动原 Session。
    */
-  async function handleDragEnd(
-    event:
-      DragEndEvent
-  ) {
-    const activeId =
-      String(
-        event.active.id
-      );
+  async function handleDragEnd(event: DragEndEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : null;
 
-    const overId =
-      event.over
-        ? String(
-            event.over.id
-          )
-        : null;
+    setActiveDragId(null);
 
-    setActiveTodoId(
-      null
-    );
-
-    if (
-      !activeId.startsWith(
-        "todo:"
-      ) ||
-      !overId
-    ) {
+    if (!overId) {
       return;
     }
 
-    const todoId =
-      activeId.slice(5);
-
-    const source =
-      todos.find(
-        (
-          todo
-        ) =>
-          todo.id ===
-          todoId
-      );
-
-    if (!source) {
-      return;
-    }
-
-    /* =====================================================
-       Drop onto another task
-       = swap / replace
-    ===================================================== */
-
-    if (
-      overId.startsWith(
-        "task:"
-      )
-    ) {
-      const targetId =
-        overId.slice(5);
-
-      if (
-        targetId ===
-        todoId
-      ) {
-        return;
-      }
-
-      const target =
-        todos.find(
-          (
-            todo
-          ) =>
-            todo.id ===
-            targetId
-        );
-
-      if (
-        !target ||
-        !target.scheduled_start
-      ) {
-        return;
-      }
-
-      const previous =
-        todos;
-
-      /*
-       * Optimistic update
-       */
-      if (
-        source.scheduled_start
-      ) {
-        /*
-         * 已排期 A → B
-         * 两边交换。
-         */
-        setTodos(
-          (
-            current
-          ) =>
-            current.map(
-              (
-                item
-              ) => {
-                if (
-                  item.id ===
-                  source.id
-                ) {
-                  return {
-                    ...item,
-
-                    scheduled_start:
-                      target.scheduled_start,
-
-                    scheduled_end:
-                      target.scheduled_end,
-
-                    task_date:
-                      target.task_date,
-                  };
-                }
-
-                if (
-                  item.id ===
-                  target.id
-                ) {
-                  return {
-                    ...item,
-
-                    scheduled_start:
-                      source.scheduled_start,
-
-                    scheduled_end:
-                      source.scheduled_end,
-
-                    task_date:
-                      source.task_date,
-                  };
-                }
-
-                return item;
-              }
-            )
-        );
-      } else {
-        /*
-         * 未排期 A → B
-         *
-         * A 占据 B 的位置，
-         * B 回任务池。
-         */
-        setTodos(
-          (
-            current
-          ) =>
-            current.map(
-              (
-                item
-              ) => {
-                if (
-                  item.id ===
-                  source.id
-                ) {
-                  return {
-                    ...item,
-
-                    scheduled_start:
-                      target.scheduled_start,
-
-                    scheduled_end:
-                      target.scheduled_end,
-
-                    task_date:
-                      target.task_date,
-                  };
-                }
-
-                if (
-                  item.id ===
-                  target.id
-                ) {
-                  return {
-                    ...item,
-
-                    scheduled_start:
-                      null,
-
-                    scheduled_end:
-                      null,
-                  };
-                }
-
-                return item;
-              }
-            )
-        );
-      }
-
-      flashPlaced(
-        source.id
-      );
-
-      setBusyId(
-        source.id
-      );
-
-      const supabase =
-        createClient();
-
-      const {
-        error:
-          rpcError,
-      } =
-        await supabase.rpc(
-          "swap_or_replace_todo_schedules",
-          {
-            source_todo_id:
-              source.id,
-
-            target_todo_id:
-              target.id,
-          }
-        );
-
-      setBusyId(
-        null
-      );
-
-      if (
-        rpcError
-      ) {
-        setTodos(
-          previous
-        );
-
-        setError(
-          "交换时间失败：" +
-            rpcError.message
-        );
-      }
-
-      return;
-    }
-
-    /* =====================================================
-       Drop onto empty slot
-    ===================================================== */
-
-    const slot =
-      readSlotId(
-        overId
-      );
+    const slot = readSlotId(overId);
 
     if (!slot) {
       return;
     }
 
-    /*
-     * 已排期任务移动时：
-     * 保留原 schedule window 长度。
-     *
-     * 未排期：
-     * 用 estimated_minutes。
-     */
-    const duration =
-      source.scheduled_start
-        ? durationMinutes(
-            source
-          )
-        : source.estimated_minutes ??
-          30;
+    const start = makeLocalDate(
+      slot.date,
+      slot.hour,
+      slot.minute
+    );
 
-    const start =
-      makeLocalDate(
-        slot.date,
-        slot.hour,
-        slot.minute
+    if (activeId.startsWith("todo:")) {
+      const todoId = activeId.slice(5);
+      const todo = todos.find((item) => item.id === todoId);
+
+      if (!todo) {
+        return;
+      }
+
+      const duration = defaultSessionMinutes(todo);
+      const end = new Date(start.getTime() + duration * 60000);
+
+      await createSession(
+        todo,
+        start.toISOString(),
+        end.toISOString()
       );
+      return;
+    }
 
-    const end =
-      new Date(
-        start.getTime() +
-          duration *
-            60000
+    if (activeId.startsWith("session:")) {
+      const sessionId = activeId.slice(8);
+      const owner = findSessionOwner(todos, sessionId);
+
+      if (!owner) {
+        return;
+      }
+
+      const duration = sessionDurationMinutes(owner.session);
+      const end = new Date(start.getTime() + duration * 60000);
+
+      await moveSession(
+        owner.todo,
+        owner.session,
+        start.toISOString(),
+        end.toISOString()
       );
+    }
+  }
 
-    const startIso =
-      start.toISOString();
-
-    const endIso =
-      end.toISOString();
-
-    /*
-     * 如果与别的任务真正重叠，
-     * 先不猜用户想做什么。
-     *
-     * 要交换就直接拖到任务本身。
-     */
-    const conflict =
-      todos.find(
-        (
-          other
-        ) =>
-          other.id !==
-            source.id &&
-          other.scheduled_start &&
-          other.scheduled_end &&
-          overlaps(
-            startIso,
-            endIso,
-            other.scheduled_start,
-            other.scheduled_end
-          )
-      );
+  /**
+   * 保存 resize 后的新 Session 结束时间。
+   * 先本地更新，再写数据库；失败时恢复旧结束时间。
+   */
+  async function handleResize(
+    todo: CalendarTodo,
+    session: TodoSession,
+    newEnd: string
+  ) {
+    const conflict = findSessionConflict(
+      todos,
+      session.scheduled_start,
+      newEnd,
+      session.id
+    );
 
     if (conflict) {
       setError(
-        `这个时间段和「${conflict.title}」重叠。想交换的话，把任务直接拖到它上面。`
+        `拉长后会和「${conflict.todo.title}」重叠，所以没有保存。`
       );
-
       return;
     }
 
-    const previous =
-      todos;
+    const previousEnd = session.scheduled_end;
 
-    setTodos(
-      (
-        current
-      ) =>
-        current.map(
-          (
-            item
-          ) =>
-            item.id ===
-            source.id
-              ? {
-                  ...item,
-
-                  task_date:
-                    slot.date,
-
-                  scheduled_start:
-                    startIso,
-
-                  scheduled_end:
-                    endIso,
-                }
-              : item
-        )
+    setTodos((current) =>
+      updateSessionLocally(current, todo.id, session.id, {
+        scheduled_end: newEnd,
+      })
     );
+    setBusyId(session.id);
 
-    flashPlaced(
-      source.id
-    );
+    const supabase = createClient();
+    const { error: resizeError } = await supabase
+      .from("todo_sessions")
+      .update({ scheduled_end: newEnd })
+      .eq("id", session.id);
 
-    setBusyId(
-      source.id
-    );
+    setBusyId(null);
 
-    const supabase =
-      createClient();
-
-    const {
-      error:
-        updateError,
-    } =
-      await supabase
-        .from(
-          "todos"
-        )
-        .update({
-          task_date:
-            slot.date,
-
-          scheduled_start:
-            startIso,
-
-          scheduled_end:
-            endIso,
+    if (resizeError) {
+      setTodos((current) =>
+        updateSessionLocally(current, todo.id, session.id, {
+          scheduled_end: previousEnd,
         })
-        .eq(
-          "id",
-          source.id
-        );
-
-    setBusyId(
-      null
-    );
-
-    if (
-      updateError
-    ) {
-      setTodos(
-        previous
       );
-
-      setError(
-        "保存排期失败：" +
-          updateError.message
-      );
+      setError("修改时间长度失败：" + resizeError.message);
     }
   }
 
-  /* =======================================================
-     Resize schedule window
-  ======================================================= */
-
   /**
-   * 保存 resize 后的新结束时间。
-   * 保存前会检查时间范围和与其他任务的冲突。
+   * 删除一个 Calendar Session，也就是“取消这一段排期”。
+   * Todo 本体不会被删除，任务会根据剩余时间重新出现在任务池中。
    */
-  async function handleResize(
-    todo:
-      CalendarTodo,
-
-    newEnd:
-      string
+  async function removeSession(
+    todo: CalendarTodo,
+    session: TodoSession
   ) {
-    if (
-      !todo.scheduled_start
-    ) {
-      return;
-    }
+    const previousTodos = todos;
 
-    const conflict =
-      todos.find(
-        (
-          other
-        ) =>
-          other.id !==
-            todo.id &&
-          other.scheduled_start &&
-          other.scheduled_end &&
-          overlaps(
-            todo.scheduled_start!,
-            newEnd,
-            other.scheduled_start,
-            other.scheduled_end
-          )
-      );
-
-    if (
-      conflict
-    ) {
-      setError(
-        `拉长后会和「${conflict.title}」重叠，所以没有保存。`
-      );
-
-      return;
-    }
-
-    const previous =
-      todos;
-
-    setTodos(
-      (
-        current
-      ) =>
-        current.map(
-          (
-            item
-          ) =>
-            item.id ===
-            todo.id
-              ? {
-                  ...item,
-
-                  scheduled_end:
-                    newEnd,
-                }
-              : item
-        )
+    setTodos((current) =>
+      removeSessionLocally(current, todo.id, session.id)
     );
+    setSelectedSessionId(null);
+    setBusyId(session.id);
 
-    setBusyId(
-      todo.id
-    );
+    const supabase = createClient();
+    const { error: deleteError } = await supabase
+      .from("todo_sessions")
+      .delete()
+      .eq("id", session.id);
 
-    const supabase =
-      createClient();
+    setBusyId(null);
 
-    const {
-      error:
-        resizeError,
-    } =
-      await supabase
-        .from(
-          "todos"
-        )
-        .update({
-          scheduled_end:
-            newEnd,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusyId(
-      null
-    );
-
-    if (
-      resizeError
-    ) {
-      setTodos(
-        previous
-      );
-
-      setError(
-        "修改时间长度失败：" +
-          resizeError.message
-      );
+    if (deleteError) {
+      setTodos(previousTodos);
+      setSelectedSessionId(session.id);
+      setError("取消排期失败：" + deleteError.message);
     }
   }
 
-  /* =======================================================
-     Edit
-  ======================================================= */
-
   /**
-   * 打开任务编辑面板，并把 Todo 当前值同步到编辑 state。
+   * 打开 Todo 编辑状态。
+   * Calendar v2 中这里只编辑任务本体；Session 时间通过拖动 / resize 管理。
    */
-  function startEditing(
-    todo:
-      CalendarTodo
-  ) {
-    setEditingTodoId(
-      todo.id
-    );
-
-    setEditTitle(
-      todo.title
-    );
-
+  function startEditing(todo: CalendarTodo) {
+    setEditingTodoId(todo.id);
+    setEditTitle(todo.title);
     setEditMinutes(
-      todo.estimated_minutes
-        ? String(
-            todo.estimated_minutes
-          )
-        : ""
+      todo.estimated_minutes ? String(todo.estimated_minutes) : ""
     );
-
-    setEditCategory(
-      todo.category
-    );
-
-    setEditCustomTag(
-      todo.custom_tag ??
-        ""
-    );
-
-    setEditStart(
-      toLocalInputValue(
-        todo.scheduled_start
-      )
-    );
-
-    setEditEnd(
-      toLocalInputValue(
-        todo.scheduled_end
-      )
-    );
-
-    setError(
-      null
-    );
+    setEditCategory(todo.category);
+    setEditCustomTag(todo.custom_tag ?? "");
+    setError(null);
   }
 
   /**
-   * 关闭任务编辑面板，并清空编辑期间的临时 state。
+   * 退出编辑并清空临时表单状态。
    */
   function cancelEditing() {
-    setEditingTodoId(
-      null
-    );
+    setEditingTodoId(null);
+    setEditTitle("");
+    setEditMinutes("");
+    setEditCategory(null);
+    setEditCustomTag("");
   }
 
   /**
-   * 校验并保存任务编辑结果。
-   * 当前迁移期仍会写入 Todo 的旧 scheduled_start / scheduled_end。
+   * 保存 Todo 本体字段。
+   * 不再写 todos.scheduled_start / scheduled_end，避免和 todo_sessions 两套数据打架。
    */
-  async function saveEdit(
-    todo:
-      CalendarTodo
-  ) {
-    const title =
-      editTitle.trim();
+  async function saveEdit(todo: CalendarTodo) {
+    const title = editTitle.trim();
 
     if (!title) {
-      setError(
-        "任务名称不能为空。"
-      );
-
+      setError("任务名称不能为空。");
       return;
     }
 
-    const minutes =
-      editMinutes.trim()
-        ? Number(
-            editMinutes
-          )
-        : null;
+    const minutes = editMinutes.trim() ? Number(editMinutes) : null;
 
     if (
       minutes !== null &&
-      (
-        !Number.isFinite(
-          minutes
-        ) ||
-        minutes <= 0
+      (!Number.isFinite(minutes) || minutes <= 0)
+    ) {
+      setError("预计时间需要是大于 0 的分钟数。");
+      return;
+    }
+
+    const previousTodos = todos;
+    const customTag =
+      editCategory === "other" && editCustomTag.trim()
+        ? editCustomTag.trim()
+        : null;
+
+    setTodos((current) =>
+      current.map((item) =>
+        item.id === todo.id
+          ? {
+              ...item,
+              title,
+              estimated_minutes: minutes,
+              category: editCategory,
+              custom_tag: customTag,
+            }
+          : item
       )
-    ) {
-      setError(
-        "预计时间需要是大于 0 的分钟数。"
-      );
+    );
+    setBusyId(todo.id);
 
+    const supabase = createClient();
+    const { error: saveError } = await supabase
+      .from("todos")
+      .update({
+        title,
+        estimated_minutes: minutes,
+        category: editCategory,
+        custom_tag: customTag,
+      })
+      .eq("id", todo.id);
+
+    setBusyId(null);
+
+    if (saveError) {
+      setTodos(previousTodos);
+      setError("保存修改失败：" + saveError.message);
       return;
     }
 
-    if (
-      Boolean(
-        editStart
-      ) !==
-      Boolean(
-        editEnd
-      )
-    ) {
-      setError(
-        "开始时间和结束时间需要一起填写。"
-      );
-
-      return;
-    }
-
-    let startIso:
-      | string
-      | null = null;
-
-    let endIso:
-      | string
-      | null = null;
-
-    if (
-      editStart &&
-      editEnd
-    ) {
-      const start =
-        new Date(
-          editStart
-        );
-
-      const end =
-        new Date(
-          editEnd
-        );
-
-      if (
-        end <= start
-      ) {
-        setError(
-          "结束时间需要晚于开始时间。"
-        );
-
-        return;
-      }
-
-      startIso =
-        start.toISOString();
-
-      endIso =
-        end.toISOString();
-    }
-
-    const previous =
-      todos;
-
-    const updated:
-      CalendarTodo = {
-      ...todo,
-
-      title,
-
-      estimated_minutes:
-        minutes,
-
-      category:
-        editCategory,
-
-      custom_tag:
-        editCategory ===
-          "other" &&
-        editCustomTag.trim()
-          ? editCustomTag.trim()
-          : null,
-
-      scheduled_start:
-        startIso,
-
-      scheduled_end:
-        endIso,
-
-      task_date:
-        editStart
-          ? editStart.slice(
-              0,
-              10
-            )
-          : todo.task_date,
-    };
-
-    /*
-     * 编辑产生的新时间段也检查冲突。
-     */
-    if (
-      startIso &&
-      endIso
-    ) {
-      const conflict =
-        todos.find(
-          (
-            other
-          ) =>
-            other.id !==
-              todo.id &&
-            other.scheduled_start &&
-            other.scheduled_end &&
-            overlaps(
-              startIso!,
-              endIso!,
-              other.scheduled_start,
-              other.scheduled_end
-            )
-        );
-
-      if (
-        conflict
-      ) {
-        setError(
-          `这个时间段和「${conflict.title}」重叠。`
-        );
-
-        return;
-      }
-    }
-
-    setTodos(
-      (
-        current
-      ) =>
-        current.map(
-          (
-            item
-          ) =>
-            item.id ===
-            todo.id
-              ? updated
-              : item
-        )
-    );
-
-    setBusyId(
-      todo.id
-    );
-
-    const supabase =
-      createClient();
-
-    const {
-      error:
-        saveError,
-    } =
-      await supabase
-        .from(
-          "todos"
-        )
-        .update({
-          title,
-
-          estimated_minutes:
-            minutes,
-
-          category:
-            editCategory,
-
-          custom_tag:
-            updated.custom_tag,
-
-          scheduled_start:
-            startIso,
-
-          scheduled_end:
-            endIso,
-
-          task_date:
-            updated.task_date,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusyId(
-      null
-    );
-
-    if (
-      saveError
-    ) {
-      setTodos(
-        previous
-      );
-
-      setError(
-        "保存修改失败：" +
-          saveError.message
-      );
-
-      return;
-    }
-
-    setEditingTodoId(
-      null
-    );
+    cancelEditing();
   }
 
-  /* =======================================================
-     Complete
-  ======================================================= */
+  /**
+   * 将 Todo 标记为已完成。
+   * todo_sessions 保留历史排期记录，不在完成任务时删除。
+   */
+  async function completeTodo(todo: CalendarTodo) {
+    const previousTodos = todos;
+    let elapsed = todo.elapsed_seconds ?? 0;
+
+    if (todo.status === "running" && todo.started_at) {
+      elapsed += Math.max(
+        0,
+        Math.floor(
+          (Date.now() - new Date(todo.started_at).getTime()) / 1000
+        )
+      );
+    }
+
+    setTodos((current) =>
+      current.map((item) =>
+        item.id === todo.id
+          ? {
+              ...item,
+              status: "completed",
+              started_at: null,
+              elapsed_seconds: elapsed,
+            }
+          : item
+      )
+    );
+    setSelectedSessionId(null);
+    setBusyId(todo.id);
+
+    const supabase = createClient();
+    const { error: completeError } = await supabase
+      .from("todos")
+      .update({
+        status: "completed",
+        started_at: null,
+        elapsed_seconds: elapsed,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", todo.id);
+
+    setBusyId(null);
+
+    if (completeError) {
+      setTodos(previousTodos);
+      setError("完成任务失败：" + completeError.message);
+    }
+  }
 
   /**
-   * 将 Todo 标记为已完成，并清理任务的运行中计时状态。
+   * 进入 Todo 的 Focus 页面。
+   *
+   * UI 会先进入“启动中”状态，再处理正在运行的其他任务和页面跳转；
+   * 这样即使网络操作需要几百毫秒，用户点击后也会立刻得到反馈。
    */
-  async function completeTodo(
-    todo:
-      CalendarTodo
-  ) {
-    const previous =
-      todos;
+  async function openFocus(todo: CalendarTodo) {
+    if (startingFocusTodoId) {
+      return;
+    }
 
-    let elapsed =
-      todo.elapsed_seconds ??
-      0;
+    setStartingFocusTodoId(todo.id);
+    setError(null);
 
-    if (
-      todo.status ===
-        "running" &&
-      todo.started_at
-    ) {
-      elapsed +=
-        Math.max(
+    const running = todos.find(
+      (item) => item.status === "running" && item.id !== todo.id
+    );
+
+    if (running) {
+      const shouldSwitch = window.confirm(
+        `「${running.title}」还在计时。\n\n要暂停它并开始「${todo.title}」吗？`
+      );
+
+      if (!shouldSwitch) {
+        setStartingFocusTodoId(null);
+        return;
+      }
+
+      let elapsed = running.elapsed_seconds ?? 0;
+
+      if (running.started_at) {
+        elapsed += Math.max(
           0,
           Math.floor(
-            (
-              Date.now() -
-              new Date(
-                todo.started_at
-              ).getTime()
-            ) /
+            (Date.now() - new Date(running.started_at).getTime()) /
               1000
           )
         );
-    }
+      }
 
-    setTodos(
-      (
-        current
-      ) =>
-        current.filter(
-          (
-            item
-          ) =>
-            item.id !==
-            todo.id
-        )
-    );
-
-    setSelectedTodoId(
-      null
-    );
-
-    const supabase =
-      createClient();
-
-    const {
-      error:
-        completeError,
-    } =
-      await supabase
-        .from(
-          "todos"
-        )
+      const supabase = createClient();
+      const { error: pauseError } = await supabase
+        .from("todos")
         .update({
-          status:
-            "completed",
-
-          started_at:
-            null,
-
-          elapsed_seconds:
-            elapsed,
-
-          completed_at:
-            new Date().toISOString(),
+          status: "paused",
+          started_at: null,
+          elapsed_seconds: elapsed,
         })
-        .eq(
-          "id",
-          todo.id
-        );
+        .eq("id", running.id);
 
-    if (
-      completeError
-    ) {
-      setTodos(
-        previous
-      );
-
-      setError(
-        "完成任务失败：" +
-          completeError.message
-      );
-    }
-  }
-
-  /* =======================================================
-     Focus
-  ======================================================= */
-
-  /**
-   * 进入指定 Todo 的 Focus 页面。这里只负责导航，不在 Calendar 内启动计时。
-   */
-  async function openFocus(
-    todo:
-      CalendarTodo
-  ) {
-    /*
-     * Calendar 是计划，
-     * Focus 是实际。
-     *
-     * 所以提前开始绝不修改：
-     * scheduled_start / scheduled_end。
-     */
-
-    const running =
-      todos.find(
-        (
-          item
-        ) =>
-          item.status ===
-            "running" &&
-          item.id !==
-            todo.id
-      );
-
-    if (
-      running
-    ) {
-      const shouldSwitch =
-        window.confirm(
-          `「${running.title}」还在计时。\n\n要暂停它并开始「${todo.title}」吗？`
-        );
-
-      if (
-        !shouldSwitch
-      ) {
+      if (pauseError) {
+        setStartingFocusTodoId(null);
+        setError("暂停当前 Focus 失败：" + pauseError.message);
         return;
       }
 
-      let elapsed =
-        running.elapsed_seconds ??
-        0;
-
-      if (
-        running.started_at
-      ) {
-        elapsed +=
-          Math.max(
-            0,
-            Math.floor(
-              (
-                Date.now() -
-                new Date(
-                  running.started_at
-                ).getTime()
-              ) /
-                1000
-            )
-          );
-      }
-
-      const supabase =
-        createClient();
-
-      const {
-        error:
-          pauseError,
-      } =
-        await supabase
-          .from(
-            "todos"
-          )
-          .update({
-            status:
-              "paused",
-
-            started_at:
-              null,
-
-            elapsed_seconds:
-              elapsed,
-          })
-          .eq(
-            "id",
-            running.id
-          );
-
-      if (
-        pauseError
-      ) {
-        setError(
-          "暂停当前 Focus 失败：" +
-            pauseError.message
-        );
-
-        return;
-      }
-
-      setTodos(
-        (
-          current
-        ) =>
-          current.map(
-            (
-              item
-            ) =>
-              item.id ===
-              running.id
-                ? {
-                    ...item,
-
-                    status:
-                      "paused",
-
-                    started_at:
-                      null,
-
-                    elapsed_seconds:
-                      elapsed,
-                  }
-                : item
-          )
+      setTodos((current) =>
+        current.map((item) =>
+          item.id === running.id
+            ? {
+                ...item,
+                status: "paused",
+                started_at: null,
+                elapsed_seconds: elapsed,
+              }
+            : item
+        )
       );
     }
 
-    router.push(
-      `/focus/${todo.id}`
-    );
+    router.push(`/focus/${todo.id}`);
   }
 
   return (
     <DndContext
-      sensors={
-        sensors
-      }
-      collisionDetection={
-        collisionDetection
-      }
-      onDragStart={
-        handleDragStart
-      }
-      onDragCancel={() =>
-        setActiveTodoId(
-          null
-        )
-      }
-      onDragEnd={
-        handleDragEnd
-      }
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragStart={handleDragStart}
+      onDragCancel={() => setActiveDragId(null)}
+      onDragEnd={handleDragEnd}
     >
       <div className="mt-6">
         {/* =================================================
             Header
         ================================================= */}
-
         <header className="mb-5 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">
-              日历
-            </h1>
-
+            <h1 className="text-2xl font-semibold">日历</h1>
             <p className="mt-1 text-sm text-ink-faint">
-              安排时间，也给计划留一点调整的余地。
+              把一件大事拆成几个小时间段，慢慢安排进今天。
             </p>
           </div>
 
@@ -2945,17 +1763,10 @@ export default function CalendarPlanner({
               type="button"
               className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
               onClick={() => {
-                setSelectedDate(
-                  addDays(
-                    selectedDate,
-                    -1
-                  )
-                );
-
-                setSelectedTodoId(
-                  null
-                );
+                setSelectedDate(addDays(selectedDate, -1));
+                setSelectedSessionId(null);
               }}
+              aria-label="前一天"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -2964,13 +1775,8 @@ export default function CalendarPlanner({
               type="button"
               className="rounded-xl border border-line bg-white px-4 py-2 text-sm text-ink-soft transition hover:bg-sage-50"
               onClick={() => {
-                setSelectedDate(
-                  initialDate
-                );
-
-                setSelectedTodoId(
-                  null
-                );
+                setSelectedDate(initialDate);
+                setSelectedSessionId(null);
               }}
             >
               今天
@@ -2980,17 +1786,10 @@ export default function CalendarPlanner({
               type="button"
               className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
               onClick={() => {
-                setSelectedDate(
-                  addDays(
-                    selectedDate,
-                    1
-                  )
-                );
-
-                setSelectedTodoId(
-                  null
-                );
+                setSelectedDate(addDays(selectedDate, 1));
+                setSelectedSessionId(null);
               }}
+              aria-label="后一天"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -2999,19 +1798,11 @@ export default function CalendarPlanner({
 
         {error && (
           <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-blush-100 bg-blush-50 px-4 py-3 text-sm text-blush-500">
-            <span>
-              {
-                error
-              }
-            </span>
-
+            <span>{error}</span>
             <button
               type="button"
-              onClick={() =>
-                setError(
-                  null
-                )
-              }
+              onClick={() => setError(null)}
+              aria-label="关闭错误提示"
             >
               <X className="h-4 w-4" />
             </button>
@@ -3022,510 +1813,405 @@ export default function CalendarPlanner({
           {/* =================================================
               Task pool
           ================================================= */}
-
           <aside className="card h-fit p-4 lg:sticky lg:top-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-medium">
-                  任务池
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-medium">任务池</h2>
+                  <span className="rounded-full bg-sage-50 px-2 py-0.5 text-[10px] text-sage-700">
+                    {poolTodos.length} 待安排
+                  </span>
+                </div>
 
-                <p className="mt-1 text-xs text-ink-faint">
-                  拖到右侧安排时间
+                <p className="mt-1 text-xs leading-5 text-ink-faint">
+                  每拖一次默认安排 30 分钟；没有排完的任务会继续留在这里。
                 </p>
               </div>
 
               <Link
                 href="/todo"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-sage-100 text-sage-700 transition hover:bg-sage-300/50"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage-100 text-sage-700 transition hover:bg-sage-300/50"
+                aria-label="新建任务"
               >
                 <Plus className="h-4 w-4" />
               </Link>
             </div>
 
             <div className="mt-5 space-y-2">
-              {unscheduledTodos.length ===
-                0 && (
+              {poolTodos.length === 0 && (
                 <div className="rounded-2xl bg-sage-50 px-4 py-6 text-center">
                   <p className="text-sm text-ink-soft">
-                    暂时没有未排期任务
+                    需要安排的任务都已经放进日历了
                   </p>
-
                   <p className="mt-1 text-xs text-ink-faint">
-                    今天已经安排得很整齐啦。
+                    可以继续调整时间，也可以开始专注。
                   </p>
                 </div>
               )}
 
-              {unscheduledTodos.map(
-                (
-                  todo
-                ) => (
-                  <PoolTask
-                    key={
-                      todo.id
-                    }
-                    todo={
-                      todo
-                    }
-                  />
-                )
-              )}
+              {poolTodos.map((todo) => (
+                <PoolTask key={todo.id} todo={todo} />
+              ))}
             </div>
+
+            {fullyPlannedTodos.length > 0 && (
+              <details className="mt-4 border-t border-line pt-3">
+                <summary className="cursor-pointer select-none text-[11px] text-ink-faint transition hover:text-ink-soft">
+                  已排满 {fullyPlannedTodos.length} 个任务
+                </summary>
+
+                <div className="mt-3 space-y-2">
+                  {fullyPlannedTodos.map((todo) => (
+                    <PoolTask key={`planned-${todo.id}`} todo={todo} />
+                  ))}
+                </div>
+
+                <p className="mt-2 text-[10px] leading-4 text-ink-faint">
+                  仍可继续拖动；超出预计时间只会提示，不会阻止排期。
+                </p>
+              </details>
+            )}
           </aside>
 
           {/* =================================================
               Calendar
           ================================================= */}
-
           <section className="card min-w-0 overflow-hidden">
             <div className="border-b border-line px-5 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="font-medium">
-                    {
-                      formatDateTitle(
-                        selectedDate
-                      )
-                    }
+                    {formatDateTitle(selectedDate)}
                   </p>
-
                   <p className="mt-1 text-xs text-ink-faint">
-                    {
-                      scheduledTodos.length
-                    }{" "}
-                    个已排期任务
+                    {scheduledSessions.length} 个时间段
+                    {scheduledSessions.length > 0 && (
+                      <>
+                        {" · "}
+                        {
+                          new Set(
+                            scheduledSessions.map(({ todo }) => todo.id)
+                          ).size
+                        }{" "}
+                        个任务
+                      </>
+                    )}
                   </p>
                 </div>
 
                 {activeTodo && (
                   <div className="hidden rounded-full bg-sage-50 px-3 py-1.5 text-xs text-sage-700 sm:block">
-                    拖到空白处重排，拖到任务上交换
+                    松手后立即落位，保存会在后台完成
                   </div>
                 )}
               </div>
             </div>
 
             {/* ===============================================
-                Quick action / editor
+                Selected Session / task detail
             =============================================== */}
-
-            {selectedTodo &&
-              selectedTodo.scheduled_start && (
-                <div className="border-b border-line bg-paper/50 px-5 py-4">
-                  {editingTodoId ===
-                  selectedTodo.id ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">
-                            编辑任务
-                          </p>
-
-                          <p className="mt-1 text-xs text-ink-faint">
-                            Calendar 时间和预计工作量可以不同。
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={
-                            cancelEditing
-                          }
-                          className="btn-ghost flex h-8 w-8 items-center justify-center p-0"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <input
-                        value={
-                          editTitle
-                        }
-                        onChange={(
-                          event
-                        ) =>
-                          setEditTitle(
-                            event.target.value
-                          )
-                        }
-                        className="input w-full"
-                        placeholder="任务名称"
-                      />
-
-                      <div className="flex flex-wrap gap-2">
-                        {(
-                          Object.keys(
-                            CATEGORY_INFO
-                          ) as Category[]
-                        ).map(
-                          (
-                            category
-                          ) => {
-                            const info =
-                              CATEGORY_INFO[
-                                category
-                              ];
-
-                            const selected =
-                              editCategory ===
-                              category;
-
-                            return (
-                              <button
-                                key={
-                                  category
-                                }
-                                type="button"
-                                onClick={() =>
-                                  setEditCategory(
-                                    category
-                                  )
-                                }
-                                className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                                  selected
-                                    ? info.selected
-                                    : "border-line bg-white text-ink-soft"
-                                }`}
-                              >
-                                {
-                                  info.label
-                                }
-                              </button>
-                            );
-                          }
-                        )}
-                      </div>
-
-                      {editCategory ===
-                        "other" && (
-                        <input
-                          value={
-                            editCustomTag
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setEditCustomTag(
-                              event.target.value
-                            )
-                          }
-                          className="input w-full"
-                          placeholder="自定义类别"
-                        />
-                      )}
-
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <label className="block">
-                          <span className="mb-1 block text-xs text-ink-faint">
-                            预计工作分钟
-                          </span>
-
-                          <input
-                            type="number"
-                            min="1"
-                            value={
-                              editMinutes
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setEditMinutes(
-                                event.target.value
-                              )
-                            }
-                            className="input w-full"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-1 block text-xs text-ink-faint">
-                            计划开始
-                          </span>
-
-                          <input
-                            type="datetime-local"
-                            value={
-                              editStart
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setEditStart(
-                                event.target.value
-                              )
-                            }
-                            className="input w-full"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-1 block text-xs text-ink-faint">
-                            计划结束
-                          </span>
-
-                          <input
-                            type="datetime-local"
-                            value={
-                              editEnd
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setEditEnd(
-                                event.target.value
-                              )
-                            }
-                            className="input w-full"
-                          />
-                        </label>
-                      </div>
-
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={
-                            cancelEditing
-                          }
-                          className="btn-ghost"
-                        >
-                          取消
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={
-                            busyId ===
-                            selectedTodo.id
-                          }
-                          onClick={() =>
-                            saveEdit(
-                              selectedTodo
-                            )
-                          }
-                          className="btn-primary flex items-center gap-2"
-                        >
-                          <Save className="h-4 w-4" />
-                          保存
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate font-medium">
-                            {
-                              selectedTodo.title
-                            }
-                          </p>
-
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] ${categoryOf(
-                              selectedTodo
-                            ).badge}`}
-                          >
-                            {
-                              categoryOf(
-                                selectedTodo
-                              ).label
-                            }
-                          </span>
-                        </div>
-
-                        <p className="mt-1 flex items-center gap-1 text-xs text-ink-faint">
-                          <Clock3 className="h-3.5 w-3.5" />
-
-                          {
-                            formatTime(
-                              selectedTodo.scheduled_start
-                            )
-                          }
-
-                          {selectedTodo.scheduled_end &&
-                            ` – ${formatTime(
-                              selectedTodo.scheduled_end
-                            )}`}
+            {selectedSessionInfo && (
+              <div className="border-b border-line bg-paper/55 px-5 py-4">
+                {editingTodoId === selectedSessionInfo.todo.id ? (
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">编辑任务</p>
+                        <p className="mt-1 text-xs text-ink-faint">
+                          这里只改任务本体；时间段请直接拖动或拉伸。
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openFocus(
-                              selectedTodo
-                            )
-                          }
-                          className="flex items-center gap-2 rounded-xl bg-sage-100 px-3 py-2 text-sm font-medium text-sage-700 transition hover:bg-sage-300/60"
-                        >
-                          <Play className="h-4 w-4 fill-current" />
+                      <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="btn-ghost flex h-8 w-8 items-center justify-center p-0"
+                        aria-label="取消编辑"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
 
-                          {new Date(
-                            selectedTodo.scheduled_start
-                          ).getTime() >
-                          Date.now()
-                            ? "提前开始"
-                            : "开始专注"}
-                        </button>
+                    <input
+                      value={editTitle}
+                      onChange={(event) => setEditTitle(event.target.value)}
+                      className="input w-full"
+                      placeholder="任务名称"
+                    />
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            startEditing(
-                              selectedTodo
-                            )
-                          }
-                          className="btn-ghost flex items-center gap-2"
-                        >
-                          <Pencil className="h-4 w-4" />
-                          编辑
-                        </button>
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(CATEGORY_INFO) as Category[]).map(
+                        (category) => {
+                          const info = CATEGORY_INFO[category];
+                          const selected = editCategory === category;
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            completeTodo(
-                              selectedTodo
-                            )
-                          }
-                          className="flex items-center gap-2 rounded-xl bg-blush-50 px-3 py-2 text-sm font-medium text-blush-500 transition hover:bg-blush-100"
-                        >
-                          <Check className="h-4 w-4" />
-                          完成
-                        </button>
+                          return (
+                            <button
+                              key={category}
+                              type="button"
+                              onClick={() => setEditCategory(category)}
+                              className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                selected
+                                  ? info.selected
+                                  : "border-line bg-white text-ink-soft"
+                              }`}
+                            >
+                              {info.label}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedTodoId(
-                              null
-                            )
-                          }
-                          className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
+                    {editCategory === "other" && (
+                      <input
+                        value={editCustomTag}
+                        onChange={(event) =>
+                          setEditCustomTag(event.target.value)
+                        }
+                        className="input w-full"
+                        placeholder="自定义类别"
+                      />
+                    )}
+
+                    <label className="block max-w-[220px]">
+                      <span className="mb-1 block text-xs text-ink-faint">
+                        预计工作分钟
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={editMinutes}
+                        onChange={(event) =>
+                          setEditMinutes(event.target.value)
+                        }
+                        className="input w-full"
+                      />
+                    </label>
+
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="btn-ghost"
+                      >
+                        取消
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={busyId === selectedSessionInfo.todo.id}
+                        onClick={() => saveEdit(selectedSessionInfo.todo)}
+                        className="btn-primary flex items-center gap-2"
+                      >
+                        {busyId === selectedSessionInfo.todo.id ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate font-medium">
+                          {selectedSessionInfo.todo.title}
+                        </p>
+
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] ${categoryOf(
+                            selectedSessionInfo.todo
+                          ).badge}`}
                         >
-                          <X className="h-4 w-4" />
-                        </button>
+                          {categoryOf(selectedSessionInfo.todo).label}
+                        </span>
+
+                        {selectedSessionInfo.todo.status === "running" && (
+                          <span className="flex items-center gap-1 rounded-full bg-sage-100 px-2 py-0.5 text-[10px] text-sage-700">
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sage-500" />
+                            专注中
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
+                        <span className="flex items-center gap-1">
+                          <Clock3 className="h-3.5 w-3.5" />
+                          {formatTime(
+                            selectedSessionInfo.session.scheduled_start
+                          )}
+                          {" – "}
+                          {formatTime(
+                            selectedSessionInfo.session.scheduled_end
+                          )}
+                        </span>
+
+                        <span>
+                          已安排 {formatMinutes(
+                            scheduledMinutes(selectedSessionInfo.todo)
+                          )}
+                        </span>
+
+                        {remainingMinutes(selectedSessionInfo.todo) !== null && (
+                          <span>
+                            剩余 {formatMinutes(
+                              remainingMinutes(selectedSessionInfo.todo) ?? 0
+                            )}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={
+                          startingFocusTodoId === selectedSessionInfo.todo.id
+                        }
+                        onClick={() => openFocus(selectedSessionInfo.todo)}
+                        className="flex items-center gap-2 rounded-xl bg-sage-100 px-3 py-2 text-sm font-medium text-sage-700 transition hover:bg-sage-300/60 disabled:cursor-wait disabled:opacity-70"
+                      >
+                        {startingFocusTodoId === selectedSessionInfo.todo.id ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4 fill-current" />
+                        )}
+
+                        {startingFocusTodoId === selectedSessionInfo.todo.id
+                          ? "打开中…"
+                          : new Date(
+                                selectedSessionInfo.session.scheduled_start
+                              ).getTime() > Date.now()
+                            ? "提前开始"
+                            : "开始专注"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => startEditing(selectedSessionInfo.todo)}
+                        className="btn-ghost flex items-center gap-2"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        编辑
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeSession(
+                            selectedSessionInfo.todo,
+                            selectedSessionInfo.session
+                          )
+                        }
+                        className="btn-ghost flex items-center gap-2 text-ink-faint hover:text-blush-500"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        取消排期
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => completeTodo(selectedSessionInfo.todo)}
+                        className="flex items-center gap-2 rounded-xl bg-blush-50 px-3 py-2 text-sm font-medium text-blush-500 transition hover:bg-blush-100"
+                      >
+                        <Check className="h-4 w-4" />
+                        完成
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSessionId(null)}
+                        className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
+                        aria-label="关闭详情"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ===============================================
                 Timeline
             =============================================== */}
-
             <div
               className="relative"
               style={{
-                height:
-                  TOTAL_HEIGHT,
+                height: TOTAL_HEIGHT + TIMELINE_BOTTOM_SPACE,
               }}
             >
               {/* Hour labels */}
-              <div className="pointer-events-none absolute inset-y-0 left-0 w-[64px] border-r border-line">
-                {hours.map(
-                  (
-                    hour,
-                    index
-                  ) => (
-                    <div
-                      key={
-                        hour
-                      }
-                      className="absolute right-3 -translate-y-1/2 text-[11px] text-ink-faint"
-                      style={{
-                        top:
-                          index *
-                          HOUR_HEIGHT,
-                      }}
-                    >
-                      {String(
-                        hour
-                      ).padStart(
-                        2,
-                        "0"
-                      )}
-                      :00
-                    </div>
-                  )
-                )}
+              <div className="pointer-events-none absolute left-0 top-0 h-full w-[64px] border-r border-line">
+                {hours.map((hour, index) => (
+                  <div
+                    key={hour}
+                    className="absolute right-3 -translate-y-1/2 text-[11px] text-ink-faint"
+                    style={{ top: index * HOUR_HEIGHT }}
+                  >
+                    {String(hour).padStart(2, "0")}:00
+                  </div>
+                ))}
               </div>
 
-              <div className="absolute inset-y-0 left-[64px] right-0">
+              <div
+                className="absolute left-[64px] right-0 top-0"
+                style={{ height: TOTAL_HEIGHT }}
+              >
                 {/* Slots */}
-                {slots.map(
-                  (
-                    slot
-                  ) => (
-                    <CalendarSlot
-                      key={
-                        slot.id
-                      }
-                      slot={
-                        slot
-                      }
-                      activeTodo={
-                        activeTodo
-                      }
-                    />
-                  )
+                {slots.map((slot) => (
+                  <CalendarSlot
+                    key={slot.id}
+                    slot={slot}
+                    activeTodo={activeTodo}
+                    activeDurationMinutes={activeDurationMinutes}
+                  />
+                ))}
+
+                {/* Current time indicator */}
+                {currentTimeTop !== null && (
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
+                    style={{ top: currentTimeTop }}
+                  >
+                    <span className="-ml-1 h-2 w-2 rounded-full bg-sage-500 shadow-sm" />
+                    <span className="h-px flex-1 bg-sage-500/55" />
+                  </div>
                 )}
 
-                {/* Tasks */}
+                {/* Sessions */}
                 <div className="absolute inset-0">
-                  {scheduledTodos.map(
-                    (
-                      todo
-                    ) => (
-                      <ScheduledTask
-                        key={
-                          todo.id
+                  {scheduledSessions.map(({ todo, session }) => (
+                    <ScheduledSession
+                      key={session.id}
+                      todo={todo}
+                      session={session}
+                      selected={selectedSessionId === session.id}
+                      justPlaced={justPlacedId === session.id}
+                      saving={busyId === session.id}
+                      starting={startingFocusTodoId === todo.id}
+                      onSelect={() => {
+                        if (!activeDragId) {
+                          setSelectedSessionId((current) =>
+                            current === session.id ? null : session.id
+                          );
+                          setEditingTodoId(null);
                         }
-                        todo={
-                          todo
-                        }
-                        selected={
-                          selectedTodoId ===
-                          todo.id
-                        }
-                        justPlaced={
-                          justPlacedId ===
-                          todo.id
-                        }
-                        onSelect={() => {
-                          if (
-                            !activeTodoId
-                          ) {
-                            setSelectedTodoId(
-                              (
-                                current
-                              ) =>
-                                current ===
-                                todo.id
-                                  ? null
-                                  : todo.id
-                            );
-
-                            setEditingTodoId(
-                              null
-                            );
-                          }
-                        }}
-                        onResize={
-                          handleResize
-                        }
-                      />
-                    )
-                  )}
+                      }}
+                      onResize={handleResize}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
 
             {busyId && (
-              <div className="border-t border-line bg-paper/60 px-5 py-2 text-right text-[10px] text-ink-faint">
-                正在保存…
+              <div className="flex items-center justify-end gap-1.5 border-t border-line bg-paper/60 px-5 py-2 text-[10px] text-ink-faint">
+                <LoaderCircle className="h-3 w-3 animate-spin" />
+                后台保存中…
               </div>
             )}
           </section>
@@ -3534,18 +2220,14 @@ export default function CalendarPlanner({
 
       <DragOverlay
         dropAnimation={{
-          duration:
-            180,
-
-          easing:
-            "cubic-bezier(0.22, 0.8, 0.3, 1)",
+          duration: 160,
+          easing: "cubic-bezier(0.22, 0.8, 0.3, 1)",
         }}
       >
         {activeTodo ? (
           <DragPreview
-            todo={
-              activeTodo
-            }
+            todo={activeTodo}
+            durationMinutes={activeDurationMinutes}
           />
         ) : null}
       </DragOverlay>
