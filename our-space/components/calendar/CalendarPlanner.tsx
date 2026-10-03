@@ -1327,18 +1327,7 @@ function ScheduledTask({
             style={{
               touchAction:
                 "none",
-                userSelect:
-                "none",
-
-               background: `
-               linear-gradient(
-                 to right,
-                 rgba(147, 169, 142, 0.26) 0%,
-                 rgba(147, 169, 142, 0.26) ${progress}%,
-                 rgba(251, 247, 241, 0.72) ${progress}%,
-                 rgba(251, 247, 241, 0.72) 100%
-    )
-  `,
+   
             }}
             className="mt-0.5 shrink-0 cursor-grab rounded-md p-0.5 text-ink-faint/40 hover:bg-black/[0.03] active:cursor-grabbing"
             title="拖动任务"
