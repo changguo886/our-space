@@ -1054,6 +1054,13 @@ function ScheduledTask({
     return null;
   }
 
+    /*
+   * 当前任务的分类视觉配置。
+   * Calendar 中任务块的背景、边框和标签都由这里决定。
+   */
+  const category =
+    categoryOf(todo);
+
 
 
   const start =
