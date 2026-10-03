@@ -53,6 +53,12 @@ type Category =
   | "rest"
   | "other";
 
+type TodoSession = {
+  id: string;
+  scheduled_start: string;
+  scheduled_end: string;
+};
+
 type CalendarTodo = {
   id: string;
 
@@ -104,6 +110,8 @@ type CalendarTodo = {
 type Props = {
   initialTodos:
     CalendarTodo[];
+  
+  todo_sessions: TodoSession[];
 
   initialDate:
     string;
@@ -134,6 +142,8 @@ const TOTAL_HEIGHT =
   (DAY_END_HOUR -
     DAY_START_HOUR) *
   HOUR_HEIGHT;
+
+
 
 /* =========================================================
    Categories
@@ -468,6 +478,81 @@ function durationMinutes(
   );
 }
 
+function sessionDurationMinutes(
+  session: TodoSession
+) {
+  const start =
+    new Date(
+      session.scheduled_start
+    ).getTime();
+
+  const end =
+    new Date(
+      session.scheduled_end
+    ).getTime();
+
+  return Math.max(
+    0,
+    Math.round(
+      (end - start) /
+        60000
+    )
+  );
+}
+
+function scheduledMinutes(
+  todo: CalendarTodo
+) {
+  return (
+    todo.todo_sessions ??
+    []
+  ).reduce(
+    (
+      total,
+      session
+    ) =>
+      total +
+      sessionDurationMinutes(
+        session
+      ),
+    0
+  );
+}
+
+function remainingMinutes(
+  todo: CalendarTodo
+) {
+  if (
+    !todo.estimated_minutes
+  ) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    todo.estimated_minutes -
+      scheduledMinutes(todo)
+  );
+}
+
+function scheduledRatio(
+  todo: CalendarTodo
+) {
+  if (
+    !todo.estimated_minutes ||
+    todo.estimated_minutes <= 0
+  ) {
+    return 0;
+  }
+
+  return Math.min(
+    1,
+    scheduledMinutes(todo) /
+      todo.estimated_minutes
+  );
+}
+
+
 function snapMinutes(
   minutes: number
 ) {
@@ -664,7 +749,7 @@ function PoolTask({
         py-3
         transition
         active:cursor-grabbing
-        ${category.card}
+        border-line
 
         ${
           isDragging
@@ -692,14 +777,18 @@ function PoolTask({
           </span>
         </div>
 
-        <p className="mt-1 text-[11px] text-ink-faint">
-          预计{" "}
-          {
-            todo.estimated_minutes ??
-            30
-          }{" "}
-          分钟
-        </p>
+      <p className="mt-1 text-[11px] text-ink-faint">
+        已安排{" "}
+        {formatMinutes(scheduled)}
+
+        {remaining !== null && (
+        <>
+        {" · "}
+        剩余{" "}
+        {formatMinutes(remaining)}
+          </>
+          )}
+      </p>
       </div>
     </div>
   );
@@ -920,6 +1009,15 @@ function ScheduledTask({
 
   const category =
     categoryOf(todo);
+
+    const scheduled =
+    scheduledMinutes(todo);
+
+  const remaining =
+    remainingMinutes(todo);
+
+  const progress =
+    scheduledRatio(todo) * 100;
 
   const start =
     new Date(
@@ -1192,6 +1290,18 @@ function ScheduledTask({
             style={{
               touchAction:
                 "none",
+                userSelect:
+                "none",
+
+               background: `
+               linear-gradient(
+                 to right,
+                 rgba(147, 169, 142, 0.26) 0%,
+                 rgba(147, 169, 142, 0.26) ${progress}%,
+                 rgba(251, 247, 241, 0.72) ${progress}%,
+                 rgba(251, 247, 241, 0.72) 100%
+    )
+  `,
             }}
             className="mt-0.5 shrink-0 cursor-grab rounded-md p-0.5 text-ink-faint/40 hover:bg-black/[0.03] active:cursor-grabbing"
             title="拖动任务"
