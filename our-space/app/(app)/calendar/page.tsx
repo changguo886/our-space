@@ -39,21 +39,26 @@ export default async function CalendarPage() {
     error,
   } = await supabase
     .from("todos")
-    .select(`
-      id,
-      title,
-      description,
-      estimated_minutes,
-      status,
-      group_id,
-      task_date,
-      scheduled_start,
-      scheduled_end,
-      category,
-      custom_tag,
-      started_at,
-      elapsed_seconds
-    `)
+   .select(`
+  id,
+  title,
+  description,
+  estimated_minutes,
+  status,
+  group_id,
+  task_date,
+  scheduled_start,
+  scheduled_end,
+  category,
+  custom_tag,
+  started_at,
+  elapsed_seconds,
+  todo_sessions (
+    id,
+    scheduled_start,
+    scheduled_end
+  )
+`)
     .eq(
       "user_id",
       user.id
