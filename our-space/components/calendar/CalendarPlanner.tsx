@@ -105,13 +105,16 @@ type CalendarTodo = {
   elapsed_seconds:
     | number
     | null;
+  todo_sessions: TodoSession[];
 };
+
+
 
 type Props = {
   initialTodos:
     CalendarTodo[];
   
-  todo_sessions: TodoSession[];
+  
 
   initialDate:
     string;
