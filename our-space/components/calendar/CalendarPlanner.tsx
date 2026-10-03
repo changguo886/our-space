@@ -120,6 +120,8 @@ const HOUR_HEIGHT = 96;
 
 const SLOT_MINUTES = 15;
 
+const TIMELINE_BOTTOM_SPACE = 32;
+
 const SLOT_HEIGHT =
   HOUR_HEIGHT / 4;
 
