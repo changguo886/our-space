@@ -2,6 +2,7 @@
 
 import {
   FileText,
+  GripVertical,
   Pencil,
   Plus,
   Save,
@@ -15,7 +16,6 @@ import {
   useRef,
   useState,
 } from "react";
-
 
 import {
   DndContext,
@@ -37,6 +37,10 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { createClient } from "@/lib/supabase/client";
 
+
+/* =========================================================
+   Types
+========================================================= */
 
 export type QuickNoteColor =
   | "cream"
@@ -69,16 +73,26 @@ export type QuickNotesSubtask = {
 type QuickNotesProps = {
   todoId: string;
   todoTitle?: string;
+
+  /*
+   * 兼容旧调用：
+   * 如果父级没有传 subtasks，QuickNotes 会自己从 Supabase 读取。
+   */
   subtasks?: QuickNotesSubtask[];
+
   onClose?: () => void;
 
   /*
-   * Phase B 可以用它做自动滚动定位。
-   * 当前先保留接口，不强制执行定位。
+   * Phase B 可用于点击某个 Step 的 Notes 按钮后自动定位。
+   * 当前版本先保留接口，不做自动滚动。
    */
   initialSubtaskId?: string | null;
 };
 
+
+/* =========================================================
+   Visual config
+========================================================= */
 
 const COLOR_OPTIONS: {
   value: QuickNoteColor;
@@ -125,6 +139,14 @@ const NOTE_BACKGROUND: Record<
 };
 
 
+/* =========================================================
+   Error helper
+
+   Supabase/browser fetch 偶尔可能直接 reject 一个 Event。
+   这里统一把未知错误转成可读文字，避免 Next dev overlay
+   只显示 [object Event]。
+========================================================= */
+
 function describeUnknownError(
   value: unknown
 ) {
@@ -153,6 +175,10 @@ function describeUnknownError(
 }
 
 
+/* =========================================================
+   Main panel
+========================================================= */
+
 export default function QuickNotes({
   todoId,
   todoTitle,
@@ -177,7 +203,9 @@ export default function QuickNotes({
     useState(false);
 
   const [error, setError] =
-    useState<string | null>(null);
+    useState<string | null>(
+      null
+    );
 
   /*
    * undefined = composer 关闭
@@ -192,47 +220,73 @@ export default function QuickNotes({
       string | null | undefined
     >(undefined);
 
-  const [draftTitle, setDraftTitle] =
-    useState("");
+  const [
+    draftTitle,
+    setDraftTitle,
+  ] = useState("");
 
-  const [draftContent, setDraftContent] =
-    useState("");
+  const [
+    draftContent,
+    setDraftContent,
+  ] = useState("");
 
-  const [draftColor, setDraftColor] =
-    useState<QuickNoteColor>("cream");
+  const [
+    draftColor,
+    setDraftColor,
+  ] =
+    useState<QuickNoteColor>(
+      "cream"
+    );
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [
+    editingId,
+    setEditingId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [editTitle, setEditTitle] =
-    useState("");
+  const [
+    editTitle,
+    setEditTitle,
+  ] = useState("");
 
-  const [editContent, setEditContent] =
-    useState("");
+  const [
+    editContent,
+    setEditContent,
+  ] = useState("");
 
-  const [editColor, setEditColor] =
-    useState<QuickNoteColor>("cream");
+  const [
+    editColor,
+    setEditColor,
+  ] =
+    useState<QuickNoteColor>(
+      "cream"
+    );
 
-  const [deletingId, setDeletingId] =
-    useState<string | null>(null);
+  const [
+    deletingId,
+    setDeletingId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const textareaRef =
     useRef<HTMLTextAreaElement | null>(
       null
     );
 
-  const sensors =
-  useSensors(
-    useSensor(
-      PointerSensor,
-      {
-        activationConstraint: {
-          distance: 6,
-        },
-      }
-    )
-  );
 
+  /* =======================================================
+     Load panel data
+
+     QuickNotes 自己读取：
+     - quick_notes
+     - todo_subtasks（当父级没有传时）
+
+     这样 Panel 不依赖 TodoList 的临时 subtasks state。
+  ======================================================= */
 
   useEffect(() => {
     let cancelled = false;
@@ -314,10 +368,11 @@ export default function QuickNotes({
         const [
           notesResult,
           subtasksResult,
-        ] = await Promise.all([
-          notesRequest,
-          subtasksRequest,
-        ]);
+        ] =
+          await Promise.all([
+            notesRequest,
+            subtasksRequest,
+          ]);
 
         if (cancelled) {
           return;
@@ -328,6 +383,7 @@ export default function QuickNotes({
 
         if (notesResult.error) {
           setNotes([]);
+
           messages.push(
             "读取 Quick Notes 失败：" +
               notesResult.error
@@ -344,7 +400,9 @@ export default function QuickNotes({
           subtasksResult.error
         ) {
           if (!providedSubtasks) {
-            setLoadedSubtasks([]);
+            setLoadedSubtasks(
+              []
+            );
           }
 
           messages.push(
@@ -366,7 +424,9 @@ export default function QuickNotes({
             ? messages.join("；")
             : null
         );
-      } catch (unknownError) {
+      } catch (
+        unknownError
+      ) {
         if (cancelled) {
           return;
         }
@@ -374,7 +434,9 @@ export default function QuickNotes({
         setNotes([]);
 
         if (!providedSubtasks) {
-          setLoadedSubtasks([]);
+          setLoadedSubtasks(
+            []
+          );
         }
 
         setError(
@@ -401,14 +463,24 @@ export default function QuickNotes({
   ]);
 
 
+  /*
+   * 打开 composer 后自动把焦点放到内容输入框。
+   */
   useEffect(() => {
     if (
-      composerSubtaskId !== undefined
+      composerSubtaskId !==
+      undefined
     ) {
       textareaRef.current?.focus();
     }
-  }, [composerSubtaskId]);
+  }, [
+    composerSubtaskId,
+  ]);
 
+
+  /* =======================================================
+     Derived data
+  ======================================================= */
 
   const subtasks =
     providedSubtasks ??
@@ -433,7 +505,8 @@ export default function QuickNotes({
         notes
           .filter(
             (note) =>
-              note.subtask_id === null
+              note.subtask_id ===
+              null
           )
           .sort(
             (a, b) =>
@@ -461,6 +534,10 @@ export default function QuickNotes({
   }
 
 
+  /*
+   * 新增 Note 时使用间隔排序：
+   * 1000, 2000, 3000...
+   */
   function getNextSortOrder(
     subtaskId: string | null
   ) {
@@ -470,108 +547,6 @@ export default function QuickNotes({
           note.subtask_id ===
           subtaskId
       );
-
-      async function reorderNotesWithinSection(
-  sectionNotes: QuickNote[],
-  activeId: string,
-  overId: string
-) {
-  if (activeId === overId) {
-    return;
-  }
-
-  const oldIndex =
-    sectionNotes.findIndex(
-      (note) =>
-        note.id === activeId
-    );
-
-  const newIndex =
-    sectionNotes.findIndex(
-      (note) =>
-        note.id === overId
-    );
-
-  if (
-    oldIndex < 0 ||
-    newIndex < 0
-  ) {
-    return;
-  }
-
-  const previous =
-    notes;
-
-  const reordered =
-    arrayMove(
-      sectionNotes,
-      oldIndex,
-      newIndex
-    ).map(
-      (note, index) => ({
-        ...note,
-        sort_order:
-          (index + 1) * 1000,
-      })
-    );
-
-  const reorderedMap =
-    new Map(
-      reordered.map(
-        (note) => [
-          note.id,
-          note,
-        ]
-      )
-    );
-
-  setNotes(
-    (current) =>
-      current.map(
-        (note) =>
-          reorderedMap.get(
-            note.id
-          ) ?? note
-      )
-  );
-
-  const supabase =
-    createClient();
-
-  const results =
-    await Promise.all(
-      reordered.map(
-        (note) =>
-          supabase
-            .from(
-              "quick_notes"
-            )
-            .update({
-              sort_order:
-                note.sort_order,
-            })
-            .eq(
-              "id",
-              note.id
-            )
-      )
-    );
-
-  const saveError =
-    results.find(
-      (result) =>
-        result.error
-    )?.error;
-
-  if (saveError) {
-    setNotes(previous);
-
-    setError(
-      "保存 Note 顺序失败：" +
-        saveError.message
-    );
-  }
-}
 
     if (
       sectionNotes.length === 0
@@ -590,13 +565,179 @@ export default function QuickNotes({
   }
 
 
+  /* =======================================================
+     Drag-and-drop: same-section reorder
+
+     当前版本只允许：
+     - Unsorted 内排序
+     - Step 01 内排序
+     - Step 02 内排序
+
+     暂时不允许跨 section。
+  ======================================================= */
+
+  async function reorderNotesWithinSection(
+    sectionNotes: QuickNote[],
+    activeId: string,
+    overId: string
+  ) {
+    if (
+      activeId === overId
+    ) {
+      return;
+    }
+
+    const oldIndex =
+      sectionNotes.findIndex(
+        (note) =>
+          note.id ===
+          activeId
+      );
+
+    const newIndex =
+      sectionNotes.findIndex(
+        (note) =>
+          note.id ===
+          overId
+      );
+
+    if (
+      oldIndex < 0 ||
+      newIndex < 0
+    ) {
+      return;
+    }
+
+    /*
+     * 保留旧状态，保存失败时回滚。
+     */
+    const previous =
+      notes;
+
+    /*
+     * 当前 section 内重新排序，并 normalize sort_order。
+     */
+    const reordered =
+      arrayMove(
+        sectionNotes,
+        oldIndex,
+        newIndex
+      ).map(
+        (
+          note,
+          index
+        ) => ({
+          ...note,
+          sort_order:
+            (index + 1) *
+            1000,
+        })
+      );
+
+    const reorderedMap =
+      new Map(
+        reordered.map(
+          (note) => [
+            note.id,
+            note,
+          ]
+        )
+      );
+
+    /*
+     * Optimistic UI：先立刻更新界面。
+     */
+    setNotes(
+      (current) =>
+        current.map(
+          (note) =>
+            reorderedMap.get(
+              note.id
+            ) ?? note
+        )
+    );
+
+    setError(null);
+
+    try {
+      const supabase =
+        createClient();
+
+      const results =
+        await Promise.all(
+          reordered.map(
+            (note) =>
+              supabase
+                .from(
+                  "quick_notes"
+                )
+                .update({
+                  sort_order:
+                    note.sort_order,
+                })
+                .eq(
+                  "id",
+                  note.id
+                )
+          )
+        );
+
+      const saveError =
+        results.find(
+          (result) =>
+            result.error
+        )?.error;
+
+      if (saveError) {
+        setNotes(
+          previous
+        );
+
+        setError(
+          "保存 Note 顺序失败：" +
+            saveError.message
+        );
+      }
+    } catch (
+      unknownError
+    ) {
+      setNotes(
+        previous
+      );
+
+      setError(
+        "保存 Note 顺序失败：" +
+          describeUnknownError(
+            unknownError
+          )
+      );
+    }
+  }
+
+
+  /* =======================================================
+     Composer
+  ======================================================= */
+
   function openComposer(
     subtaskId: string | null
   ) {
-    setEditingId(null);
-    setDraftTitle("");
-    setDraftContent("");
-    setDraftColor("cream");
+    setEditingId(
+      null
+    );
+
+    setDraftTitle(
+      ""
+    );
+
+    setDraftContent(
+      ""
+    );
+
+    setDraftColor(
+      "cream"
+    );
+
     setComposerSubtaskId(
       subtaskId
     );
@@ -607,11 +748,24 @@ export default function QuickNotes({
     setComposerSubtaskId(
       undefined
     );
-    setDraftTitle("");
-    setDraftContent("");
-    setDraftColor("cream");
+
+    setDraftTitle(
+      ""
+    );
+
+    setDraftContent(
+      ""
+    );
+
+    setDraftColor(
+      "cream"
+    );
   }
 
+
+  /* =======================================================
+     Create
+  ======================================================= */
 
   async function addNote() {
     const cleanContent =
@@ -629,71 +783,95 @@ export default function QuickNotes({
     setBusy(true);
     setError(null);
 
-    const supabase =
-      createClient();
+    try {
+      const supabase =
+        createClient();
 
-    const {
-      data,
-      error: insertError,
-    } =
-      await supabase
-        .from("quick_notes")
-        .insert({
-          todo_id: todoId,
-          subtask_id:
-            composerSubtaskId,
-          title:
-            draftTitle.trim() ||
-            null,
-          content:
-            cleanContent,
-          color:
-            draftColor,
-          sort_order:
-            getNextSortOrder(
-              composerSubtaskId
-            ),
-        })
-        .select(`
-          id,
-          todo_id,
-          subtask_id,
-          title,
-          content,
-          color,
-          sort_order,
-          created_at,
-          updated_at
-        `)
-        .single();
+      const {
+        data,
+        error: insertError,
+      } =
+        await supabase
+          .from(
+            "quick_notes"
+          )
+          .insert({
+            todo_id:
+              todoId,
 
-    setBusy(false);
+            subtask_id:
+              composerSubtaskId,
 
-    if (
-      insertError ||
-      !data
+            title:
+              draftTitle.trim() ||
+              null,
+
+            content:
+              cleanContent,
+
+            color:
+              draftColor,
+
+            sort_order:
+              getNextSortOrder(
+                composerSubtaskId
+              ),
+          })
+          .select(`
+            id,
+            todo_id,
+            subtask_id,
+            title,
+            content,
+            color,
+            sort_order,
+            created_at,
+            updated_at
+          `)
+          .single();
+
+      if (
+        insertError ||
+        !data
+      ) {
+        setError(
+          "新增 Quick Note 失败：" +
+            (
+              insertError
+                ?.message ??
+              "没有返回数据"
+            )
+        );
+
+        return;
+      }
+
+      setNotes(
+        (current) => [
+          ...current,
+          data as QuickNote,
+        ]
+      );
+
+      closeComposer();
+    } catch (
+      unknownError
     ) {
       setError(
         "新增 Quick Note 失败：" +
-          (
-            insertError?.message ??
-            "没有返回数据"
+          describeUnknownError(
+            unknownError
           )
       );
-
-      return;
+    } finally {
+      setBusy(false);
     }
-
-    setNotes(
-      (current) => [
-        ...current,
-        data as QuickNote,
-      ]
-    );
-
-    closeComposer();
   }
 
+
+  /* =======================================================
+     Delete
+  ======================================================= */
 
   async function deleteNote(
     note: QuickNote
@@ -718,29 +896,59 @@ export default function QuickNotes({
         )
     );
 
-    const supabase =
-      createClient();
+    setError(null);
 
-    const {
-      error: deleteError,
-    } =
-      await supabase
-        .from("quick_notes")
-        .delete()
-        .eq("id", note.id);
+    try {
+      const supabase =
+        createClient();
 
-    setDeletingId(null);
+      const {
+        error: deleteError,
+      } =
+        await supabase
+          .from(
+            "quick_notes"
+          )
+          .delete()
+          .eq(
+            "id",
+            note.id
+          );
 
-    if (deleteError) {
-      setNotes(previous);
+      if (deleteError) {
+        setNotes(
+          previous
+        );
+
+        setError(
+          "删除 Quick Note 失败：" +
+            deleteError.message
+        );
+      }
+    } catch (
+      unknownError
+    ) {
+      setNotes(
+        previous
+      );
 
       setError(
         "删除 Quick Note 失败：" +
-          deleteError.message
+          describeUnknownError(
+            unknownError
+          )
+      );
+    } finally {
+      setDeletingId(
+        null
       );
     }
   }
 
+
+  /* =======================================================
+     Edit
+  ======================================================= */
 
   function startEditing(
     note: QuickNote
@@ -766,10 +974,21 @@ export default function QuickNotes({
 
 
   function cancelEditing() {
-    setEditingId(null);
-    setEditTitle("");
-    setEditContent("");
-    setEditColor("cream");
+    setEditingId(
+      null
+    );
+
+    setEditTitle(
+      ""
+    );
+
+    setEditContent(
+      ""
+    );
+
+    setEditColor(
+      "cream"
+    );
   }
 
 
@@ -789,69 +1008,95 @@ export default function QuickNotes({
     setBusy(true);
     setError(null);
 
-    const supabase =
-      createClient();
+    try {
+      const supabase =
+        createClient();
 
-    const {
-      data,
-      error: updateError,
-    } =
-      await supabase
-        .from("quick_notes")
-        .update({
-          title:
-            editTitle.trim() ||
-            null,
-          content:
-            cleanContent,
-          color:
-            editColor,
-        })
-        .eq("id", note.id)
-        .select(`
-          id,
-          todo_id,
-          subtask_id,
-          title,
-          content,
-          color,
-          sort_order,
-          created_at,
-          updated_at
-        `)
-        .single();
+      const {
+        data,
+        error: updateError,
+      } =
+        await supabase
+          .from(
+            "quick_notes"
+          )
+          .update({
+            title:
+              editTitle.trim() ||
+              null,
 
-    setBusy(false);
+            content:
+              cleanContent,
 
-    if (
-      updateError ||
-      !data
-    ) {
-      setError(
-        "编辑 Quick Note 失败：" +
-          (
-            updateError?.message ??
-            "没有返回数据"
+            color:
+              editColor,
+          })
+          .eq(
+            "id",
+            note.id
+          )
+          .select(`
+            id,
+            todo_id,
+            subtask_id,
+            title,
+            content,
+            color,
+            sort_order,
+            created_at,
+            updated_at
+          `)
+          .single();
+
+      if (
+        updateError ||
+        !data
+      ) {
+        setError(
+          "编辑 Quick Note 失败：" +
+            (
+              updateError
+                ?.message ??
+              "没有返回数据"
+            )
+        );
+
+        return;
+      }
+
+      setNotes(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              note.id
+                ? data as QuickNote
+                : item
           )
       );
 
-      return;
+      cancelEditing();
+    } catch (
+      unknownError
+    ) {
+      setError(
+        "编辑 Quick Note 失败：" +
+          describeUnknownError(
+            unknownError
+          )
+      );
+    } finally {
+      setBusy(false);
     }
-
-    setNotes(
-      (current) =>
-        current.map(
-          (item) =>
-            item.id ===
-            note.id
-              ? data as QuickNote
-              : item
-        )
-    );
-
-    cancelEditing();
   }
 
+
+  /* =======================================================
+     Move via dropdown
+
+     现有 V1 的跨 section 移动方式。
+     DnD 跨 section 后续再实现。
+  ======================================================= */
 
   async function moveNote(
     note: QuickNote,
@@ -881,8 +1126,10 @@ export default function QuickNotes({
             note.id
               ? {
                   ...item,
+
                   subtask_id:
                     destination,
+
                   sort_order:
                     nextSortOrder,
                 }
@@ -890,32 +1137,61 @@ export default function QuickNotes({
         )
     );
 
-    const supabase =
-      createClient();
+    setError(null);
 
-    const {
-      error: moveError,
-    } =
-      await supabase
-        .from("quick_notes")
-        .update({
-          subtask_id:
-            destination,
-          sort_order:
-            nextSortOrder,
-        })
-        .eq("id", note.id);
+    try {
+      const supabase =
+        createClient();
 
-    if (moveError) {
-      setNotes(previous);
+      const {
+        error: moveError,
+      } =
+        await supabase
+          .from(
+            "quick_notes"
+          )
+          .update({
+            subtask_id:
+              destination,
+
+            sort_order:
+              nextSortOrder,
+          })
+          .eq(
+            "id",
+            note.id
+          );
+
+      if (moveError) {
+        setNotes(
+          previous
+        );
+
+        setError(
+          "移动 Quick Note 失败：" +
+            moveError.message
+        );
+      }
+    } catch (
+      unknownError
+    ) {
+      setNotes(
+        previous
+      );
 
       setError(
         "移动 Quick Note 失败：" +
-          moveError.message
+          describeUnknownError(
+            unknownError
+          )
       );
     }
   }
 
+
+  /* =======================================================
+     Panel UI
+  ======================================================= */
 
   return (
     <aside className="flex h-full min-h-0 flex-col">
@@ -935,7 +1211,9 @@ export default function QuickNotes({
         {onClose && (
           <button
             type="button"
-            onClick={onClose}
+            onClick={
+              onClose
+            }
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ink-faint transition hover:bg-paper hover:text-ink"
             aria-label="关闭 Quick Notes"
           >
@@ -958,13 +1236,6 @@ export default function QuickNotes({
               notes={
                 unsortedNotes
               }
-
-              sensors={sensors}
-
-              onReorder={
-              reorderNotesWithinSection
-              }
-
               subtasks={
                 sortedSubtasks
               }
@@ -993,7 +1264,9 @@ export default function QuickNotes({
               editColor={
                 editColor
               }
-              busy={busy}
+              busy={
+                busy
+              }
               deletingId={
                 deletingId
               }
@@ -1001,7 +1274,9 @@ export default function QuickNotes({
                 textareaRef
               }
               onOpenComposer={() =>
-                openComposer(null)
+                openComposer(
+                  null
+                )
               }
               onCloseComposer={
                 closeComposer
@@ -1042,7 +1317,11 @@ export default function QuickNotes({
               onMove={
                 moveNote
               }
+              onReorder={
+                reorderNotesWithinSection
+              }
             />
+
 
             {sortedSubtasks.map(
               (
@@ -1062,9 +1341,11 @@ export default function QuickNotes({
                     2,
                     "0"
                   )}
-                  notes={notesForSubtask(
-                    subtask.id
-                  )}
+                  notes={
+                    notesForSubtask(
+                      subtask.id
+                    )
+                  }
                   subtasks={
                     sortedSubtasks
                   }
@@ -1093,7 +1374,9 @@ export default function QuickNotes({
                   editColor={
                     editColor
                   }
-                  busy={busy}
+                  busy={
+                    busy
+                  }
                   deletingId={
                     deletingId
                   }
@@ -1144,6 +1427,9 @@ export default function QuickNotes({
                   onMove={
                     moveNote
                   }
+                  onReorder={
+                    reorderNotesWithinSection
+                  }
                 />
               )
             )}
@@ -1161,75 +1447,118 @@ export default function QuickNotes({
 }
 
 
+/* =========================================================
+   Section
+========================================================= */
+
 type NoteSectionProps = {
   title: string;
-  stepLabel: string | null;
+  stepLabel:
+    string | null;
+
   notes: QuickNote[];
-  subtasks: QuickNotesSubtask[];
 
-  sensors: ReturnType<
-    typeof useSensors
-  >;
-
-  onReorder: (
-    sectionNotes: QuickNote[],
-    activeId: string,
-    overId: string
-  ) => Promise<void>;
+  subtasks:
+    QuickNotesSubtask[];
 
   composerOpen: boolean;
-  editingId: string | null;
+
+  editingId:
+    string | null;
 
   draftTitle: string;
   draftContent: string;
-  draftColor: QuickNoteColor;
+  draftColor:
+    QuickNoteColor;
 
   editTitle: string;
   editContent: string;
-  editColor: QuickNoteColor;
+  editColor:
+    QuickNoteColor;
 
   busy: boolean;
-  deletingId: string | null;
+
+  deletingId:
+    string | null;
 
   textareaRef:
-    React.RefObject<HTMLTextAreaElement | null>;
+    React.RefObject<
+      HTMLTextAreaElement | null
+    >;
 
-  onOpenComposer: () => void;
-  onCloseComposer: () => void;
+  onOpenComposer:
+    () => void;
+
+  onCloseComposer:
+    () => void;
 
   onDraftTitle:
     (value: string) => void;
+
   onDraftContent:
     (value: string) => void;
-  onDraftColor:
-    (value: QuickNoteColor) => void;
 
-  onAddNote: () => Promise<void>;
+  onDraftColor:
+    (
+      value:
+        QuickNoteColor
+    ) => void;
+
+  onAddNote:
+    () => Promise<void>;
 
   onStartEdit:
-    (note: QuickNote) => void;
-  onCancelEdit: () => void;
+    (
+      note:
+        QuickNote
+    ) => void;
+
+  onCancelEdit:
+    () => void;
 
   onEditTitle:
     (value: string) => void;
+
   onEditContent:
     (value: string) => void;
+
   onEditColor:
-    (value: QuickNoteColor) => void;
+    (
+      value:
+        QuickNoteColor
+    ) => void;
 
   onSaveEdit:
-    (note: QuickNote) =>
-      Promise<void>;
+    (
+      note:
+        QuickNote
+    ) => Promise<void>;
 
   onDelete:
-    (note: QuickNote) =>
-      Promise<void>;
+    (
+      note:
+        QuickNote
+    ) => Promise<void>;
 
   onMove:
     (
-      note: QuickNote,
+      note:
+        QuickNote,
+
       destination:
         string | null
+    ) => Promise<void>;
+
+  onReorder:
+    (
+      sectionNotes:
+        QuickNote[],
+
+      activeId:
+        string,
+
+      overId:
+        string
     ) => Promise<void>;
 };
 
@@ -1239,8 +1568,6 @@ function NoteSection({
   stepLabel,
   notes,
   subtasks,
-  sensors,
-  onReorder,
   composerOpen,
   editingId,
   draftTitle,
@@ -1266,35 +1593,55 @@ function NoteSection({
   onSaveEdit,
   onDelete,
   onMove,
+  onReorder,
 }: NoteSectionProps) {
-
+  /*
+   * 每个 section 都有自己的 DndContext。
+   * 所以这一版天然只允许同 section 排序。
+   */
+  const sensors =
+    useSensors(
+      useSensor(
+        PointerSensor,
+        {
+          activationConstraint: {
+            distance: 6,
+          },
+        }
+      )
+    );
 
 
   function handleDragEnd(
-   event: DragEndEvent
-) {
-  const {
-    active,
-    over,
-  } = event;
-
-  if (!over) {
-    return;
-  }
-
-  if (
-    active.id === over.id
+    event:
+      DragEndEvent
   ) {
-    return;
+    const {
+      active,
+      over,
+    } = event;
+
+    if (!over) {
+      return;
+    }
+
+    if (
+      active.id ===
+      over.id
+    ) {
+      return;
+    }
+
+    void onReorder(
+      notes,
+      String(
+        active.id
+      ),
+      String(
+        over.id
+      )
+    );
   }
-
-  void onReorder(
-    notes,
-    String(active.id),
-    String(over.id)
-  );
-}
-
 
 
   return (
@@ -1320,7 +1667,9 @@ function NoteSection({
             onOpenComposer
           }
           className="flex h-6 w-6 items-center justify-center rounded-lg text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-          aria-label={`Add note to ${title}`}
+          aria-label={
+            `Add note to ${title}`
+          }
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -1341,7 +1690,9 @@ function NoteSection({
           color={
             draftColor
           }
-          busy={busy}
+          busy={
+            busy
+          }
           onTitle={
             onDraftTitle
           }
@@ -1361,160 +1712,101 @@ function NoteSection({
       )}
 
 
-     {notes.length > 0 && (
-  <DndContext
-    sensors={
-      sensors
-    }
-    collisionDetection={
-      closestCenter
-    }
-    onDragEnd={
-      handleDragEnd
-    }
-  >
-    <SortableContext
-      items={
-        notes.map(
-          (note) =>
-            note.id
-        )
-      }
-      strategy={
-        verticalListSortingStrategy
-      }
-    >
-      <div className="mt-2 space-y-2">
-        {notes.map(
-          (note) => (
-            <SortableNoteCard
-              key={
-                note.id
-              }
-              note={
-                note
-              }
-            >
-              <NoteCard
-                note={
-                  note
-                }
-                subtasks={
-                  subtasks
-                }
-                editing={
-                  editingId ===
+      {notes.length > 0 && (
+        <DndContext
+          sensors={
+            sensors
+          }
+          collisionDetection={
+            closestCenter
+          }
+          onDragEnd={
+            handleDragEnd
+          }
+        >
+          <SortableContext
+            items={
+              notes.map(
+                (note) =>
                   note.id
-                }
-                editTitle={
-                  editTitle
-                }
-                editContent={
-                  editContent
-                }
-                editColor={
-                  editColor
-                }
-                busy={
-                  busy
-                }
-                deleting={
-                  deletingId ===
-                  note.id
-                }
-                onStartEdit={
-                  onStartEdit
-                }
-                onCancelEdit={
-                  onCancelEdit
-                }
-                onEditTitle={
-                  onEditTitle
-                }
-                onEditContent={
-                  onEditContent
-                }
-                onEditColor={
-                  onEditColor
-                }
-                onSaveEdit={
-                  onSaveEdit
-                }
-                onDelete={
-                  onDelete
-                }
-                onMove={
-                  onMove
-                }
-              />
-            </SortableNoteCard>
-          )
-        )}
-      </div>
-    </SortableContext>
-  </DndContext>
-)}
+              )
+            }
+            strategy={
+              verticalListSortingStrategy
+            }
+          >
+            <div className="mt-2 space-y-2">
+              {notes.map(
+                (note) => (
+                  <NoteCard
+                    key={
+                      note.id
+                    }
+                    note={
+                      note
+                    }
+                    subtasks={
+                      subtasks
+                    }
+                    editing={
+                      editingId ===
+                      note.id
+                    }
+                    editTitle={
+                      editTitle
+                    }
+                    editContent={
+                      editContent
+                    }
+                    editColor={
+                      editColor
+                    }
+                    busy={
+                      busy
+                    }
+                    deleting={
+                      deletingId ===
+                      note.id
+                    }
+                    onStartEdit={
+                      onStartEdit
+                    }
+                    onCancelEdit={
+                      onCancelEdit
+                    }
+                    onEditTitle={
+                      onEditTitle
+                    }
+                    onEditContent={
+                      onEditContent
+                    }
+                    onEditColor={
+                      onEditColor
+                    }
+                    onSaveEdit={
+                      onSaveEdit
+                    }
+                    onDelete={
+                      onDelete
+                    }
+                    onMove={
+                      onMove
+                    }
+                  />
+                )
+              )}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
     </section>
   );
 }
 
 
-function SortableNoteCard({
-  note,
-  children,
-}: {
-  note: QuickNote;
-  children:
-    React.ReactNode;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } =
-    useSortable({
-      id: note.id,
-    });
-
-  const style = {
-    transform:
-      CSS.Transform.toString(
-        transform
-      ),
-    transition,
-    zIndex:
-      isDragging
-        ? 20
-        : undefined,
-  };
-
-  return (
-    <div
-      ref={
-        setNodeRef
-      }
-      style={
-        style
-      }
-      className={
-        isDragging
-          ? "relative opacity-70 shadow-lg"
-          : "relative"
-      }
-    >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing"
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
+/* =========================================================
+   Composer
+========================================================= */
 
 function NoteComposer({
   textareaRef,
@@ -1529,24 +1821,41 @@ function NoteComposer({
   onCancel,
 }: {
   textareaRef:
-    React.RefObject<HTMLTextAreaElement | null>;
+    React.RefObject<
+      HTMLTextAreaElement | null
+    >;
+
   title: string;
   content: string;
-  color: QuickNoteColor;
+  color:
+    QuickNoteColor;
+
   busy: boolean;
+
   onTitle:
     (value: string) => void;
+
   onContent:
     (value: string) => void;
+
   onColor:
-    (value: QuickNoteColor) => void;
-  onSave: () => Promise<void>;
-  onCancel: () => void;
+    (
+      value:
+        QuickNoteColor
+    ) => void;
+
+  onSave:
+    () => Promise<void>;
+
+  onCancel:
+    () => void;
 }) {
   return (
     <div className="mt-2 rounded-2xl border border-line/80 bg-white/80 p-3 shadow-sm">
       <input
-        value={title}
+        value={
+          title
+        }
         onChange={(
           event
         ) =>
@@ -1562,7 +1871,9 @@ function NoteComposer({
         ref={
           textareaRef
         }
-        value={content}
+        value={
+          content
+        }
         onChange={(
           event
         ) =>
@@ -1581,8 +1892,11 @@ function NoteComposer({
             event.key ===
               "Enter";
 
-          if (saveShortcut) {
+          if (
+            saveShortcut
+          ) {
             event.preventDefault();
+
             void onSave();
           }
         }}
@@ -1593,7 +1907,9 @@ function NoteComposer({
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <ColorPicker
-          value={color}
+          value={
+            color
+          }
           onChange={
             onColor
           }
@@ -1622,6 +1938,7 @@ function NoteComposer({
             className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-sage-100 px-2.5 text-[10px] font-medium text-sage-700 transition hover:bg-sage-300/60 disabled:opacity-40"
           >
             <Save className="h-3 w-3" />
+
             Save
           </button>
         </div>
@@ -1630,6 +1947,13 @@ function NoteComposer({
   );
 }
 
+
+/* =========================================================
+   Sortable Note Card
+
+   只有 GripVertical 是拖拽 handle。
+   Edit/Delete/Move 不会和拖拽抢 pointer event。
+========================================================= */
 
 function NoteCard({
   note,
@@ -1649,39 +1973,119 @@ function NoteCard({
   onDelete,
   onMove,
 }: {
-  note: QuickNote;
-  subtasks: QuickNotesSubtask[];
-  editing: boolean;
-  editTitle: string;
-  editContent: string;
-  editColor: QuickNoteColor;
-  busy: boolean;
-  deleting: boolean;
+  note:
+    QuickNote;
+
+  subtasks:
+    QuickNotesSubtask[];
+
+  editing:
+    boolean;
+
+  editTitle:
+    string;
+
+  editContent:
+    string;
+
+  editColor:
+    QuickNoteColor;
+
+  busy:
+    boolean;
+
+  deleting:
+    boolean;
+
   onStartEdit:
-    (note: QuickNote) => void;
-  onCancelEdit: () => void;
+    (
+      note:
+        QuickNote
+    ) => void;
+
+  onCancelEdit:
+    () => void;
+
   onEditTitle:
     (value: string) => void;
+
   onEditContent:
     (value: string) => void;
+
   onEditColor:
-    (value: QuickNoteColor) => void;
+    (
+      value:
+        QuickNoteColor
+    ) => void;
+
   onSaveEdit:
-    (note: QuickNote) =>
-      Promise<void>;
+    (
+      note:
+        QuickNote
+    ) => Promise<void>;
+
   onDelete:
-    (note: QuickNote) =>
-      Promise<void>;
+    (
+      note:
+        QuickNote
+    ) => Promise<void>;
+
   onMove:
     (
-      note: QuickNote,
+      note:
+        QuickNote,
+
       destination:
         string | null
     ) => Promise<void>;
 }) {
+  /*
+   * 编辑状态时禁用拖拽，
+   * 防止 textarea 操作与 DnD 冲突。
+   */
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } =
+    useSortable({
+      id:
+        note.id,
+
+      disabled:
+        editing,
+    });
+
+
+  const style = {
+    transform:
+      CSS.Transform.toString(
+        transform
+      ),
+
+    transition,
+
+    zIndex:
+      isDragging
+        ? 20
+        : undefined,
+  };
+
+
   if (editing) {
     return (
-      <div className="rounded-2xl border border-line/80 bg-white/85 p-3 shadow-sm">
+      <div
+        ref={
+          setNodeRef
+        }
+        style={
+          style
+        }
+        className="rounded-2xl border border-line/80 bg-white/85 p-3 shadow-sm"
+      >
         <input
           value={
             editTitle
@@ -1747,6 +2151,7 @@ function NoteCard({
               className="inline-flex items-center gap-1 rounded-lg bg-sage-100 px-2 py-1 text-[10px] font-medium text-sage-700 disabled:opacity-40"
             >
               <Save className="h-3 w-3" />
+
               Save
             </button>
           </div>
@@ -1755,16 +2160,41 @@ function NoteCard({
     );
   }
 
+
   return (
     <article
-      className={`group rounded-2xl border border-line/60 p-3.5 transition hover:-translate-y-px hover:shadow-sm ${
+      ref={
+        setNodeRef
+      }
+      style={
+        style
+      }
+      className={`group relative rounded-2xl border border-line/60 p-3.5 transition hover:-translate-y-px hover:shadow-sm ${
         NOTE_BACKGROUND[
           note.color
         ]
+      } ${
+        isDragging
+          ? "opacity-60 shadow-lg"
+          : ""
       }`}
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-2">
+        {/* 只有这个按钮可以拖动 */}
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="mt-0.5 flex h-5 w-5 shrink-0 cursor-grab items-center justify-center rounded-md text-ink-faint/60 transition hover:bg-white/70 hover:text-ink-soft active:cursor-grabbing"
+          aria-label="拖动调整 Note 顺序"
+          title="拖动调整顺序"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+
+
         <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sage-500/80" />
+
 
         <div className="min-w-0 flex-1">
           {note.title && (
@@ -1777,6 +2207,7 @@ function NoteCard({
             {note.content}
           </p>
         </div>
+
 
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
           <button
@@ -1810,6 +2241,7 @@ function NoteCard({
         </div>
       </div>
 
+
       <div className="mt-3 flex items-center justify-end border-t border-black/[0.04] pt-2">
         <select
           value={
@@ -1824,6 +2256,7 @@ function NoteCard({
 
             void onMove(
               note,
+
               value ===
                 "__unsorted__"
                 ? null
@@ -1838,7 +2271,9 @@ function NoteCard({
           </option>
 
           {subtasks.map(
-            (subtask) => (
+            (
+              subtask
+            ) => (
               <option
                 key={
                   subtask.id
@@ -1847,7 +2282,8 @@ function NoteCard({
                   subtask.id
                 }
               >
-                Move to · {
+                Move to ·{" "}
+                {
                   subtask.title
                 }
               </option>
@@ -1860,13 +2296,22 @@ function NoteCard({
 }
 
 
+/* =========================================================
+   Color picker
+========================================================= */
+
 function ColorPicker({
   value,
   onChange,
 }: {
-  value: QuickNoteColor;
+  value:
+    QuickNoteColor;
+
   onChange:
-    (value: QuickNoteColor) => void;
+    (
+      value:
+        QuickNoteColor
+    ) => void;
 }) {
   return (
     <div
@@ -1874,7 +2319,9 @@ function ColorPicker({
       aria-label="Note color"
     >
       {COLOR_OPTIONS.map(
-        (option) => (
+        (
+          option
+        ) => (
           <button
             key={
               option.value
