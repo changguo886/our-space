@@ -279,19 +279,18 @@ export default function QuickNotes({
 
 
   /* =======================================================
-     Load panel data
+     Load Quick Notes
 
-     QuickNotes 自己读取：
-     - quick_notes
-     - todo_subtasks（当父级没有传时）
+     Notes 只在 todoId 改变时重新读取。
 
-     这样 Panel 不依赖 TodoList 的临时 subtasks state。
+     左侧 Step 的新增 / 删除 / 排序不需要重新 fetch notes，
+     因为父级会把最新 subtasks 直接传进来。
   ======================================================= */
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadPanelData() {
+    async function loadNotes() {
       setLoading(true);
       setError(null);
 
@@ -299,8 +298,11 @@ export default function QuickNotes({
         const supabase =
           createClient();
 
-        const notesRequest =
-          supabase
+        const {
+          data,
+          error: loadError,
+        } =
+          await supabase
             .from("quick_notes")
             .select(`
               id,
@@ -330,114 +332,30 @@ export default function QuickNotes({
               }
             );
 
-        const subtasksRequest =
-          providedSubtasks
-            ? Promise.resolve({
-                data:
-                  providedSubtasks,
-                error: null,
-              })
-            : supabase
-                .from(
-                  "todo_subtasks"
-                )
-                .select(`
-                  id,
-                  title,
-                  sort_order
-                `)
-                .eq(
-                  "todo_id",
-                  todoId
-                )
-                .order(
-                  "sort_order",
-                  {
-                    ascending:
-                      true,
-                  }
-                )
-                .order(
-                  "created_at",
-                  {
-                    ascending:
-                      true,
-                  }
-                );
-
-        const [
-          notesResult,
-          subtasksResult,
-        ] =
-          await Promise.all([
-            notesRequest,
-            subtasksRequest,
-          ]);
-
         if (cancelled) {
           return;
         }
 
-        const messages: string[] =
-          [];
-
-        if (notesResult.error) {
+        if (loadError) {
           setNotes([]);
 
-          messages.push(
+          setError(
             "读取 Quick Notes 失败：" +
-              notesResult.error
-                .message
+              loadError.message
           );
-        } else {
-          setNotes(
-            (notesResult.data ??
-              []) as QuickNote[]
-          );
+
+          return;
         }
 
-        if (
-          subtasksResult.error
-        ) {
-          if (!providedSubtasks) {
-            setLoadedSubtasks(
-              []
-            );
-          }
-
-          messages.push(
-            "读取任务步骤失败：" +
-              subtasksResult.error
-                .message
-          );
-        } else if (
-          !providedSubtasks
-        ) {
-          setLoadedSubtasks(
-            (subtasksResult.data ??
-              []) as QuickNotesSubtask[]
-          );
-        }
-
-        setError(
-          messages.length > 0
-            ? messages.join("；")
-            : null
+        setNotes(
+          (data ?? []) as QuickNote[]
         );
-      } catch (
-        unknownError
-      ) {
+      } catch (unknownError) {
         if (cancelled) {
           return;
         }
 
         setNotes([]);
-
-        if (!providedSubtasks) {
-          setLoadedSubtasks(
-            []
-          );
-        }
 
         setError(
           "打开 Quick Notes 时网络请求失败：" +
@@ -452,7 +370,101 @@ export default function QuickNotes({
       }
     }
 
-    void loadPanelData();
+    void loadNotes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [todoId]);
+
+
+  /* =======================================================
+     Fallback load subtasks
+
+     正常的 Today/Todo workspace 会把左侧最新 subtasks
+     直接传进来。
+
+     如果某个页面没有父级 shared state（例如未来 Calendar
+     单独打开 QuickNotes），这里仍然会自己读取 todo_subtasks。
+  ======================================================= */
+
+  useEffect(() => {
+    if (providedSubtasks) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSubtasks() {
+      try {
+        const supabase =
+          createClient();
+
+        const {
+          data,
+          error: loadError,
+        } =
+          await supabase
+            .from(
+              "todo_subtasks"
+            )
+            .select(`
+              id,
+              title,
+              sort_order
+            `)
+            .eq(
+              "todo_id",
+              todoId
+            )
+            .order(
+              "sort_order",
+              {
+                ascending: true,
+              }
+            )
+            .order(
+              "created_at",
+              {
+                ascending: true,
+              }
+            );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (loadError) {
+          setLoadedSubtasks([]);
+
+          setError(
+            "读取任务步骤失败：" +
+              loadError.message
+          );
+
+          return;
+        }
+
+        setLoadedSubtasks(
+          (data ?? []) as QuickNotesSubtask[]
+        );
+      } catch (unknownError) {
+        if (cancelled) {
+          return;
+        }
+
+        setLoadedSubtasks([]);
+
+        setError(
+          "读取任务步骤失败：" +
+            describeUnknownError(
+              unknownError
+            )
+        );
+      }
+    }
+
+    void loadSubtasks();
 
     return () => {
       cancelled = true;
@@ -499,6 +511,29 @@ export default function QuickNotes({
     );
 
 
+  /*
+   * 当前仍存在的 Step id。
+   *
+   * 删除 Step 时，左侧 React state 会比数据库 FK 的
+   * ON DELETE SET NULL 更快一步更新。
+   *
+   * 所以只要某个 Note 指向的 subtask 已经不存在，
+   * UI 就先把它当作 Unsorted。这样右侧不会出现
+   * “Step 消失了，但 Note 也暂时消失”的空档。
+   */
+  const validSubtaskIds =
+    useMemo(
+      () =>
+        new Set(
+          sortedSubtasks.map(
+            (subtask) =>
+              subtask.id
+          )
+        ),
+      [sortedSubtasks]
+    );
+
+
   const unsortedNotes =
     useMemo(
       () =>
@@ -506,14 +541,20 @@ export default function QuickNotes({
           .filter(
             (note) =>
               note.subtask_id ===
-              null
+                null ||
+              !validSubtaskIds.has(
+                note.subtask_id
+              )
           )
           .sort(
             (a, b) =>
               a.sort_order -
               b.sort_order
           ),
-      [notes]
+      [
+        notes,
+        validSubtaskIds,
+      ]
     );
 
 

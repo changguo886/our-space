@@ -37,6 +37,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
 
 
+/* =========================================================
+   Types
+========================================================= */
+
 export type TodoSubtask = {
   id: string;
   todo_id: string;
@@ -55,20 +59,18 @@ type TodoSubtasksProps = {
   /*
    * 打开 Todo-level Quick Notes Panel。
    *
-   * subtaskId = null / undefined -> 打开 Unsorted
-   * subtaskId = UUID             -> 打开并定位到对应 Step
-   *
-   * 这里暂时设为 optional，方便我们分两步迁移：
-   * 先替换 TodoSubtasks.tsx，再修改 TodoList.tsx。
+   * null      -> 打开 Unsorted
+   * UUID      -> 打开某个 Step 对应的 Notes section
    */
   onOpenNotes?: (
     subtaskId?: string | null
   ) => void;
 
   /*
-   * 把当前已经加载好的 subtasks 交给父级。
-   * TodoList 后面会把它们传给 QuickNotes Panel，
-   * 避免父级重复请求 todo_subtasks。
+   * 关键：把左侧最新的 subtasks 同步给父组件。
+   *
+   * 父组件会把这份 state 直接交给右侧 QuickNotes，
+   * 所以新增 / 删除 / 排序后，右侧不需要等重新请求数据库。
    */
   onSubtasksChange?: (
     subtasks: TodoSubtask[]
@@ -87,12 +89,10 @@ type SortableSubtaskRowProps = {
 };
 
 
-/**
- * 单个可排序 Subtask 行。
- *
- * TodoSubtasks 现在不再直接渲染 QuickNotes。
- * Notes 按钮只负责通知父级打开右侧 Todo-level Notes Panel。
- */
+/* =========================================================
+   One sortable row
+========================================================= */
+
 function SortableSubtaskRow({
   subtask,
   index,
@@ -117,9 +117,11 @@ function SortableSubtaskRow({
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform:
+      CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 20 : undefined,
+    zIndex:
+      isDragging ? 20 : undefined,
   };
 
   const stepNumber =
@@ -135,6 +137,9 @@ function SortableSubtaskRow({
           : "hover:bg-white/70"
       }`}
     >
+      {/*
+       * 左边的编号同时作为 drag handle。
+       */}
       <button
         type="button"
         {...attributes}
@@ -186,12 +191,14 @@ function SortableSubtaskRow({
         </span>
       )}
 
+      {/*
+       * 这里只发出“打开右侧 Notes”的事件，
+       * TodoSubtasks 自己不再 render QuickNotes。
+       */}
       <button
         type="button"
         onClick={() =>
-          onOpenNotes?.(
-            subtask.id
-          )
+          onOpenNotes?.(subtask.id)
         }
         className="flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
         aria-label="打开这个步骤的 Quick Notes"
@@ -216,24 +223,10 @@ function SortableSubtaskRow({
 }
 
 
-/**
- * TodoSubtasks
- *
- * 当前职责：
- * - 读取当前 Todo 的全部步骤
- * - 手动新增步骤
- * - 完成 / 恢复步骤
- * - 删除步骤
- * - 拖动排序
- * - 保存 sort_order
- * - 提供打开 Todo-level Quick Notes Panel 的入口
- *
- * 不再负责：
- * - 在每个 Step 下原地 render QuickNotes
- * - 在 Todo 下展开 Unsorted Quick Notes
- *
- * Quick Notes 的完整 UI 改由 TodoList / 更高层父组件管理。
- */
+/* =========================================================
+   Main component
+========================================================= */
+
 export default function TodoSubtasks({
   todoId,
   onOpenNotes,
@@ -242,50 +235,37 @@ export default function TodoSubtasks({
   const [
     subtasks,
     setSubtasks,
-  ] =
-    useState<TodoSubtask[]>(
-      []
-    );
+  ] = useState<TodoSubtask[]>([]);
 
   const [
     newTitle,
     setNewTitle,
-  ] =
-    useState("");
+  ] = useState("");
 
   const [
     loading,
     setLoading,
-  ] =
-    useState(true);
+  ] = useState(true);
 
   const [
     busyId,
     setBusyId,
-  ] =
-    useState<string | null>(
-      null
-    );
+  ] = useState<string | null>(null);
 
   const [
     adding,
     setAdding,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     reordering,
     setReordering,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     error,
     setError,
-  ] =
-    useState<string | null>(
-      null
-    );
+  ] = useState<string | null>(null);
 
 
   const sensors =
@@ -293,10 +273,9 @@ export default function TodoSubtasks({
       useSensor(
         PointerSensor,
         {
-          activationConstraint:
-            {
-              distance: 6,
-            },
+          activationConstraint: {
+            distance: 6,
+          },
         }
       ),
 
@@ -310,18 +289,41 @@ export default function TodoSubtasks({
     );
 
 
+  /* =======================================================
+     Load subtasks when Todo changes
+  ======================================================= */
+
   useEffect(() => {
     void loadSubtasks();
   }, [todoId]);
 
 
-  /*
-   * 把当前 subtasks 同步给父组件。
-   * 下一步 TodoList 会把这份数据直接传给 QuickNotes。
-   */
+  /* =======================================================
+     LIVE SYNC TO PARENT
+
+     这是这次修改最重要的部分。
+
+     左侧每次发生：
+     - 新增
+     - 删除
+     - 排序
+     - 完成状态变化
+
+     都会把最新 state 交给父级。
+
+     临时 temp-* 项目不传给右侧，避免 QuickNotes
+     在数据库真正创建 subtask 前拿到无效 FK。
+  ======================================================= */
+
   useEffect(() => {
+    const stableSubtasks =
+      subtasks.filter(
+        (item) =>
+          !item.id.startsWith("temp-")
+      );
+
     onSubtasksChange?.(
-      subtasks
+      stableSubtasks
     );
   }, [
     subtasks,
@@ -333,63 +335,68 @@ export default function TodoSubtasks({
     setLoading(true);
     setError(null);
 
-    const supabase =
-      createClient();
+    try {
+      const supabase =
+        createClient();
 
-    const {
-      data,
-      error:
-        loadError,
-    } =
-      await supabase
-        .from(
-          "todo_subtasks"
-        )
-        .select(`
-          id,
-          todo_id,
-          title,
-          completed,
-          completed_at,
-          sort_order,
-          source,
-          created_at
-        `)
-        .eq(
-          "todo_id",
-          todoId
-        )
-        .order(
-          "sort_order",
-          {
-            ascending:
-              true,
-          }
-        )
-        .order(
-          "created_at",
-          {
-            ascending:
-              true,
-          }
+      const {
+        data,
+        error: loadError,
+      } =
+        await supabase
+          .from("todo_subtasks")
+          .select(`
+            id,
+            todo_id,
+            title,
+            completed,
+            completed_at,
+            sort_order,
+            source,
+            created_at
+          `)
+          .eq(
+            "todo_id",
+            todoId
+          )
+          .order(
+            "sort_order",
+            {
+              ascending: true,
+            }
+          )
+          .order(
+            "created_at",
+            {
+              ascending: true,
+            }
+          );
+
+      if (loadError) {
+        setError(
+          "读取任务清单失败：" +
+            loadError.message
         );
 
-    setLoading(false);
+        return;
+      }
 
-    if (loadError) {
-      setError(
-        "读取任务清单失败：" +
-          loadError.message
+      setSubtasks(
+        (data ?? []) as TodoSubtask[]
       );
-
-      return;
+    } catch (unknownError) {
+      setError(
+        "读取任务清单失败。"
+      );
+    } finally {
+      setLoading(false);
     }
-
-    setSubtasks(
-      data ?? []
-    );
   }
 
+
+  /* =======================================================
+     Add
+  ======================================================= */
 
   async function addSubtask() {
     const cleanTitle =
@@ -414,36 +421,19 @@ export default function TodoSubtasks({
 
     const optimisticItem:
       TodoSubtask = {
-        id:
-          temporaryId,
-
-        todo_id:
-          todoId,
-
-        title:
-          cleanTitle,
-
-        completed:
-          false,
-
-        completed_at:
-          null,
-
-        sort_order:
-          nextSortOrder,
-
-        source:
-          "manual",
-
+        id: temporaryId,
+        todo_id: todoId,
+        title: cleanTitle,
+        completed: false,
+        completed_at: null,
+        sort_order: nextSortOrder,
+        source: "manual",
         created_at:
-          new Date()
-            .toISOString(),
+          new Date().toISOString(),
       };
 
     setSubtasks(
-      (
-        current
-      ) => [
+      (current) => [
         ...current,
         optimisticItem,
       ]
@@ -451,94 +441,98 @@ export default function TodoSubtasks({
 
     setNewTitle("");
 
-    const supabase =
-      createClient();
+    try {
+      const supabase =
+        createClient();
 
-    const {
-      data,
-      error:
-        insertError,
-    } =
-      await supabase
-        .from(
-          "todo_subtasks"
-        )
-        .insert({
-          todo_id:
-            todoId,
+      const {
+        data,
+        error: insertError,
+      } =
+        await supabase
+          .from("todo_subtasks")
+          .insert({
+            todo_id: todoId,
+            title: cleanTitle,
+            sort_order:
+              nextSortOrder,
+            source: "manual",
+          })
+          .select(`
+            id,
+            todo_id,
+            title,
+            completed,
+            completed_at,
+            sort_order,
+            source,
+            created_at
+          `)
+          .single();
 
-          title:
-            cleanTitle,
+      if (
+        insertError ||
+        !data
+      ) {
+        setSubtasks(
+          (current) =>
+            current.filter(
+              (item) =>
+                item.id !==
+                temporaryId
+            )
+        );
 
-          sort_order:
-            nextSortOrder,
-
-          source:
-            "manual",
-        })
-        .select(`
-          id,
-          todo_id,
-          title,
-          completed,
-          completed_at,
-          sort_order,
-          source,
-          created_at
-        `)
-        .single();
-
-    setAdding(false);
-
-    if (
-      insertError ||
-      !data
-    ) {
-      setSubtasks(
-        (
-          current
-        ) =>
-          current.filter(
+        setError(
+          "新增步骤失败：" +
             (
-              item
-            ) =>
+              insertError?.message ??
+              "没有返回数据"
+            )
+        );
+
+        return;
+      }
+
+      /*
+       * 把 temp id 替换成数据库真实 UUID。
+       * 这个 state 更新后，父级和右侧 QuickNotes 会马上收到新 Step。
+       */
+      setSubtasks(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id ===
+              temporaryId
+                ? data as TodoSubtask
+                : item
+          )
+      );
+    } catch {
+      setSubtasks(
+        (current) =>
+          current.filter(
+            (item) =>
               item.id !==
               temporaryId
           )
       );
 
       setError(
-        "新增步骤失败：" +
-          (
-            insertError
-              ?.message ??
-            "没有返回数据"
-          )
+        "新增步骤失败。"
       );
-
-      return;
+    } finally {
+      setAdding(false);
     }
-
-    setSubtasks(
-      (
-        current
-      ) =>
-        current.map(
-          (
-            item
-          ) =>
-            item.id ===
-            temporaryId
-              ? data
-              : item
-        )
-    );
   }
 
 
+  /* =======================================================
+     Complete / restore
+  ======================================================= */
+
   async function toggleSubtask(
-    subtask:
-      TodoSubtask
+    subtask: TodoSubtask
   ) {
     if (
       busyId ||
@@ -552,30 +546,20 @@ export default function TodoSubtasks({
 
     const nextCompletedAt =
       nextCompleted
-        ? new Date()
-            .toISOString()
+        ? new Date().toISOString()
         : null;
 
-    setBusyId(
-      subtask.id
-    );
+    setBusyId(subtask.id);
 
     setSubtasks(
-      (
-        current
-      ) =>
+      (current) =>
         current.map(
-          (
-            item
-          ) =>
-            item.id ===
-            subtask.id
+          (item) =>
+            item.id === subtask.id
               ? {
                   ...item,
-
                   completed:
                     nextCompleted,
-
                   completed_at:
                     nextCompletedAt,
                 }
@@ -583,44 +567,48 @@ export default function TodoSubtasks({
         )
     );
 
-    const supabase =
-      createClient();
+    try {
+      const supabase =
+        createClient();
 
-    const {
-      error:
-        updateError,
-    } =
-      await supabase
-        .from(
-          "todo_subtasks"
-        )
-        .update({
-          completed:
-            nextCompleted,
+      const {
+        error: updateError,
+      } =
+        await supabase
+          .from("todo_subtasks")
+          .update({
+            completed:
+              nextCompleted,
+            completed_at:
+              nextCompletedAt,
+          })
+          .eq(
+            "id",
+            subtask.id
+          );
 
-          completed_at:
-            nextCompletedAt,
-        })
-        .eq(
-          "id",
-          subtask.id
+      if (updateError) {
+        setSubtasks(
+          (current) =>
+            current.map(
+              (item) =>
+                item.id ===
+                subtask.id
+                  ? subtask
+                  : item
+            )
         );
 
-    setBusyId(
-      null
-    );
-
-    if (
-      updateError
-    ) {
+        setError(
+          "更新步骤失败：" +
+            updateError.message
+        );
+      }
+    } catch {
       setSubtasks(
-        (
-          current
-        ) =>
+        (current) =>
           current.map(
-            (
-              item
-            ) =>
+            (item) =>
               item.id ===
               subtask.id
                 ? subtask
@@ -629,16 +617,23 @@ export default function TodoSubtasks({
       );
 
       setError(
-        "更新步骤失败：" +
-          updateError.message
+        "更新步骤失败。"
       );
+    } finally {
+      setBusyId(null);
     }
   }
 
 
+  /* =======================================================
+     Delete
+
+     quick_notes.subtask_id 使用 ON DELETE SET NULL。
+     因此数据库删除 Step 后，原 Step Notes 会变成 Unsorted。
+  ======================================================= */
+
   async function deleteSubtask(
-    subtask:
-      TodoSubtask
+    subtask: TodoSubtask
   ) {
     if (
       busyId ||
@@ -654,58 +649,60 @@ export default function TodoSubtasks({
       subtask.id
     );
 
+    /*
+     * Optimistic delete：左侧立刻消失。
+     * 父级也会立刻把这个变化传给右侧。
+     */
     setSubtasks(
-      (
-        current
-      ) =>
+      (current) =>
         current.filter(
-          (
-            item
-          ) =>
+          (item) =>
             item.id !==
             subtask.id
         )
     );
 
-    const supabase =
-      createClient();
+    try {
+      const supabase =
+        createClient();
 
-    const {
-      error:
-        deleteError,
-    } =
-      await supabase
-        .from(
-          "todo_subtasks"
-        )
-        .delete()
-        .eq(
-          "id",
-          subtask.id
+      const {
+        error: deleteError,
+      } =
+        await supabase
+          .from("todo_subtasks")
+          .delete()
+          .eq(
+            "id",
+            subtask.id
+          );
+
+      if (deleteError) {
+        setSubtasks(previous);
+
+        setError(
+          "删除步骤失败：" +
+            deleteError.message
         );
-
-    setBusyId(
-      null
-    );
-
-    if (
-      deleteError
-    ) {
-      setSubtasks(
-        previous
-      );
+      }
+    } catch {
+      setSubtasks(previous);
 
       setError(
-        "删除步骤失败：" +
-          deleteError.message
+        "删除步骤失败。"
       );
+    } finally {
+      setBusyId(null);
     }
   }
 
 
+  /* =======================================================
+     Drag reorder
+  ======================================================= */
+
   async function handleDragEnd(
-    event:
-      DragEndEvent
+    event: DragEndEvent
   ) {
     const {
       active,
@@ -714,8 +711,7 @@ export default function TodoSubtasks({
 
     if (
       !over ||
-      active.id ===
-        over.id ||
+      active.id === over.id ||
       reordering ||
       busyId ||
       adding
@@ -725,20 +721,14 @@ export default function TodoSubtasks({
 
     const oldIndex =
       subtasks.findIndex(
-        (
-          item
-        ) =>
-          item.id ===
-          active.id
+        (item) =>
+          item.id === active.id
       );
 
     const newIndex =
       subtasks.findIndex(
-        (
-          item
-        ) =>
-          item.id ===
-          over.id
+        (item) =>
+          item.id === over.id
       );
 
     if (
@@ -757,84 +747,75 @@ export default function TodoSubtasks({
         oldIndex,
         newIndex
       ).map(
-        (
-          item,
-          index
-        ) => ({
+        (item, index) => ({
           ...item,
-          sort_order:
-            index,
+          sort_order: index,
         })
       );
 
+    /*
+     * 先更新 React state。
+     * 这一步会让右侧 QuickNotes section 顺序立即同步。
+     */
     setSubtasks(
       reordered
     );
 
-    setReordering(
-      true
-    );
+    setReordering(true);
+    setError(null);
 
-    setError(
-      null
-    );
+    try {
+      const supabase =
+        createClient();
 
-    const supabase =
-      createClient();
+      const results =
+        await Promise.all(
+          reordered.map(
+            (item) =>
+              supabase
+                .from(
+                  "todo_subtasks"
+                )
+                .update({
+                  sort_order:
+                    item.sort_order,
+                })
+                .eq(
+                  "id",
+                  item.id
+                )
+          )
+        );
 
-    const results =
-      await Promise.all(
-        reordered.map(
-          (
-            item
-          ) =>
-            supabase
-              .from(
-                "todo_subtasks"
-              )
-              .update({
-                sort_order:
-                  item.sort_order,
-              })
-              .eq(
-                "id",
-                item.id
-              )
-        )
-      );
+      const updateError =
+        results.find(
+          (result) =>
+            result.error
+        )?.error;
 
-    setReordering(
-      false
-    );
+      if (updateError) {
+        setSubtasks(previous);
 
-    const updateError =
-      results.find(
-        (
-          result
-        ) =>
-          result.error
-      )?.error;
-
-    if (
-      updateError
-    ) {
-      setSubtasks(
-        previous
-      );
+        setError(
+          "保存步骤顺序失败：" +
+            updateError.message
+        );
+      }
+    } catch {
+      setSubtasks(previous);
 
       setError(
-        "保存步骤顺序失败：" +
-          updateError.message
+        "保存步骤顺序失败。"
       );
+    } finally {
+      setReordering(false);
     }
   }
 
 
   const completedCount =
     subtasks.filter(
-      (
-        item
-      ) =>
+      (item) =>
         item.completed
     ).length;
 
@@ -843,14 +824,10 @@ export default function TodoSubtasks({
     useMemo(
       () =>
         subtasks.map(
-          (
-            item
-          ) =>
+          (item) =>
             item.id
         ),
-      [
-        subtasks,
-      ]
+      [subtasks]
     );
 
 
@@ -863,22 +840,19 @@ export default function TodoSubtasks({
           </h3>
 
           <p className="mt-1 text-xs text-ink-faint">
-            {subtasks.length ===
-            0
+            {subtasks.length === 0
               ? "把大任务拆成几个更容易开始的小步骤。"
               : `${completedCount}/${subtasks.length} 已完成`}
           </p>
         </div>
 
-        {subtasks.length >
-          0 && (
+        {subtasks.length > 0 && (
           <span className="rounded-full bg-sage-50 px-2.5 py-1 text-[10px] text-sage-700">
             {Math.round(
               (
                 completedCount /
                 subtasks.length
-              ) *
-                100
+              ) * 100
             )}
             %
           </span>
@@ -894,12 +868,9 @@ export default function TodoSubtasks({
         )}
 
         {!loading &&
-          subtasks.length >
-            0 && (
+          subtasks.length > 0 && (
           <DndContext
-            sensors={
-              sensors
-            }
+            sensors={sensors}
             collisionDetection={
               closestCenter
             }
@@ -908,9 +879,7 @@ export default function TodoSubtasks({
             }
           >
             <SortableContext
-              items={
-                sortableIds
-              }
+              items={sortableIds}
               strategy={
                 verticalListSortingStrategy
               }
@@ -922,23 +891,15 @@ export default function TodoSubtasks({
                     index
                   ) => (
                     <SortableSubtaskRow
-                      key={
-                        subtask.id
-                      }
-                      subtask={
-                        subtask
-                      }
-                      index={
-                        index
-                      }
+                      key={subtask.id}
+                      subtask={subtask}
+                      index={index}
                       busy={
                         busyId ===
                         subtask.id
                       }
                       disabled={
-                        Boolean(
-                          busyId
-                        ) ||
+                        Boolean(busyId) ||
                         adding ||
                         reordering
                       }
@@ -948,12 +909,11 @@ export default function TodoSubtasks({
                       onDelete={
                         deleteSubtask
                       }
-                      onOpenNotes={(
-                        subtaskId
-                      ) =>
-                        onOpenNotes?.(
-                          subtaskId
-                        )
+                      onOpenNotes={
+                        (subtaskId) =>
+                          onOpenNotes?.(
+                            subtaskId
+                          )
                       }
                     />
                   )
@@ -965,28 +925,20 @@ export default function TodoSubtasks({
       </div>
 
 
+      {/* Add a new Step */}
       <div className="mt-4 flex gap-2">
         <input
-          value={
-            newTitle
-          }
-          onChange={(
-            event
-          ) =>
+          value={newTitle}
+          onChange={(event) =>
             setNewTitle(
-              event.target
-                .value
+              event.target.value
             )
           }
-          onKeyDown={(
-            event
-          ) => {
+          onKeyDown={(event) => {
             if (
-              event.key ===
-              "Enter"
+              event.key === "Enter"
             ) {
               event.preventDefault();
-
               void addSubtask();
             }
           }}
@@ -1012,25 +964,17 @@ export default function TodoSubtasks({
       </div>
 
 
-      {/*
-       * Todo-level Quick Notes 入口。
-       *
-       * 点击后不再在这里展开任何 Note。
-       * TodoList / 父级负责打开右侧第三栏。
-       */}
+      {/* Todo-level Notes entry */}
       <div className="mt-4 border-t border-line/70 pt-4">
         <button
           type="button"
           onClick={() =>
-            onOpenNotes?.(
-              null
-            )
+            onOpenNotes?.(null)
           }
           className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-white/60"
         >
           <span className="flex items-center gap-2 text-xs font-medium text-ink-soft">
             <MessageSquareText className="h-4 w-4 text-sage-700" />
-
             Quick Notes
           </span>
 
