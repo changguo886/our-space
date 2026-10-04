@@ -16,6 +16,25 @@ import {
   useState,
 } from "react";
 
+
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+
+import { CSS } from "@dnd-kit/utilities";
+
 import { createClient } from "@/lib/supabase/client";
 
 
@@ -106,12 +125,39 @@ const NOTE_BACKGROUND: Record<
 };
 
 
+function describeUnknownError(
+  value: unknown
+) {
+  if (value instanceof Error) {
+    return value.message;
+  }
+
+  if (
+    typeof Event !== "undefined" &&
+    value instanceof Event
+  ) {
+    return value.type
+      ? `browser event: ${value.type}`
+      : "browser event";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+
 export default function QuickNotes({
   todoId,
   todoTitle,
   subtasks: providedSubtasks,
   onClose,
-  initialSubtaskId,
 }: QuickNotesProps) {
   const [notes, setNotes] =
     useState<QuickNote[]>([]);
@@ -175,18 +221,180 @@ export default function QuickNotes({
       null
     );
 
+  const sensors =
+  useSensors(
+    useSensor(
+      PointerSensor,
+      {
+        activationConstraint: {
+          distance: 6,
+        },
+      }
+    )
+  );
+
 
   useEffect(() => {
-    void loadNotes();
-  }, [todoId]);
+    let cancelled = false;
 
+    async function loadPanelData() {
+      setLoading(true);
+      setError(null);
 
-  useEffect(() => {
-    if (providedSubtasks) {
-      return;
+      try {
+        const supabase =
+          createClient();
+
+        const notesRequest =
+          supabase
+            .from("quick_notes")
+            .select(`
+              id,
+              todo_id,
+              subtask_id,
+              title,
+              content,
+              color,
+              sort_order,
+              created_at,
+              updated_at
+            `)
+            .eq(
+              "todo_id",
+              todoId
+            )
+            .order(
+              "sort_order",
+              {
+                ascending: true,
+              }
+            )
+            .order(
+              "created_at",
+              {
+                ascending: true,
+              }
+            );
+
+        const subtasksRequest =
+          providedSubtasks
+            ? Promise.resolve({
+                data:
+                  providedSubtasks,
+                error: null,
+              })
+            : supabase
+                .from(
+                  "todo_subtasks"
+                )
+                .select(`
+                  id,
+                  title,
+                  sort_order
+                `)
+                .eq(
+                  "todo_id",
+                  todoId
+                )
+                .order(
+                  "sort_order",
+                  {
+                    ascending:
+                      true,
+                  }
+                )
+                .order(
+                  "created_at",
+                  {
+                    ascending:
+                      true,
+                  }
+                );
+
+        const [
+          notesResult,
+          subtasksResult,
+        ] = await Promise.all([
+          notesRequest,
+          subtasksRequest,
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        const messages: string[] =
+          [];
+
+        if (notesResult.error) {
+          setNotes([]);
+          messages.push(
+            "读取 Quick Notes 失败：" +
+              notesResult.error
+                .message
+          );
+        } else {
+          setNotes(
+            (notesResult.data ??
+              []) as QuickNote[]
+          );
+        }
+
+        if (
+          subtasksResult.error
+        ) {
+          if (!providedSubtasks) {
+            setLoadedSubtasks([]);
+          }
+
+          messages.push(
+            "读取任务步骤失败：" +
+              subtasksResult.error
+                .message
+          );
+        } else if (
+          !providedSubtasks
+        ) {
+          setLoadedSubtasks(
+            (subtasksResult.data ??
+              []) as QuickNotesSubtask[]
+          );
+        }
+
+        setError(
+          messages.length > 0
+            ? messages.join("；")
+            : null
+        );
+      } catch (unknownError) {
+        if (cancelled) {
+          return;
+        }
+
+        setNotes([]);
+
+        if (!providedSubtasks) {
+          setLoadedSubtasks([]);
+        }
+
+        setError(
+          "打开 Quick Notes 时网络请求失败：" +
+            describeUnknownError(
+              unknownError
+            )
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    void loadSubtasks();
+    void loadPanelData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     todoId,
     providedSubtasks,
@@ -200,110 +408,6 @@ export default function QuickNotes({
       textareaRef.current?.focus();
     }
   }, [composerSubtaskId]);
-
-
-  async function loadNotes() {
-    setLoading(true);
-    setError(null);
-
-    const supabase =
-      createClient();
-
-    const {
-      data,
-      error: loadError,
-    } =
-      await supabase
-        .from("quick_notes")
-        .select(`
-          id,
-          todo_id,
-          subtask_id,
-          title,
-          content,
-          color,
-          sort_order,
-          created_at,
-          updated_at
-        `)
-        .eq("todo_id", todoId)
-        .order(
-          "sort_order",
-          {
-            ascending: true,
-          }
-        )
-        .order(
-          "created_at",
-          {
-            ascending: true,
-          }
-        );
-
-    setLoading(false);
-
-    if (loadError) {
-      setError(
-        "读取 Quick Notes 失败：" +
-          loadError.message
-      );
-
-      return;
-    }
-
-    setNotes(
-      (data ?? []) as QuickNote[]
-    );
-  }
-
-
-  async function loadSubtasks() {
-    const supabase =
-      createClient();
-
-    const {
-      data,
-      error: loadError,
-    } =
-      await supabase
-        .from(
-          "todo_subtasks"
-        )
-        .select(`
-          id,
-          title,
-          sort_order
-        `)
-        .eq(
-          "todo_id",
-          todoId
-        )
-        .order(
-          "sort_order",
-          {
-            ascending: true,
-          }
-        )
-        .order(
-          "created_at",
-          {
-            ascending: true,
-          }
-        );
-
-    if (loadError) {
-      setError(
-        "读取任务步骤失败：" +
-          loadError.message
-      );
-
-      return;
-    }
-
-    setLoadedSubtasks(
-      (data ?? []) as QuickNotesSubtask[]
-    );
-  }
 
 
   const subtasks =
@@ -366,6 +470,108 @@ export default function QuickNotes({
           note.subtask_id ===
           subtaskId
       );
+
+      async function reorderNotesWithinSection(
+  sectionNotes: QuickNote[],
+  activeId: string,
+  overId: string
+) {
+  if (activeId === overId) {
+    return;
+  }
+
+  const oldIndex =
+    sectionNotes.findIndex(
+      (note) =>
+        note.id === activeId
+    );
+
+  const newIndex =
+    sectionNotes.findIndex(
+      (note) =>
+        note.id === overId
+    );
+
+  if (
+    oldIndex < 0 ||
+    newIndex < 0
+  ) {
+    return;
+  }
+
+  const previous =
+    notes;
+
+  const reordered =
+    arrayMove(
+      sectionNotes,
+      oldIndex,
+      newIndex
+    ).map(
+      (note, index) => ({
+        ...note,
+        sort_order:
+          (index + 1) * 1000,
+      })
+    );
+
+  const reorderedMap =
+    new Map(
+      reordered.map(
+        (note) => [
+          note.id,
+          note,
+        ]
+      )
+    );
+
+  setNotes(
+    (current) =>
+      current.map(
+        (note) =>
+          reorderedMap.get(
+            note.id
+          ) ?? note
+      )
+  );
+
+  const supabase =
+    createClient();
+
+  const results =
+    await Promise.all(
+      reordered.map(
+        (note) =>
+          supabase
+            .from(
+              "quick_notes"
+            )
+            .update({
+              sort_order:
+                note.sort_order,
+            })
+            .eq(
+              "id",
+              note.id
+            )
+      )
+    );
+
+  const saveError =
+    results.find(
+      (result) =>
+        result.error
+    )?.error;
+
+  if (saveError) {
+    setNotes(previous);
+
+    setError(
+      "保存 Note 顺序失败：" +
+        saveError.message
+    );
+  }
+}
 
     if (
       sectionNotes.length === 0
@@ -752,6 +958,13 @@ export default function QuickNotes({
               notes={
                 unsortedNotes
               }
+
+              sensors={sensors}
+
+              onReorder={
+              reorderNotesWithinSection
+              }
+
               subtasks={
                 sortedSubtasks
               }
@@ -954,6 +1167,16 @@ type NoteSectionProps = {
   notes: QuickNote[];
   subtasks: QuickNotesSubtask[];
 
+  sensors: ReturnType<
+    typeof useSensors
+  >;
+
+  onReorder: (
+    sectionNotes: QuickNote[],
+    activeId: string,
+    overId: string
+  ) => Promise<void>;
+
   composerOpen: boolean;
   editingId: string | null;
 
@@ -1016,6 +1239,8 @@ function NoteSection({
   stepLabel,
   notes,
   subtasks,
+  sensors,
+  onReorder,
   composerOpen,
   editingId,
   draftTitle,
@@ -1042,6 +1267,36 @@ function NoteSection({
   onDelete,
   onMove,
 }: NoteSectionProps) {
+
+
+
+  function handleDragEnd(
+   event: DragEndEvent
+) {
+  const {
+    active,
+    over,
+  } = event;
+
+  if (!over) {
+    return;
+  }
+
+  if (
+    active.id === over.id
+  ) {
+    return;
+  }
+
+  void onReorder(
+    notes,
+    String(active.id),
+    String(over.id)
+  );
+}
+
+
+
   return (
     <section>
       <div className="flex items-center gap-2 px-1">
@@ -1106,15 +1361,41 @@ function NoteSection({
       )}
 
 
-      {notes.length >
-        0 && (
-        <div className="mt-2 space-y-2">
-          {notes.map(
-            (note) => (
+     {notes.length > 0 && (
+  <DndContext
+    sensors={
+      sensors
+    }
+    collisionDetection={
+      closestCenter
+    }
+    onDragEnd={
+      handleDragEnd
+    }
+  >
+    <SortableContext
+      items={
+        notes.map(
+          (note) =>
+            note.id
+        )
+      }
+      strategy={
+        verticalListSortingStrategy
+      }
+    >
+      <div className="mt-2 space-y-2">
+        {notes.map(
+          (note) => (
+            <SortableNoteCard
+              key={
+                note.id
+              }
+              note={
+                note
+              }
+            >
               <NoteCard
-                key={
-                  note.id
-                }
                 note={
                   note
                 }
@@ -1166,14 +1447,74 @@ function NoteSection({
                   onMove
                 }
               />
-            )
-          )}
-        </div>
-      )}
+            </SortableNoteCard>
+          )
+        )}
+      </div>
+    </SortableContext>
+  </DndContext>
+)}
     </section>
   );
 }
 
+
+function SortableNoteCard({
+  note,
+  children,
+}: {
+  note: QuickNote;
+  children:
+    React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } =
+    useSortable({
+      id: note.id,
+    });
+
+  const style = {
+    transform:
+      CSS.Transform.toString(
+        transform
+      ),
+    transition,
+    zIndex:
+      isDragging
+        ? 20
+        : undefined,
+  };
+
+  return (
+    <div
+      ref={
+        setNodeRef
+      }
+      style={
+        style
+      }
+      className={
+        isDragging
+          ? "relative opacity-70 shadow-lg"
+          : "relative"
+      }
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function NoteComposer({
   textareaRef,
