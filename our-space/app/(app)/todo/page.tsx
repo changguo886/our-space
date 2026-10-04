@@ -12,8 +12,12 @@ import TodoList, {
   type Todo,
 } from "@/components/TodoList";
 
+import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
+
+
 export const dynamic =
   "force-dynamic";
+
 
 export default async function TodoPage() {
   const {
@@ -29,35 +33,29 @@ export default async function TodoPage() {
   const today =
     todayIn(tz);
 
-  /*
-   * 查询：
-   * - 私人任务
-   * - 当前 Space 的任务
-   *
-   * 包含所有日期
-   */
+
   const {
     data: todos,
     error,
   } = await supabase
     .from("todos")
-.select(`
-  id,
-  title,
-  description,
-  estimated_minutes,
-  status,
-  group_id,
-  task_date,
-  started_at,
-  elapsed_seconds,
-  completed_at,
-  created_at,
-  scheduled_start,
-  scheduled_end,
-  category,
-  custom_tag
-`)
+    .select(`
+      id,
+      title,
+      description,
+      estimated_minutes,
+      status,
+      group_id,
+      task_date,
+      started_at,
+      elapsed_seconds,
+      completed_at,
+      created_at,
+      scheduled_start,
+      scheduled_end,
+      category,
+      custom_tag
+    `)
     .eq(
       "user_id",
       user.id
@@ -87,9 +85,7 @@ export default async function TodoPage() {
   const allTodos =
     todos ?? [];
 
-  /*
-   * 今天未完成
-   */
+
   const todayTodos =
     allTodos.filter(
       (todo) =>
@@ -99,9 +95,7 @@ export default async function TodoPage() {
           "completed"
     );
 
-  /*
-   * 今天完成
-   */
+
   const todayCompleted =
     allTodos.filter(
       (todo) =>
@@ -111,9 +105,7 @@ export default async function TodoPage() {
           "completed"
     );
 
-  /*
-   * 以前没完成
-   */
+
   const overdueTodos =
     allTodos.filter(
       (todo) =>
@@ -123,9 +115,7 @@ export default async function TodoPage() {
           "completed"
     );
 
-  /*
-   * 最近完成
-   */
+
   const completedHistory =
     allTodos
       .filter(
@@ -137,10 +127,11 @@ export default async function TodoPage() {
       )
       .slice(0, 20);
 
+
   return (
-    <div className="mx-auto max-w-2xl">
-      {/* Header */}
-      <header>
+    <div className="mx-auto max-w-[1180px]">
+      {/* Header stays comfortably narrow */}
+      <header className="mx-auto max-w-2xl">
         <h1 className="text-2xl font-semibold">
           Todo
         </h1>
@@ -159,61 +150,24 @@ export default async function TodoPage() {
         </p>
       </header>
 
-      {/* 今日 */}
-      <section className="card mt-8 p-5">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <h2 className="font-medium">
-              今天
-            </h2>
 
-            <p className="mt-1 text-xs text-ink-faint">
-              一点一点完成就好。
-            </p>
-          </div>
+      {/*
+       * Today workspace:
+       * closed  -> normal centered Today card
+       * open    -> Today card + independent Quick Notes card
+       */}
+      <TodayTodoWorkspace
+        todayTodos={
+          todayTodos as Todo[]
+        }
+        todayCompleted={
+          todayCompleted as Todo[]
+        }
+      />
 
-          <div className="text-right">
-            <p className="text-xl font-semibold text-sage-700">
-              {
-                todayCompleted.length
-              }
-              /
-              {todayTodos.length +
-                todayCompleted.length}
-            </p>
-
-            <p className="text-xs text-ink-faint">
-              已完成
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <TodoList
-            todos={
-              todayTodos as Todo[]
-            }
-          />
-        </div>
-
-        {todayCompleted.length >
-          0 && (
-          <div className="mt-5 border-t border-line pt-5">
-            <p className="mb-3 text-xs font-medium text-ink-faint">
-              今天完成
-            </p>
-
-            <TodoList
-              todos={
-                todayCompleted as Todo[]
-              }
-            />
-          </div>
-        )}
-      </section>
 
       {/* 添加 */}
-      <section className="card mt-6 p-5">
+      <section className="card mx-auto mt-6 max-w-2xl p-5">
         <div className="mb-5">
           <h2 className="font-medium">
             添加任务
@@ -240,10 +194,11 @@ export default async function TodoPage() {
         />
       </section>
 
+
       {/* 以前没完成 */}
       {overdueTodos.length >
         0 && (
-        <section className="card mt-6 p-5">
+        <section className="card mx-auto mt-6 max-w-2xl p-5">
           <div className="mb-5">
             <h2 className="font-medium">
               之前没完成
@@ -262,10 +217,11 @@ export default async function TodoPage() {
         </section>
       )}
 
+
       {/* 最近完成 */}
       {completedHistory.length >
         0 && (
-        <section className="mt-8">
+        <section className="mx-auto mt-8 max-w-2xl">
           <div className="mb-4">
             <h2 className="text-sm font-medium text-ink-soft">
               最近完成

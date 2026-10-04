@@ -31,13 +31,10 @@ export type QuickNote = {
   id: string;
   todo_id: string;
   subtask_id: string | null;
-
   title: string | null;
   content: string;
-
   color: QuickNoteColor;
   sort_order: number;
-
   created_at: string;
   updated_at: string;
 };
@@ -52,46 +49,67 @@ export type QuickNotesSubtask = {
 
 type QuickNotesProps = {
   todoId: string;
-
   todoTitle?: string;
-
-  subtasks: QuickNotesSubtask[];
-
+  subtasks?: QuickNotesSubtask[];
   onClose?: () => void;
+
+  /*
+   * Phase B 可以用它做自动滚动定位。
+   * 当前先保留接口，不强制执行定位。
+   */
+  initialSubtaskId?: string | null;
 };
 
 
 const COLOR_OPTIONS: {
   value: QuickNoteColor;
   label: string;
+  dotClass: string;
 }[] = [
   {
     value: "cream",
     label: "Cream",
+    dotClass: "bg-[#f6e8c8]",
   },
   {
     value: "blush",
     label: "Blush",
+    dotClass: "bg-[#efcfd3]",
   },
   {
     value: "sage",
     label: "Sage",
+    dotClass: "bg-[#cdddc9]",
   },
   {
     value: "sky",
     label: "Sky",
+    dotClass: "bg-[#cfe0ea]",
   },
   {
     value: "lavender",
     label: "Lavender",
+    dotClass: "bg-[#ddd4ea]",
   },
 ];
+
+
+const NOTE_BACKGROUND: Record<
+  QuickNoteColor,
+  string
+> = {
+  cream: "bg-[#fffaf0]",
+  blush: "bg-[#fff5f6]",
+  sage: "bg-[#f5f9f3]",
+  sky: "bg-[#f3f8fb]",
+  lavender: "bg-[#f8f5fb]",
+};
 
 
 export default function QuickNotes({
   todoId,
   todoTitle,
-  subtasks,
+  subtasks = [],
   onClose,
 }: QuickNotesProps) {
   const [notes, setNotes] =
@@ -106,12 +124,18 @@ export default function QuickNotes({
   const [error, setError] =
     useState<string | null>(null);
 
+  /*
+   * undefined = composer 关闭
+   * null      = Unsorted composer
+   * string    = 某个 subtask composer
+   */
   const [
     composerSubtaskId,
     setComposerSubtaskId,
-  ] = useState<string | null | undefined>(
-    undefined
-  );
+  ] =
+    useState<
+      string | null | undefined
+    >(undefined);
 
   const [draftTitle, setDraftTitle] =
     useState("");
@@ -131,6 +155,9 @@ export default function QuickNotes({
   const [editContent, setEditContent] =
     useState("");
 
+  const [editColor, setEditColor] =
+    useState<QuickNoteColor>("cream");
+
   const [deletingId, setDeletingId] =
     useState<string | null>(null);
 
@@ -147,21 +174,13 @@ export default function QuickNotes({
 
   useEffect(() => {
     if (
-      composerSubtaskId !== undefined &&
-      textareaRef.current
+      composerSubtaskId !== undefined
     ) {
-      textareaRef.current.focus();
+      textareaRef.current?.focus();
     }
   }, [composerSubtaskId]);
 
 
-  /*
-   * Load ALL notes belonging to this Todo.
-   *
-   * Important:
-   * We do NOT filter by subtask here anymore.
-   * The panel needs all sections at once.
-   */
   async function loadNotes() {
     setLoading(true);
     setError(null);
@@ -217,9 +236,18 @@ export default function QuickNotes({
   }
 
 
-  /*
-   * Notes belonging to Unsorted.
-   */
+  const sortedSubtasks =
+    useMemo(
+      () =>
+        [...subtasks].sort(
+          (a, b) =>
+            a.sort_order -
+            b.sort_order
+        ),
+      [subtasks]
+    );
+
+
   const unsortedNotes =
     useMemo(
       () =>
@@ -234,22 +262,6 @@ export default function QuickNotes({
               b.sort_order
           ),
       [notes]
-    );
-
-
-  /*
-   * Keep Subtasks ordered according
-   * to todo_subtasks.sort_order.
-   */
-  const sortedSubtasks =
-    useMemo(
-      () =>
-        [...subtasks].sort(
-          (a, b) =>
-            a.sort_order -
-            b.sort_order
-        ),
-      [subtasks]
     );
 
 
@@ -270,12 +282,6 @@ export default function QuickNotes({
   }
 
 
-  /*
-   * 1000 / 2000 / 3000 ...
-   *
-   * This makes later drag-and-drop
-   * substantially easier.
-   */
   function getNextSortOrder(
     subtaskId: string | null
   ) {
@@ -306,10 +312,10 @@ export default function QuickNotes({
   function openComposer(
     subtaskId: string | null
   ) {
+    setEditingId(null);
     setDraftTitle("");
     setDraftContent("");
     setDraftColor("cream");
-
     setComposerSubtaskId(
       subtaskId
     );
@@ -320,7 +326,6 @@ export default function QuickNotes({
     setComposerSubtaskId(
       undefined
     );
-
     setDraftTitle("");
     setDraftContent("");
     setDraftColor("cream");
@@ -328,9 +333,6 @@ export default function QuickNotes({
 
 
   async function addNote() {
-    const cleanTitle =
-      draftTitle.trim();
-
     const cleanContent =
       draftContent.trim();
 
@@ -346,11 +348,6 @@ export default function QuickNotes({
     setBusy(true);
     setError(null);
 
-    const sortOrder =
-      getNextSortOrder(
-        composerSubtaskId
-      );
-
     const supabase =
       createClient();
 
@@ -362,22 +359,19 @@ export default function QuickNotes({
         .from("quick_notes")
         .insert({
           todo_id: todoId,
-
           subtask_id:
             composerSubtaskId,
-
           title:
-            cleanTitle ||
+            draftTitle.trim() ||
             null,
-
           content:
             cleanContent,
-
           color:
             draftColor,
-
           sort_order:
-            sortOrder,
+            getNextSortOrder(
+              composerSubtaskId
+            ),
         })
         .select(`
           id,
@@ -423,9 +417,7 @@ export default function QuickNotes({
   async function deleteNote(
     note: QuickNote
   ) {
-    if (
-      deletingId
-    ) {
+    if (deletingId) {
       return;
     }
 
@@ -440,7 +432,8 @@ export default function QuickNotes({
       (current) =>
         current.filter(
           (item) =>
-            item.id !== note.id
+            item.id !==
+            note.id
         )
     );
 
@@ -453,10 +446,7 @@ export default function QuickNotes({
       await supabase
         .from("quick_notes")
         .delete()
-        .eq(
-          "id",
-          note.id
-        );
+        .eq("id", note.id);
 
     setDeletingId(null);
 
@@ -474,7 +464,11 @@ export default function QuickNotes({
   function startEditing(
     note: QuickNote
   ) {
-    setEditingId(note.id);
+    closeComposer();
+
+    setEditingId(
+      note.id
+    );
 
     setEditTitle(
       note.title ?? ""
@@ -483,14 +477,18 @@ export default function QuickNotes({
     setEditContent(
       note.content
     );
+
+    setEditColor(
+      note.color
+    );
   }
 
 
   function cancelEditing() {
     setEditingId(null);
-
     setEditTitle("");
     setEditContent("");
+    setEditColor("cream");
   }
 
 
@@ -523,14 +521,12 @@ export default function QuickNotes({
           title:
             editTitle.trim() ||
             null,
-
           content:
             cleanContent,
+          color:
+            editColor,
         })
-        .eq(
-          "id",
-          note.id
-        )
+        .eq("id", note.id)
         .select(`
           id,
           todo_id,
@@ -576,10 +572,6 @@ export default function QuickNotes({
   }
 
 
-  /*
-   * Move to another Subtask
-   * or back to Unsorted.
-   */
   async function moveNote(
     note: QuickNote,
     destination:
@@ -595,7 +587,7 @@ export default function QuickNotes({
     const previous =
       notes;
 
-    const sortOrder =
+    const nextSortOrder =
       getNextSortOrder(
         destination
       );
@@ -608,12 +600,10 @@ export default function QuickNotes({
             note.id
               ? {
                   ...item,
-
                   subtask_id:
                     destination,
-
                   sort_order:
-                    sortOrder,
+                    nextSortOrder,
                 }
               : item
         )
@@ -630,14 +620,10 @@ export default function QuickNotes({
         .update({
           subtask_id:
             destination,
-
           sort_order:
-            sortOrder,
+            nextSortOrder,
         })
-        .eq(
-          "id",
-          note.id
-        );
+        .eq("id", note.id);
 
     if (moveError) {
       setNotes(previous);
@@ -651,56 +637,15 @@ export default function QuickNotes({
 
 
   return (
-    <aside
-      className="
-        flex
-        h-full
-        min-h-0
-        min-w-0
-        flex-col
-        border-l
-        border-line/70
-        bg-white/60
-        backdrop-blur-sm
-      "
-    >
-      {/* Header */}
-      <div
-        className="
-          flex
-          shrink-0
-          items-start
-          justify-between
-          gap-4
-          border-b
-          border-line/70
-          px-5
-          py-4
-        "
-      >
+    <aside className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line/70 px-5 py-4">
         <div className="min-w-0">
-          <p
-            className="
-              text-[10px]
-              font-semibold
-              uppercase
-              tracking-[0.14em]
-              text-ink-faint
-            "
-          >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
             Quick Notes
           </p>
 
           {todoTitle && (
-            <p
-              className="
-                mt-1
-                truncate
-                text-sm
-                font-medium
-                text-ink
-              "
-            >
+            <p className="mt-1 truncate text-sm font-medium text-ink">
               {todoTitle}
             </p>
           )}
@@ -710,20 +655,8 @@ export default function QuickNotes({
           <button
             type="button"
             onClick={onClose}
-            className="
-              flex
-              h-8
-              w-8
-              shrink-0
-              items-center
-              justify-center
-              rounded-xl
-              text-ink-faint
-              transition
-              hover:bg-paper
-              hover:text-ink
-            "
-            aria-label="Close Quick Notes"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ink-faint transition hover:bg-paper hover:text-ink"
+            aria-label="关闭 Quick Notes"
           >
             <X className="h-4 w-4" />
           </button>
@@ -731,83 +664,37 @@ export default function QuickNotes({
       </div>
 
 
-      {/* Global New Note */}
-      <div
-        className="
-          shrink-0
-          px-4
-          pt-4
-        "
-      >
-        <button
-          type="button"
-          onClick={() =>
-            openComposer(null)
-          }
-          className="
-            flex
-            w-full
-            items-center
-            justify-center
-            gap-2
-            rounded-xl
-            border
-            border-dashed
-            border-line
-            px-3
-            py-2.5
-            text-xs
-            font-medium
-            text-ink-faint
-            transition
-            hover:border-sage-300
-            hover:bg-sage-100/25
-            hover:text-sage-700
-          "
-        >
-          <Plus className="h-3.5 w-3.5" />
-
-          New note
-        </button>
-      </div>
-
-
-      {/* Scrollable body */}
-      <div
-        className="
-          min-h-0
-          flex-1
-          overflow-y-auto
-          px-4
-          pb-8
-          pt-4
-        "
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4">
         {loading ? (
-          <p
-            className="
-              py-10
-              text-center
-              text-xs
-              text-ink-faint
-            "
-          >
+          <p className="py-10 text-center text-xs text-ink-faint">
             正在读取 Notes…
           </p>
         ) : (
-          <div className="space-y-6">
-
-            {/* Unsorted */}
+          <div className="space-y-5">
             <NoteSection
               title="Unsorted"
+              stepLabel={null}
               notes={
                 unsortedNotes
               }
               subtasks={
                 sortedSubtasks
               }
+              composerOpen={
+                composerSubtaskId ===
+                null
+              }
               editingId={
                 editingId
+              }
+              draftTitle={
+                draftTitle
+              }
+              draftContent={
+                draftContent
+              }
+              draftColor={
+                draftColor
               }
               editTitle={
                 editTitle
@@ -815,9 +702,39 @@ export default function QuickNotes({
               editContent={
                 editContent
               }
+              editColor={
+                editColor
+              }
               busy={busy}
               deletingId={
                 deletingId
+              }
+              textareaRef={
+                textareaRef
+              }
+              onOpenComposer={() =>
+                openComposer(null)
+              }
+              onCloseComposer={
+                closeComposer
+              }
+              onDraftTitle={
+                setDraftTitle
+              }
+              onDraftContent={
+                setDraftContent
+              }
+              onDraftColor={
+                setDraftColor
+              }
+              onAddNote={
+                addNote
+              }
+              onStartEdit={
+                startEditing
+              }
+              onCancelEdit={
+                cancelEditing
               }
               onEditTitle={
                 setEditTitle
@@ -825,11 +742,8 @@ export default function QuickNotes({
               onEditContent={
                 setEditContent
               }
-              onStartEdit={
-                startEditing
-              }
-              onCancelEdit={
-                cancelEditing
+              onEditColor={
+                setEditColor
               }
               onSaveEdit={
                 saveEdit
@@ -840,14 +754,13 @@ export default function QuickNotes({
               onMove={
                 moveNote
               }
-              onAdd={() =>
-                openComposer(null)
-              }
             />
 
-
             {sortedSubtasks.map(
-              (subtask) => (
+              (
+                subtask,
+                index
+              ) => (
                 <NoteSection
                   key={
                     subtask.id
@@ -855,14 +768,33 @@ export default function QuickNotes({
                   title={
                     subtask.title
                   }
+                  stepLabel={String(
+                    index + 1
+                  ).padStart(
+                    2,
+                    "0"
+                  )}
                   notes={notesForSubtask(
                     subtask.id
                   )}
                   subtasks={
                     sortedSubtasks
                   }
+                  composerOpen={
+                    composerSubtaskId ===
+                    subtask.id
+                  }
                   editingId={
                     editingId
+                  }
+                  draftTitle={
+                    draftTitle
+                  }
+                  draftContent={
+                    draftContent
+                  }
+                  draftColor={
+                    draftColor
                   }
                   editTitle={
                     editTitle
@@ -870,9 +802,41 @@ export default function QuickNotes({
                   editContent={
                     editContent
                   }
+                  editColor={
+                    editColor
+                  }
                   busy={busy}
                   deletingId={
                     deletingId
+                  }
+                  textareaRef={
+                    textareaRef
+                  }
+                  onOpenComposer={() =>
+                    openComposer(
+                      subtask.id
+                    )
+                  }
+                  onCloseComposer={
+                    closeComposer
+                  }
+                  onDraftTitle={
+                    setDraftTitle
+                  }
+                  onDraftContent={
+                    setDraftContent
+                  }
+                  onDraftColor={
+                    setDraftColor
+                  }
+                  onAddNote={
+                    addNote
+                  }
+                  onStartEdit={
+                    startEditing
+                  }
+                  onCancelEdit={
+                    cancelEditing
                   }
                   onEditTitle={
                     setEditTitle
@@ -880,11 +844,8 @@ export default function QuickNotes({
                   onEditContent={
                     setEditContent
                   }
-                  onStartEdit={
-                    startEditing
-                  }
-                  onCancelEdit={
-                    cancelEditing
+                  onEditColor={
+                    setEditColor
                   }
                   onSaveEdit={
                     saveEdit
@@ -895,228 +856,14 @@ export default function QuickNotes({
                   onMove={
                     moveNote
                   }
-                  onAdd={() =>
-                    openComposer(
-                      subtask.id
-                    )
-                  }
                 />
               )
             )}
-
           </div>
         )}
-
-
-        {/* Composer */}
-        {composerSubtaskId !==
-          undefined && (
-          <div
-            className="
-              mt-5
-              rounded-2xl
-              border
-              border-line
-              bg-paper/75
-              p-3
-              shadow-sm
-            "
-          >
-            <input
-              value={
-                draftTitle
-              }
-              onChange={(
-                event
-              ) =>
-                setDraftTitle(
-                  event.target
-                    .value
-                )
-              }
-              placeholder="Title (optional)"
-              className="
-                mb-2
-                w-full
-                bg-transparent
-                text-sm
-                font-medium
-                text-ink
-                outline-none
-                placeholder:text-ink-faint
-              "
-            />
-
-            <textarea
-              ref={
-                textareaRef
-              }
-              value={
-                draftContent
-              }
-              onChange={(
-                event
-              ) =>
-                setDraftContent(
-                  event.target
-                    .value
-                )
-              }
-              onKeyDown={(
-                event
-              ) => {
-                const saveShortcut =
-                  (
-                    event.ctrlKey ||
-                    event.metaKey
-                  ) &&
-                  event.key ===
-                    "Enter";
-
-                if (
-                  saveShortcut
-                ) {
-                  event.preventDefault();
-
-                  void addNote();
-                }
-              }}
-              rows={4}
-              placeholder="Write something..."
-              className="
-                w-full
-                resize-none
-                bg-transparent
-                text-xs
-                leading-5
-                text-ink
-                outline-none
-                placeholder:text-ink-faint
-              "
-            />
-
-
-            <div
-              className="
-                mt-3
-                flex
-                items-center
-                justify-between
-                gap-3
-              "
-            >
-              <select
-                value={
-                  draftColor
-                }
-                onChange={(
-                  event
-                ) =>
-                  setDraftColor(
-                    event.target
-                      .value as QuickNoteColor
-                  )
-                }
-                className="
-                  rounded-lg
-                  border
-                  border-line
-                  bg-white/70
-                  px-2
-                  py-1
-                  text-[10px]
-                  text-ink-soft
-                  outline-none
-                "
-              >
-                {COLOR_OPTIONS.map(
-                  (option) => (
-                    <option
-                      key={
-                        option.value
-                      }
-                      value={
-                        option.value
-                      }
-                    >
-                      {
-                        option.label
-                      }
-                    </option>
-                  )
-                )}
-              </select>
-
-
-              <div
-                className="
-                  flex
-                  items-center
-                  gap-2
-                "
-              >
-                <button
-                  type="button"
-                  onClick={
-                    closeComposer
-                  }
-                  className="
-                    rounded-lg
-                    px-2
-                    py-1
-                    text-[10px]
-                    text-ink-faint
-                    transition
-                    hover:bg-white
-                    hover:text-ink-soft
-                  "
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    !draftContent.trim()
-                  }
-                  onClick={() =>
-                    void addNote()
-                  }
-                  className="
-                    inline-flex
-                    h-7
-                    items-center
-                    gap-1.5
-                    rounded-lg
-                    bg-sage-100
-                    px-2.5
-                    text-[10px]
-                    font-medium
-                    text-sage-700
-                    transition
-                    hover:bg-sage-300/60
-                    disabled:opacity-40
-                  "
-                >
-                  <Save className="h-3 w-3" />
-
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
 
         {error && (
-          <p
-            className="
-              mt-4
-              text-xs
-              text-blush-500
-            "
-          >
+          <p className="mt-4 rounded-xl bg-blush-50 px-3 py-2 text-xs text-blush-500">
             {error}
           </p>
         )}
@@ -1126,35 +873,51 @@ export default function QuickNotes({
 }
 
 
-
 type NoteSectionProps = {
   title: string;
-
+  stepLabel: string | null;
   notes: QuickNote[];
-
   subtasks: QuickNotesSubtask[];
 
+  composerOpen: boolean;
   editingId: string | null;
 
-  editTitle: string;
+  draftTitle: string;
+  draftContent: string;
+  draftColor: QuickNoteColor;
 
+  editTitle: string;
   editContent: string;
+  editColor: QuickNoteColor;
 
   busy: boolean;
-
   deletingId: string | null;
 
-  onEditTitle:
-    (value: string) => void;
+  textareaRef:
+    React.RefObject<HTMLTextAreaElement | null>;
 
-  onEditContent:
+  onOpenComposer: () => void;
+  onCloseComposer: () => void;
+
+  onDraftTitle:
     (value: string) => void;
+  onDraftContent:
+    (value: string) => void;
+  onDraftColor:
+    (value: QuickNoteColor) => void;
+
+  onAddNote: () => Promise<void>;
 
   onStartEdit:
     (note: QuickNote) => void;
+  onCancelEdit: () => void;
 
-  onCancelEdit:
-    () => void;
+  onEditTitle:
+    (value: string) => void;
+  onEditContent:
+    (value: string) => void;
+  onEditColor:
+    (value: QuickNoteColor) => void;
 
   onSaveEdit:
     (note: QuickNote) =>
@@ -1170,91 +933,63 @@ type NoteSectionProps = {
       destination:
         string | null
     ) => Promise<void>;
-
-  onAdd:
-    () => void;
 };
 
 
 function NoteSection({
   title,
+  stepLabel,
   notes,
   subtasks,
+  composerOpen,
   editingId,
+  draftTitle,
+  draftContent,
+  draftColor,
   editTitle,
   editContent,
+  editColor,
   busy,
   deletingId,
-  onEditTitle,
-  onEditContent,
+  textareaRef,
+  onOpenComposer,
+  onCloseComposer,
+  onDraftTitle,
+  onDraftContent,
+  onDraftColor,
+  onAddNote,
   onStartEdit,
   onCancelEdit,
+  onEditTitle,
+  onEditContent,
+  onEditColor,
   onSaveEdit,
   onDelete,
   onMove,
-  onAdd,
 }: NoteSectionProps) {
   return (
     <section>
-
-      {/* Section title */}
-      <div
-        className="
-          mb-2
-          flex
-          items-center
-          justify-between
-          gap-3
-        "
-      >
-        <div
-          className="
-            flex
-            min-w-0
-            items-center
-            gap-2
-          "
-        >
-          <p
-            className="
-              truncate
-              text-[11px]
-              font-semibold
-              text-ink-soft
-            "
-          >
-            {title}
-          </p>
-
-          <span
-            className="
-              rounded-full
-              bg-paper
-              px-1.5
-              py-0.5
-              text-[9px]
-              text-ink-faint
-            "
-          >
-            {notes.length}
+      <div className="flex items-center gap-2 px-1">
+        {stepLabel && (
+          <span className="text-[10px] font-medium tabular-nums text-ink-faint">
+            {stepLabel}
           </span>
-        </div>
+        )}
+
+        <h3 className="min-w-0 flex-1 truncate text-xs font-medium text-ink-soft">
+          {title}
+        </h3>
+
+        <span className="text-[10px] tabular-nums text-ink-faint">
+          {notes.length}
+        </span>
 
         <button
           type="button"
-          onClick={onAdd}
-          className="
-            flex
-            h-6
-            w-6
-            items-center
-            justify-center
-            rounded-lg
-            text-ink-faint
-            transition
-            hover:bg-paper
-            hover:text-sage-700
-          "
+          onClick={
+            onOpenComposer
+          }
+          className="flex h-6 w-6 items-center justify-center rounded-lg text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
           aria-label={`Add note to ${title}`}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -1262,23 +997,43 @@ function NoteSection({
       </div>
 
 
-      {notes.length === 0 ? (
-        <div
-          className="
-            rounded-xl
-            border
-            border-dashed
-            border-line/60
-            px-3
-            py-3
-            text-[10px]
-            text-ink-faint
-          "
-        >
-          No notes
-        </div>
-      ) : (
-        <div className="space-y-2">
+      {composerOpen && (
+        <NoteComposer
+          textareaRef={
+            textareaRef
+          }
+          title={
+            draftTitle
+          }
+          content={
+            draftContent
+          }
+          color={
+            draftColor
+          }
+          busy={busy}
+          onTitle={
+            onDraftTitle
+          }
+          onContent={
+            onDraftContent
+          }
+          onColor={
+            onDraftColor
+          }
+          onSave={
+            onAddNote
+          }
+          onCancel={
+            onCloseComposer
+          }
+        />
+      )}
+
+
+      {notes.length >
+        0 && (
+        <div className="mt-2 space-y-2">
           {notes.map(
             (note) => (
               <NoteCard
@@ -1301,6 +1056,9 @@ function NoteSection({
                 editContent={
                   editContent
                 }
+                editColor={
+                  editColor
+                }
                 busy={
                   busy
                 }
@@ -1308,17 +1066,20 @@ function NoteSection({
                   deletingId ===
                   note.id
                 }
+                onStartEdit={
+                  onStartEdit
+                }
+                onCancelEdit={
+                  onCancelEdit
+                }
                 onEditTitle={
                   onEditTitle
                 }
                 onEditContent={
                   onEditContent
                 }
-                onStartEdit={
-                  onStartEdit
-                }
-                onCancelEdit={
-                  onCancelEdit
+                onEditColor={
+                  onEditColor
                 }
                 onSaveEdit={
                   onSaveEdit
@@ -1339,6 +1100,120 @@ function NoteSection({
 }
 
 
+function NoteComposer({
+  textareaRef,
+  title,
+  content,
+  color,
+  busy,
+  onTitle,
+  onContent,
+  onColor,
+  onSave,
+  onCancel,
+}: {
+  textareaRef:
+    React.RefObject<HTMLTextAreaElement | null>;
+  title: string;
+  content: string;
+  color: QuickNoteColor;
+  busy: boolean;
+  onTitle:
+    (value: string) => void;
+  onContent:
+    (value: string) => void;
+  onColor:
+    (value: QuickNoteColor) => void;
+  onSave: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mt-2 rounded-2xl border border-line/80 bg-white/80 p-3 shadow-sm">
+      <input
+        value={title}
+        onChange={(
+          event
+        ) =>
+          onTitle(
+            event.target.value
+          )
+        }
+        placeholder="Title (optional)"
+        className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
+      />
+
+      <textarea
+        ref={
+          textareaRef
+        }
+        value={content}
+        onChange={(
+          event
+        ) =>
+          onContent(
+            event.target.value
+          )
+        }
+        onKeyDown={(
+          event
+        ) => {
+          const saveShortcut =
+            (
+              event.ctrlKey ||
+              event.metaKey
+            ) &&
+            event.key ===
+              "Enter";
+
+          if (saveShortcut) {
+            event.preventDefault();
+            void onSave();
+          }
+        }}
+        rows={3}
+        placeholder="Write a note..."
+        className="mt-2 w-full resize-none bg-transparent text-xs leading-5 text-ink-soft outline-none placeholder:text-ink-faint/75"
+      />
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <ColorPicker
+          value={color}
+          onChange={
+            onColor
+          }
+        />
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={
+              onCancel
+            }
+            className="rounded-lg px-2 py-1 text-[10px] text-ink-faint transition hover:bg-paper hover:text-ink-soft"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            disabled={
+              busy ||
+              !content.trim()
+            }
+            onClick={() =>
+              void onSave()
+            }
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-sage-100 px-2.5 text-[10px] font-medium text-sage-700 transition hover:bg-sage-300/60 disabled:opacity-40"
+          >
+            <Save className="h-3 w-3" />
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function NoteCard({
   note,
@@ -1346,50 +1221,41 @@ function NoteCard({
   editing,
   editTitle,
   editContent,
+  editColor,
   busy,
   deleting,
-  onEditTitle,
-  onEditContent,
   onStartEdit,
   onCancelEdit,
+  onEditTitle,
+  onEditContent,
+  onEditColor,
   onSaveEdit,
   onDelete,
   onMove,
 }: {
   note: QuickNote;
-
   subtasks: QuickNotesSubtask[];
-
   editing: boolean;
-
   editTitle: string;
-
   editContent: string;
-
+  editColor: QuickNoteColor;
   busy: boolean;
-
   deleting: boolean;
-
-  onEditTitle:
-    (value: string) => void;
-
-  onEditContent:
-    (value: string) => void;
-
   onStartEdit:
     (note: QuickNote) => void;
-
-  onCancelEdit:
-    () => void;
-
+  onCancelEdit: () => void;
+  onEditTitle:
+    (value: string) => void;
+  onEditContent:
+    (value: string) => void;
+  onEditColor:
+    (value: QuickNoteColor) => void;
   onSaveEdit:
     (note: QuickNote) =>
       Promise<void>;
-
   onDelete:
     (note: QuickNote) =>
       Promise<void>;
-
   onMove:
     (
       note: QuickNote,
@@ -1397,107 +1263,56 @@ function NoteCard({
         string | null
     ) => Promise<void>;
 }) {
-  const background =
-    {
-      cream:
-        "bg-[#fffaf0]",
+  if (editing) {
+    return (
+      <div className="rounded-2xl border border-line/80 bg-white/85 p-3 shadow-sm">
+        <input
+          value={
+            editTitle
+          }
+          onChange={(
+            event
+          ) =>
+            onEditTitle(
+              event.target.value
+            )
+          }
+          placeholder="Title (optional)"
+          className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
+        />
 
-      blush:
-        "bg-[#fff4f5]",
+        <textarea
+          value={
+            editContent
+          }
+          onChange={(
+            event
+          ) =>
+            onEditContent(
+              event.target.value
+            )
+          }
+          rows={4}
+          className="mt-2 w-full resize-none bg-transparent text-xs leading-5 text-ink-soft outline-none"
+        />
 
-      sage:
-        "bg-[#f4f8f3]",
-
-      sky:
-        "bg-[#f2f8fb]",
-
-      lavender:
-        "bg-[#f7f4fb]",
-    }[note.color] ??
-    "bg-paper/60";
-
-
-  return (
-    <article
-      className={`
-        group
-        rounded-xl
-        border
-        border-line/65
-        p-3
-        transition
-        ${background}
-      `}
-    >
-      {editing ? (
-        <>
-          <input
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <ColorPicker
             value={
-              editTitle
+              editColor
             }
-            onChange={(
-              event
-            ) =>
-              onEditTitle(
-                event.target.value
-              )
+            onChange={
+              onEditColor
             }
-            placeholder="Title"
-            className="
-              mb-2
-              w-full
-              bg-transparent
-              text-xs
-              font-medium
-              text-ink
-              outline-none
-            "
           />
 
-          <textarea
-            value={
-              editContent
-            }
-            onChange={(
-              event
-            ) =>
-              onEditContent(
-                event.target.value
-              )
-            }
-            rows={4}
-            className="
-              w-full
-              resize-none
-              bg-transparent
-              text-xs
-              leading-5
-              text-ink-soft
-              outline-none
-            "
-          />
-
-          <div
-            className="
-              mt-2
-              flex
-              justify-end
-              gap-2
-            "
-          >
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={
                 onCancelEdit
               }
-              className="
-                rounded-lg
-                px-2
-                py-1
-                text-[10px]
-                text-ink-faint
-                hover:bg-white/70
-              "
+              className="rounded-lg px-2 py-1 text-[10px] text-ink-faint hover:bg-paper"
             >
               Cancel
             </button>
@@ -1513,217 +1328,164 @@ function NoteCard({
                   note
                 )
               }
-              className="
-                inline-flex
-                items-center
-                gap-1
-                rounded-lg
-                bg-white/75
-                px-2
-                py-1
-                text-[10px]
-                font-medium
-                text-sage-700
-                disabled:opacity-40
-              "
+              className="inline-flex items-center gap-1 rounded-lg bg-sage-100 px-2 py-1 text-[10px] font-medium text-sage-700 disabled:opacity-40"
             >
               <Save className="h-3 w-3" />
-
               Save
             </button>
           </div>
-        </>
-      ) : (
-        <>
-          <div
-            className="
-              flex
-              items-start
-              gap-2.5
-            "
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <article
+      className={`group rounded-2xl border border-line/60 p-3.5 transition hover:-translate-y-px hover:shadow-sm ${
+        NOTE_BACKGROUND[
+          note.color
+        ]
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sage-500/80" />
+
+        <div className="min-w-0 flex-1">
+          {note.title && (
+            <p className="mb-1 text-xs font-medium text-ink">
+              {note.title}
+            </p>
+          )}
+
+          <p className="whitespace-pre-wrap text-xs leading-5 text-ink-soft">
+            {note.content}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={() =>
+              onStartEdit(
+                note
+              )
+            }
+            className="rounded-md p-1 text-ink-faint transition hover:bg-white/70 hover:text-ink-soft"
+            aria-label="Edit note"
           >
-            <FileText
-              className="
-                mt-0.5
-                h-3.5
-                w-3.5
-                shrink-0
-                text-sage-500
-              "
-            />
+            <Pencil className="h-3 w-3" />
+          </button>
 
-            <div
-              className="
-                min-w-0
-                flex-1
-              "
-            >
-              {note.title && (
-                <p
-                  className="
-                    mb-1
-                    truncate
-                    text-xs
-                    font-medium
-                    text-ink
-                  "
-                >
-                  {note.title}
-                </p>
-              )}
-
-              <p
-                className="
-                  line-clamp-3
-                  whitespace-pre-wrap
-                  text-xs
-                  leading-5
-                  text-ink-soft
-                "
-              >
-                {note.content}
-              </p>
-            </div>
-
-
-            <div
-              className="
-                flex
-                shrink-0
-                items-center
-                gap-1
-                opacity-0
-                transition
-                group-hover:opacity-100
-              "
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  onStartEdit(
-                    note
-                  )
-                }
-                className="
-                  rounded-md
-                  p-1
-                  text-ink-faint
-                  hover:bg-white/70
-                  hover:text-ink-soft
-                "
-                aria-label="Edit note"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
-
-              <button
-                type="button"
-                disabled={
-                  deleting
-                }
-                onClick={() =>
-                  void onDelete(
-                    note
-                  )
-                }
-                className="
-                  rounded-md
-                  p-1
-                  text-ink-faint
-                  hover:bg-white/70
-                  hover:text-blush-500
-                  disabled:opacity-40
-                "
-                aria-label="Delete note"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-
-          {/* Move to */}
-          <div
-            className="
-              mt-3
-              flex
-              items-center
-              justify-between
-              gap-2
-              border-t
-              border-line/40
-              pt-2
-            "
+          <button
+            type="button"
+            disabled={
+              deleting
+            }
+            onClick={() =>
+              void onDelete(
+                note
+              )
+            }
+            className="rounded-md p-1 text-ink-faint transition hover:bg-white/70 hover:text-blush-500 disabled:opacity-40"
+            aria-label="Delete note"
           >
-            <span
-              className="
-                text-[9px]
-                text-ink-faint
-              "
-            >
-              Move to
-            </span>
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
 
-            <select
-              value={
-                note.subtask_id ??
+      <div className="mt-3 flex items-center justify-end border-t border-black/[0.04] pt-2">
+        <select
+          value={
+            note.subtask_id ??
+            "__unsorted__"
+          }
+          onChange={(
+            event
+          ) => {
+            const value =
+              event.target.value;
+
+            void onMove(
+              note,
+              value ===
                 "__unsorted__"
-              }
-              onChange={(
-                event
-              ) => {
-                const value =
-                  event.target
-                    .value;
+                ? null
+                : value
+            );
+          }}
+          className="max-w-[180px] truncate rounded-lg border border-line/60 bg-white/55 px-2 py-1 text-[9px] text-ink-faint outline-none transition hover:bg-white"
+          aria-label="Move note"
+        >
+          <option value="__unsorted__">
+            Move to · Unsorted
+          </option>
 
-                void onMove(
-                  note,
-                  value ===
-                    "__unsorted__"
-                    ? null
-                    : value
-                );
-              }}
-              className="
-                max-w-[160px]
-                truncate
-                rounded-md
-                border
-                border-line/60
-                bg-white/60
-                px-1.5
-                py-1
-                text-[9px]
-                text-ink-soft
-                outline-none
-              "
-            >
+          {subtasks.map(
+            (subtask) => (
               <option
-                value="__unsorted__"
+                key={
+                  subtask.id
+                }
+                value={
+                  subtask.id
+                }
               >
-                Unsorted
+                Move to · {
+                  subtask.title
+                }
               </option>
-
-              {subtasks.map(
-                (subtask) => (
-                  <option
-                    key={
-                      subtask.id
-                    }
-                    value={
-                      subtask.id
-                    }
-                  >
-                    {
-                      subtask.title
-                    }
-                  </option>
-                )
-              )}
-            </select>
-          </div>
-        </>
-      )}
+            )
+          )}
+        </select>
+      </div>
     </article>
+  );
+}
+
+
+function ColorPicker({
+  value,
+  onChange,
+}: {
+  value: QuickNoteColor;
+  onChange:
+    (value: QuickNoteColor) => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      aria-label="Note color"
+    >
+      {COLOR_OPTIONS.map(
+        (option) => (
+          <button
+            key={
+              option.value
+            }
+            type="button"
+            onClick={() =>
+              onChange(
+                option.value
+              )
+            }
+            className={`h-5 w-5 rounded-full border transition ${
+              option.dotClass
+            } ${
+              value ===
+              option.value
+                ? "border-sage-700 ring-2 ring-sage-100"
+                : "border-black/5 hover:scale-110"
+            }`}
+            title={
+              option.label
+            }
+            aria-label={
+              option.label
+            }
+          />
+        )
+      )}
+    </div>
   );
 }

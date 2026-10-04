@@ -16,7 +16,6 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-import QuickNotes from "@/components/QuickNotes";
 import TodoSubtasks, {
   type TodoSubtask,
 } from "@/components/TodoSubtasks";
@@ -234,10 +233,22 @@ function categoryInfo(
 }
 
 
+export type TodoNotesOpenPayload = {
+  todoId: string;
+  todoTitle: string;
+  subtasks: TodoSubtask[];
+  targetSubtaskId?: string | null;
+};
+
+
 export default function TodoList({
   todos,
+  onOpenNotes,
 }: {
   todos: Todo[];
+  onOpenNotes?: (
+    payload: TodoNotesOpenPayload
+  ) => void;
 }) {
   const router = useRouter();
 
@@ -315,18 +326,6 @@ export default function TodoList({
     );
 
   /*
-   * 当前右侧 Quick Notes Panel 对应的 Todo。
-   * null = Panel 关闭。
-   */
-  const [
-    notesTodoId,
-    setNotesTodoId,
-  ] =
-    useState<string | null>(
-      null
-    );
-
-  /*
    * TodoSubtasks 已经加载好的 subtasks。
    * 直接交给 QuickNotes，避免重复查询 todo_subtasks。
    */
@@ -343,58 +342,14 @@ export default function TodoList({
     todoId: string
   ) {
     setExpandedSubtasksId(
-      (current) => {
-        if (
-          current === todoId
-        ) {
-          if (
-            notesTodoId ===
-            todoId
-          ) {
-            setNotesTodoId(
-              null
-            );
-          }
-
-          setActiveSubtasks(
-            []
-          );
-
-          return null;
-        }
-
-        if (
-          notesTodoId &&
-          notesTodoId !==
-            todoId
-        ) {
-          setNotesTodoId(
-            null
-          );
-        }
-
-        setActiveSubtasks(
-          []
-        );
-
-        return todoId;
-      }
+      (current) =>
+        current === todoId
+          ? null
+          : todoId
     );
-  }
 
-
-  function openQuickNotes(
-    todoId: string
-  ) {
-    setNotesTodoId(
-      todoId
-    );
-  }
-
-
-  function closeQuickNotes() {
-    setNotesTodoId(
-      null
+    setActiveSubtasks(
+      []
     );
   }
 
@@ -670,16 +625,6 @@ export default function TodoList({
       cancelEditing();
     }
 
-    if (
-      notesTodoId ===
-      todo.id
-    ) {
-      closeQuickNotes();
-      setActiveSubtasks(
-        []
-      );
-    }
-
     router.refresh();
   }
 
@@ -695,25 +640,8 @@ export default function TodoList({
   }
 
 
-  const notesTodo =
-    notesTodoId
-      ? todos.find(
-          (todo) =>
-            todo.id ===
-            notesTodoId
-        ) ?? null
-      : null;
-
-
   return (
-    <div
-      className={
-        notesTodo
-          ? "grid min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]"
-          : "min-h-0"
-      }
-    >
-      <div className="min-w-0 space-y-2">
+    <div className="min-w-0 space-y-2">
 
         {error && (
           <p className="rounded-xl bg-blush-50 px-3 py-2 text-sm text-blush-500">
@@ -1242,10 +1170,20 @@ export default function TodoList({
                       todoId={
                         todo.id
                       }
-                      onOpenNotes={() =>
-                        openQuickNotes(
-                          todo.id
-                        )
+                      onOpenNotes={(
+                        subtaskId
+                      ) =>
+                        onOpenNotes?.({
+                          todoId:
+                            todo.id,
+                          todoTitle:
+                            todo.title,
+                          subtasks:
+                            activeSubtasks,
+                          targetSubtaskId:
+                            subtaskId ??
+                            null,
+                        })
                       }
                       onSubtasksChange={
                         setActiveSubtasks
@@ -1258,30 +1196,6 @@ export default function TodoList({
             );
           }
         )}
-      </div>
-
-
-      {notesTodo && (
-        <div className="min-h-0 lg:sticky lg:top-4 lg:self-start">
-          <div className="h-[min(78vh,820px)] min-h-[520px] overflow-hidden rounded-2xl border border-line bg-white/60 shadow-soft">
-            <QuickNotes
-              todoId={
-                notesTodo.id
-              }
-              todoTitle={
-                notesTodo.title
-              }
-              subtasks={
-                activeSubtasks
-              }
-              onClose={
-                closeQuickNotes
-              }
-            />
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
