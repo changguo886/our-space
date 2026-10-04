@@ -2,8 +2,6 @@
 
 import {
   Check,
-  ChevronDown,
-  ChevronUp,
   Circle,
   MessageSquareText,
   Plus,
@@ -36,7 +34,6 @@ import {
 
 import { CSS } from "@dnd-kit/utilities";
 
-import QuickNotes from "@/components/QuickNotes";
 import { createClient } from "@/lib/supabase/client";
 
 
@@ -54,6 +51,28 @@ export type TodoSubtask = {
 
 type TodoSubtasksProps = {
   todoId: string;
+
+  /*
+   * 打开 Todo-level Quick Notes Panel。
+   *
+   * subtaskId = null / undefined -> 打开 Unsorted
+   * subtaskId = UUID             -> 打开并定位到对应 Step
+   *
+   * 这里暂时设为 optional，方便我们分两步迁移：
+   * 先替换 TodoSubtasks.tsx，再修改 TodoList.tsx。
+   */
+  onOpenNotes?: (
+    subtaskId?: string | null
+  ) => void;
+
+  /*
+   * 把当前已经加载好的 subtasks 交给父级。
+   * TodoList 后面会把它们传给 QuickNotes Panel，
+   * 避免父级重复请求 todo_subtasks。
+   */
+  onSubtasksChange?: (
+    subtasks: TodoSubtask[]
+  ) => void;
 };
 
 
@@ -62,33 +81,26 @@ type SortableSubtaskRowProps = {
   index: number;
   busy: boolean;
   disabled: boolean;
-  notesExpanded: boolean;
   onToggle: (subtask: TodoSubtask) => void;
   onDelete: (subtask: TodoSubtask) => void;
-  onToggleNotes: (subtaskId: string) => void;
+  onOpenNotes?: (subtaskId: string) => void;
 };
 
 
 /**
- * 单个可排序的 Subtask 行。
+ * 单个可排序 Subtask 行。
  *
- * 交互职责：
- * - 01 / 02 / 03：唯一拖动把手
- * - checkbox：完成 / 恢复
- * - Quick Notes icon：展开 / 收起当前 Step 的 Notes
- * - trash：删除 Step
- *
- * 这样可以避免“整行都能拖”带来的误触问题。
+ * TodoSubtasks 现在不再直接渲染 QuickNotes。
+ * Notes 按钮只负责通知父级打开右侧 Todo-level Notes Panel。
  */
 function SortableSubtaskRow({
   subtask,
   index,
   busy,
   disabled,
-  notesExpanded,
   onToggle,
   onDelete,
-  onToggleNotes,
+  onOpenNotes,
 }: SortableSubtaskRowProps) {
   const {
     attributes,
@@ -123,12 +135,6 @@ function SortableSubtaskRow({
           : "hover:bg-white/70"
       }`}
     >
-      {/*
-       * 01 / 02 / 03 本身就是顺序信息，
-       * 同时作为 drag handle。
-       * 以后如果要换成自定义 SVG / 品牌图标，
-       * 只改这里的视觉即可，不需要改拖动逻辑。
-       */}
       <button
         type="button"
         {...attributes}
@@ -180,40 +186,18 @@ function SortableSubtaskRow({
         </span>
       )}
 
-      {/*
-       * Quick Notes 入口。
-       * 点击后原地展开当前 Step 的 Notes，
-       * 不跳转页面，保持执行上下文。
-       *
-       * 目前先不显示 note count，
-       * 后续可以再做一次轻量 count 查询或共享 notes state。
-       */}
       <button
         type="button"
         onClick={() =>
-          onToggleNotes(
+          onOpenNotes?.(
             subtask.id
           )
         }
-        className={`flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] transition ${
-          notesExpanded
-            ? "bg-sage-50 text-sage-700"
-            : "text-ink-faint hover:bg-white hover:text-ink-soft"
-        }`}
-        aria-label={
-          notesExpanded
-            ? "收起 Quick Notes"
-            : "展开 Quick Notes"
-        }
+        className="flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
+        aria-label="打开这个步骤的 Quick Notes"
         title="Quick Notes"
       >
         <MessageSquareText className="h-3.5 w-3.5" />
-
-        {notesExpanded ? (
-          <ChevronUp className="h-3 w-3" />
-        ) : (
-          <ChevronDown className="h-3 w-3" />
-        )}
       </button>
 
       <button
@@ -240,31 +224,20 @@ function SortableSubtaskRow({
  * - 手动新增步骤
  * - 完成 / 恢复步骤
  * - 删除步骤
- * - 01 / 02 / 03 拖动排序
+ * - 拖动排序
  * - 保存 sort_order
- * - 给每个 Step 提供 Quick Notes 原地入口
- * - 提供 Todo-level Unsorted Quick Notes 折叠入口
+ * - 提供打开 Todo-level Quick Notes Panel 的入口
  *
- * Quick Notes 设计：
- * - Step Note:
- *   todo_id = 当前 Todo
- *   subtask_id = 当前 Step
+ * 不再负责：
+ * - 在每个 Step 下原地 render QuickNotes
+ * - 在 Todo 下展开 Unsorted Quick Notes
  *
- * - Todo Unsorted Note:
- *   todo_id = 当前 Todo
- *   subtask_id = null
- *
- * - 删除 Step 后：
- *   quick_notes.subtask_id 使用 ON DELETE SET NULL，
- *   Note 不会被删除，而是自动回到 Todo Unsorted。
- *
- * 后续：
- * - Quick Note 拖动归类
- * - TodoSubtasks compact variant
- * - Task Companion 复用 compact variant
+ * Quick Notes 的完整 UI 改由 TodoList / 更高层父组件管理。
  */
 export default function TodoSubtasks({
   todoId,
+  onOpenNotes,
+  onSubtasksChange,
 }: TodoSubtasksProps) {
   const [
     subtasks,
@@ -273,20 +246,6 @@ export default function TodoSubtasks({
     useState<TodoSubtask[]>(
       []
     );
-
-  const [
-    expandedNotesId,
-    setExpandedNotesId,
-  ] =
-    useState<string | null>(
-      null
-    );
-
-  const [
-    todoNotesExpanded,
-    setTodoNotesExpanded,
-  ] =
-    useState(false);
 
   const [
     newTitle,
@@ -356,9 +315,20 @@ export default function TodoSubtasks({
   }, [todoId]);
 
 
-  /**
-   * 从 Supabase 读取当前 Todo 的 checklist。
+  /*
+   * 把当前 subtasks 同步给父组件。
+   * 下一步 TodoList 会把这份数据直接传给 QuickNotes。
    */
+  useEffect(() => {
+    onSubtasksChange?.(
+      subtasks
+    );
+  }, [
+    subtasks,
+    onSubtasksChange,
+  ]);
+
+
   async function loadSubtasks() {
     setLoading(true);
     setError(null);
@@ -411,6 +381,7 @@ export default function TodoSubtasks({
         "读取任务清单失败：" +
           loadError.message
       );
+
       return;
     }
 
@@ -420,12 +391,6 @@ export default function TodoSubtasks({
   }
 
 
-  /**
-   * 手动新增一个步骤。
-   *
-   * 新 Step 默认放在列表末尾，
-   * 用户可以立刻拖到任何位置。
-   */
   async function addSubtask() {
     const cleanTitle =
       newTitle.trim();
@@ -571,12 +536,6 @@ export default function TodoSubtasks({
   }
 
 
-  /**
-   * 完成 / 恢复一个步骤。
-   *
-   * 完成只改变状态，
-   * Quick Notes 不受影响。
-   */
   async function toggleSubtask(
     subtask:
       TodoSubtask
@@ -677,13 +636,6 @@ export default function TodoSubtasks({
   }
 
 
-  /**
-   * 删除一个步骤。
-   *
-   * quick_notes.subtask_id 应配置为 ON DELETE SET NULL。
-   * 所以 Step 删除后 Note 不会丢失，
-   * 而是自动进入当前 Todo 的 Unsorted Notes。
-   */
   async function deleteSubtask(
     subtask:
       TodoSubtask
@@ -751,13 +703,6 @@ export default function TodoSubtasks({
   }
 
 
-  /**
-   * 拖动结束后保存新的 sort_order。
-   *
-   * 先立即更新本地 UI，
-   * 再后台同步 Supabase。
-   * 如果保存失败则回滚。
-   */
   async function handleDragEnd(
     event:
       DragEndEvent
@@ -975,75 +920,43 @@ export default function TodoSubtasks({
                   (
                     subtask,
                     index
-                  ) => {
-                    const notesExpanded =
-                      expandedNotesId ===
-                      subtask.id;
-
-                    return (
-                      <div
-                        key={
-                          subtask.id
-                        }
-                      >
-                        <SortableSubtaskRow
-                          subtask={
-                            subtask
-                          }
-                          index={
-                            index
-                          }
-                          busy={
-                            busyId ===
-                            subtask.id
-                          }
-                          disabled={
-                            Boolean(
-                              busyId
-                            ) ||
-                            adding ||
-                            reordering
-                          }
-                          notesExpanded={
-                            notesExpanded
-                          }
-                          onToggle={
-                            toggleSubtask
-                          }
-                          onDelete={
-                            deleteSubtask
-                          }
-                          onToggleNotes={(
-                            subtaskId
-                          ) =>
-                            setExpandedNotesId(
-                              (
-                                current
-                              ) =>
-                                current ===
-                                subtaskId
-                                  ? null
-                                  : subtaskId
-                            )
-                          }
-                        />
-
-                        {notesExpanded && (
-                          <div className="ml-10 mt-2">
-                            <QuickNotes
-                              todoId={
-                                todoId
-                              }
-                              subtaskId={
-                                subtask.id
-                              }
-                              placeholder="为这个步骤记一条 Quick Note…"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
+                  ) => (
+                    <SortableSubtaskRow
+                      key={
+                        subtask.id
+                      }
+                      subtask={
+                        subtask
+                      }
+                      index={
+                        index
+                      }
+                      busy={
+                        busyId ===
+                        subtask.id
+                      }
+                      disabled={
+                        Boolean(
+                          busyId
+                        ) ||
+                        adding ||
+                        reordering
+                      }
+                      onToggle={
+                        toggleSubtask
+                      }
+                      onDelete={
+                        deleteSubtask
+                      }
+                      onOpenNotes={(
+                        subtaskId
+                      ) =>
+                        onOpenNotes?.(
+                          subtaskId
+                        )
+                      }
+                    />
+                  )
                 )}
               </div>
             </SortableContext>
@@ -1100,25 +1013,17 @@ export default function TodoSubtasks({
 
 
       {/*
-       * Todo-level Unsorted Quick Notes
+       * Todo-level Quick Notes 入口。
        *
-       * 默认折叠，避免 Todo 页面变得过于拥挤。
-       * 用户需要时再展开。
-       *
-       * 未来：
-       * - 可以把这里的 Note 拖到某个 Step
-       * - 可以把 Step Note 拖回这里
-       * - 可以进一步拖到 Global Notes Inbox
+       * 点击后不再在这里展开任何 Note。
+       * TodoList / 父级负责打开右侧第三栏。
        */}
       <div className="mt-4 border-t border-line/70 pt-4">
         <button
           type="button"
           onClick={() =>
-            setTodoNotesExpanded(
-              (
-                current
-              ) =>
-                !current
+            onOpenNotes?.(
+              null
             )
           }
           className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-white/60"
@@ -1126,29 +1031,13 @@ export default function TodoSubtasks({
           <span className="flex items-center gap-2 text-xs font-medium text-ink-soft">
             <MessageSquareText className="h-4 w-4 text-sage-700" />
 
-            Unsorted Quick Notes
+            Quick Notes
           </span>
 
-          {todoNotesExpanded ? (
-            <ChevronUp className="h-4 w-4 text-ink-faint" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-ink-faint" />
-          )}
+          <span className="text-[10px] text-ink-faint">
+            Open panel
+          </span>
         </button>
-
-        {todoNotesExpanded && (
-          <div className="mt-2">
-            <QuickNotes
-              todoId={
-                todoId
-              }
-              subtaskId={
-                null
-              }
-              placeholder="记一条尚未归类的 Quick Note…"
-            />
-          </div>
-        )}
       </div>
 
 
