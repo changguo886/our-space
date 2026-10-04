@@ -280,101 +280,59 @@ function toLocalInputValue(
 
 
 function formatScheduledTime(
-
   start?: string | null,
-
   end?: string | null
-
 ) {
-
   if (!start) return null;
 
-
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }
+    );
 
   const startDate =
-
     new Date(start);
 
-
-
   const startText =
-
-    startDate.toLocaleTimeString(
-
-      [],
-
-      {
-
-        hour: "2-digit",
-
-        minute: "2-digit",
-
-      }
-
+    formatter.format(
+      startDate
     );
-
-
 
   if (!end) {
-
     return startText;
-
   }
 
-
-
   const endDate =
-
     new Date(end);
 
-
-
   const endText =
-
-    endDate.toLocaleTimeString(
-
-      [],
-
-      {
-
-        hour: "2-digit",
-
-        minute: "2-digit",
-
-      }
-
+    formatter.format(
+      endDate
     );
 
-
-
   /*
-
-   * 如果跨天，额外显示“次日”
-
+   * 如果跨天，额外显示“次日”。
+   *
+   * 这里明确指定 24 小时制，
+   * 避免服务器与浏览器因为默认 locale 不同
+   * 产生 hydration mismatch。
    */
-
   const sameDay =
-
     startDate.getFullYear() ===
-
       endDate.getFullYear() &&
-
     startDate.getMonth() ===
-
       endDate.getMonth() &&
-
     startDate.getDate() ===
-
       endDate.getDate();
 
-
-
   return sameDay
-
     ? `${startText} – ${endText}`
-
     : `${startText} – ${endText} 次日`;
-
 }
 
 
