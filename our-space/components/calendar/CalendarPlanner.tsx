@@ -38,6 +38,7 @@ import {
 } from "@dnd-kit/core";
 
 import { createClient } from "@/lib/supabase/client";
+import TodoSubtasks from "@/components/TodoSubtasks";
 
 /* =========================================================
    Types
@@ -1989,6 +1990,18 @@ export default function CalendarPlanner({
                       />
                     </label>
 
+                    {/*
+                     * Calendar 与 Today 共用同一个 TodoSubtasks 组件。
+                     * 这里不维护第二份 checklist state：
+                     * TodoSubtasks 自己按 todoId 从 Supabase 读取 / 写入。
+                     *
+                     * 因此用户在 Calendar 中新增、完成、删除或拖动步骤，
+                     * Today 与未来 Task Companion 看到的都是同一份数据。
+                     */}
+                    <TodoSubtasks
+                      todoId={selectedSessionInfo.todo.id}
+                    />
+
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
@@ -2129,6 +2142,17 @@ export default function CalendarPlanner({
                       >
                         <X className="h-4 w-4" />
                       </button>
+                    </div>
+
+                    {/*
+                     * Checklist 属于 Task Detail，而不是只属于 Edit mode。
+                     * basis-full 强制它在上面的 flex row 中另起一行，
+                     * 避免和标题 / 操作按钮挤在同一行。
+                     */}
+                    <div className="w-full basis-full">
+                      <TodoSubtasks
+                        todoId={selectedSessionInfo.todo.id}
+                      />
                     </div>
                   </div>
                 )}
