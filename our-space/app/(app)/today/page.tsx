@@ -10,19 +10,18 @@ import {
 } from "@/lib/utils";
 
 import EntryForm from "@/components/EntryForm";
-
 import AddTodoForm from "@/components/AddTodoForm";
-
-import TodoList, {
-  type Todo,
-} from "@/components/TodoList";
+import { type Todo } from "@/components/TodoList";
+import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
 
 import {
   MessageCircle,
 } from "lucide-react";
 
+
 export const dynamic =
   "force-dynamic";
+
 
 export default async function TodayPage() {
   const {
@@ -38,9 +37,7 @@ export default async function TodayPage() {
   const today =
     todayIn(tz);
 
-  /*
-   * 今日记录
-   */
+
   const {
     data: entry,
   } = await supabase
@@ -72,9 +69,7 @@ export default async function TodayPage() {
     )
     .maybeSingle();
 
-  /*
-   * 今日 Todo
-   */
+
   const {
     data: todos,
   } = await supabase
@@ -82,10 +77,14 @@ export default async function TodayPage() {
     .select(`
       id,
       title,
+      description,
       estimated_minutes,
       status,
       group_id,
       task_date,
+      started_at,
+      elapsed_seconds,
+      completed_at,
       scheduled_start,
       scheduled_end,
       category,
@@ -109,6 +108,22 @@ export default async function TodayPage() {
       }
     );
 
+
+  const todayTodos =
+    (todos ?? []).filter(
+      (todo) =>
+        todo.status !==
+        "completed"
+    );
+
+  const todayCompleted =
+    (todos ?? []).filter(
+      (todo) =>
+        todo.status ===
+        "completed"
+    );
+
+
   const reactionCount =
     entry?.reactions
       ?.length ?? 0;
@@ -122,10 +137,10 @@ export default async function TodayPage() {
         | undefined
     )?.[0]?.count ?? 0;
 
+
   return (
-    <div className="mx-auto max-w-2xl">
-      {/* Header */}
-      <header className="flex items-start justify-between">
+    <div className="mx-auto max-w-[1180px]">
+      <header className="mx-auto flex max-w-2xl items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">
             Hi,{" "}
@@ -161,47 +176,49 @@ export default async function TodayPage() {
         </form>
       </header>
 
-      {/* Todo */}
-      <section className="card mt-8 p-5">
-        <div>
-          <h2 className="text-lg font-medium">
-            Todo
+
+      <TodayTodoWorkspace
+        todayTodos={
+          todayTodos as Todo[]
+        }
+        todayCompleted={
+          todayCompleted as Todo[]
+        }
+        title="Todo"
+        description="给今天安排一点事情。"
+        showProgress={false}
+      />
+
+
+      <section className="card mx-auto mt-6 max-w-2xl p-5">
+        <div className="mb-5">
+          <h2 className="font-medium">
+            添加任务
           </h2>
 
           <p className="mt-1 text-xs text-ink-faint">
-            给今天安排一点事情。
+            创建后也可以再修改分类和排期。
           </p>
         </div>
 
-        <div className="mt-5">
-          <TodoList
-            todos={
-              (todos ??
-                []) as Todo[]
-            }
-          />
-        </div>
-
-        <div className="mt-6 border-t border-line pt-5">
-          <AddTodoForm
-            userId={
-              user.id
-            }
-            activeSpaceId={
-              group.id
-            }
-            activeSpaceName={
-              group.name
-            }
-            taskDate={
-              today
-            }
-          />
-        </div>
+        <AddTodoForm
+          userId={
+            user.id
+          }
+          activeSpaceId={
+            group.id
+          }
+          activeSpaceName={
+            group.name
+          }
+          taskDate={
+            today
+          }
+        />
       </section>
 
-      {/* Daily Entry */}
-      <section className="mt-8">
+
+      <section className="mx-auto mt-8 max-w-2xl">
         <EntryForm
           groupId={
             group.id
@@ -231,7 +248,7 @@ export default async function TodayPage() {
         />
       </section>
 
-      {/* reactions */}
+
       {entry &&
         (reactionCount >
           0 ||
@@ -239,7 +256,7 @@ export default async function TodayPage() {
             0) && (
           <Link
             href={`/entry/${entry.id}`}
-            className="card mt-6 flex items-center justify-between px-5 py-4 text-sm text-ink-soft transition hover:bg-white"
+            className="card mx-auto mt-6 flex max-w-2xl items-center justify-between px-5 py-4 text-sm text-ink-soft transition hover:bg-white"
           >
             <span>
               朋友们给了你{" "}
@@ -257,7 +274,8 @@ export default async function TodayPage() {
           </Link>
         )}
 
-      <p className="mt-8 text-center text-xs leading-relaxed text-ink-faint">
+
+      <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-ink-faint">
         写多写少都可以，空着也没关系。
       </p>
     </div>

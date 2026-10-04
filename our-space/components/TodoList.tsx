@@ -16,9 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-import TodoSubtasks, {
-  type TodoSubtask,
-} from "@/components/TodoSubtasks";
+import TodoSubtasks from "@/components/TodoSubtasks";
 
 
 export type TodoCategory =
@@ -236,7 +234,6 @@ function categoryInfo(
 export type TodoNotesOpenPayload = {
   todoId: string;
   todoTitle: string;
-  subtasks: TodoSubtask[];
   targetSubtaskId?: string | null;
 };
 
@@ -325,17 +322,6 @@ export default function TodoList({
       null
     );
 
-  /*
-   * TodoSubtasks 已经加载好的 subtasks。
-   * 直接交给 QuickNotes，避免重复查询 todo_subtasks。
-   */
-  const [
-    activeSubtasks,
-    setActiveSubtasks,
-  ] =
-    useState<TodoSubtask[]>(
-      []
-    );
 
 
   function toggleSubtasks(
@@ -348,9 +334,6 @@ export default function TodoList({
           : todoId
     );
 
-    setActiveSubtasks(
-      []
-    );
   }
 
 
@@ -1178,15 +1161,10 @@ export default function TodoList({
                             todo.id,
                           todoTitle:
                             todo.title,
-                          subtasks:
-                            activeSubtasks,
                           targetSubtaskId:
                             subtaskId ??
                             null,
                         })
-                      }
-                      onSubtasksChange={
-                        setActiveSubtasks
                       }
                     />
                   </div>

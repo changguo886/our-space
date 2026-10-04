@@ -14,13 +14,19 @@ import TodoList, {
 
 type TodayTodoWorkspaceProps = {
   todayTodos: Todo[];
-  todayCompleted: Todo[];
+  todayCompleted?: Todo[];
+  title?: string;
+  description?: string;
+  showProgress?: boolean;
 };
 
 
 export default function TodayTodoWorkspace({
   todayTodos,
-  todayCompleted,
+  todayCompleted = [],
+  title = "今天",
+  description = "一点一点完成就好。",
+  showProgress = true,
 }: TodayTodoWorkspaceProps) {
   const [
     notesContext,
@@ -68,32 +74,33 @@ export default function TodayTodoWorkspace({
             : "block"
         }
       >
-        {/* Today card */}
         <section className="card min-w-0 p-5">
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="font-medium">
-                今天
+                {title}
               </h2>
 
               <p className="mt-1 text-xs text-ink-faint">
-                一点一点完成就好。
+                {description}
               </p>
             </div>
 
-            <div className="text-right">
-              <p className="text-xl font-semibold text-sage-700">
-                {
-                  todayCompleted.length
-                }
-                /
-                {total}
-              </p>
+            {showProgress && (
+              <div className="text-right">
+                <p className="text-xl font-semibold text-sage-700">
+                  {
+                    todayCompleted.length
+                  }
+                  /
+                  {total}
+                </p>
 
-              <p className="text-xs text-ink-faint">
-                已完成
-              </p>
-            </div>
+                <p className="text-xs text-ink-faint">
+                  已完成
+                </p>
+              </div>
+            )}
           </div>
 
 
@@ -129,7 +136,6 @@ export default function TodayTodoWorkspace({
         </section>
 
 
-        {/* Independent Quick Notes card */}
         {notesContext && (
           <aside className="min-h-0 xl:sticky xl:top-6 xl:self-start">
             <div className="h-[min(76vh,780px)] min-h-[520px] overflow-hidden rounded-[22px] border border-line bg-white/80 shadow-soft backdrop-blur-sm">
@@ -139,9 +145,6 @@ export default function TodayTodoWorkspace({
                 }
                 todoTitle={
                   notesContext.todoTitle
-                }
-                subtasks={
-                  notesContext.subtasks
                 }
                 initialSubtaskId={
                   notesContext.targetSubtaskId ??

@@ -109,11 +109,20 @@ const NOTE_BACKGROUND: Record<
 export default function QuickNotes({
   todoId,
   todoTitle,
-  subtasks = [],
+  subtasks: providedSubtasks,
   onClose,
+  initialSubtaskId,
 }: QuickNotesProps) {
   const [notes, setNotes] =
     useState<QuickNote[]>([]);
+
+  const [
+    loadedSubtasks,
+    setLoadedSubtasks,
+  ] =
+    useState<QuickNotesSubtask[]>(
+      []
+    );
 
   const [loading, setLoading] =
     useState(true);
@@ -170,6 +179,18 @@ export default function QuickNotes({
   useEffect(() => {
     void loadNotes();
   }, [todoId]);
+
+
+  useEffect(() => {
+    if (providedSubtasks) {
+      return;
+    }
+
+    void loadSubtasks();
+  }, [
+    todoId,
+    providedSubtasks,
+  ]);
 
 
   useEffect(() => {
@@ -234,6 +255,60 @@ export default function QuickNotes({
       (data ?? []) as QuickNote[]
     );
   }
+
+
+  async function loadSubtasks() {
+    const supabase =
+      createClient();
+
+    const {
+      data,
+      error: loadError,
+    } =
+      await supabase
+        .from(
+          "todo_subtasks"
+        )
+        .select(`
+          id,
+          title,
+          sort_order
+        `)
+        .eq(
+          "todo_id",
+          todoId
+        )
+        .order(
+          "sort_order",
+          {
+            ascending: true,
+          }
+        )
+        .order(
+          "created_at",
+          {
+            ascending: true,
+          }
+        );
+
+    if (loadError) {
+      setError(
+        "读取任务步骤失败：" +
+          loadError.message
+      );
+
+      return;
+    }
+
+    setLoadedSubtasks(
+      (data ?? []) as QuickNotesSubtask[]
+    );
+  }
+
+
+  const subtasks =
+    providedSubtasks ??
+    loadedSubtasks;
 
 
   const sortedSubtasks =
