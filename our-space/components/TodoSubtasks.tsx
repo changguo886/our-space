@@ -2,15 +2,20 @@
 
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Circle,
+  MessageSquareText,
   Plus,
   Trash2,
 } from "lucide-react";
+
 import {
   useEffect,
   useMemo,
   useState,
 } from "react";
+
 import {
   DndContext,
   KeyboardSensor,
@@ -20,6 +25,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+
 import {
   SortableContext,
   arrayMove,
@@ -27,8 +33,10 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+
 import { CSS } from "@dnd-kit/utilities";
 
+import QuickNotes from "@/components/QuickNotes";
 import { createClient } from "@/lib/supabase/client";
 
 
@@ -54,27 +62,33 @@ type SortableSubtaskRowProps = {
   index: number;
   busy: boolean;
   disabled: boolean;
+  notesExpanded: boolean;
   onToggle: (subtask: TodoSubtask) => void;
   onDelete: (subtask: TodoSubtask) => void;
+  onToggleNotes: (subtaskId: string) => void;
 };
 
 
 /**
  * 单个可排序的 Subtask 行。
  *
- * 左侧 01 / 02 / 03 是唯一的拖动把手。
- * 这样不会干扰完成、删除，以及未来 Quick Notes 的点击操作。
+ * 交互职责：
+ * - 01 / 02 / 03：唯一拖动把手
+ * - checkbox：完成 / 恢复
+ * - Quick Notes icon：展开 / 收起当前 Step 的 Notes
+ * - trash：删除 Step
  *
- * 以后如果想把数字换成自己设计的 SVG / icon，
- * 只需要修改这个组件的视觉，不需要改拖动逻辑。
+ * 这样可以避免“整行都能拖”带来的误触问题。
  */
 function SortableSubtaskRow({
   subtask,
   index,
   busy,
   disabled,
+  notesExpanded,
   onToggle,
   onDelete,
+  onToggleNotes,
 }: SortableSubtaskRowProps) {
   const {
     attributes,
@@ -96,7 +110,8 @@ function SortableSubtaskRow({
     zIndex: isDragging ? 20 : undefined,
   };
 
-  const stepNumber = String(index + 1).padStart(2, "0");
+  const stepNumber =
+    String(index + 1).padStart(2, "0");
 
   return (
     <div
@@ -108,6 +123,12 @@ function SortableSubtaskRow({
           : "hover:bg-white/70"
       }`}
     >
+      {/*
+       * 01 / 02 / 03 本身就是顺序信息，
+       * 同时作为 drag handle。
+       * 以后如果要换成自定义 SVG / 品牌图标，
+       * 只改这里的视觉即可，不需要改拖动逻辑。
+       */}
       <button
         type="button"
         {...attributes}
@@ -126,9 +147,15 @@ function SortableSubtaskRow({
       <button
         type="button"
         disabled={busy}
-        onClick={() => onToggle(subtask)}
+        onClick={() =>
+          onToggle(subtask)
+        }
         className="shrink-0 text-sage-700 disabled:opacity-50"
-        aria-label={subtask.completed ? "恢复步骤" : "完成步骤"}
+        aria-label={
+          subtask.completed
+            ? "恢复步骤"
+            : "完成步骤"
+        }
       >
         {subtask.completed ? (
           <Check className="h-4 w-4" />
@@ -154,14 +181,46 @@ function SortableSubtaskRow({
       )}
 
       {/*
-       * Future Quick Notes slot:
-       * 后续可以在这里加入 note icon + note count，
-       * 点击后直接在当前 step 下方展开 Quick Notes。
+       * Quick Notes 入口。
+       * 点击后原地展开当前 Step 的 Notes，
+       * 不跳转页面，保持执行上下文。
+       *
+       * 目前先不显示 note count，
+       * 后续可以再做一次轻量 count 查询或共享 notes state。
        */}
+      <button
+        type="button"
+        onClick={() =>
+          onToggleNotes(
+            subtask.id
+          )
+        }
+        className={`flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] transition ${
+          notesExpanded
+            ? "bg-sage-50 text-sage-700"
+            : "text-ink-faint hover:bg-white hover:text-ink-soft"
+        }`}
+        aria-label={
+          notesExpanded
+            ? "收起 Quick Notes"
+            : "展开 Quick Notes"
+        }
+        title="Quick Notes"
+      >
+        <MessageSquareText className="h-3.5 w-3.5" />
+
+        {notesExpanded ? (
+          <ChevronUp className="h-3 w-3" />
+        ) : (
+          <ChevronDown className="h-3 w-3" />
+        )}
+      </button>
 
       <button
         type="button"
-        onClick={() => onDelete(subtask)}
+        onClick={() =>
+          onDelete(subtask)
+        }
         disabled={busy}
         className="opacity-0 transition group-hover:opacity-100 disabled:opacity-40"
         aria-label="删除步骤"
@@ -181,44 +240,116 @@ function SortableSubtaskRow({
  * - 手动新增步骤
  * - 完成 / 恢复步骤
  * - 删除步骤
- * - 使用 01 / 02 / 03 作为 drag handle
- * - 拖动后保存 sort_order
+ * - 01 / 02 / 03 拖动排序
+ * - 保存 sort_order
+ * - 给每个 Step 提供 Quick Notes 原地入口
+ * - 提供 Todo-level Unsorted Quick Notes 折叠入口
  *
- * 产品原则：
- * - 顺序只是组织方式，不强制完成顺序。
- * - 用户在执行过程中仍然可以临时新增、删除、重排。
- * - AI 以后主要在任务创建 / 规划阶段生成初始步骤。
- * - Quick Notes 未来独立建表，不塞进 todo_subtasks。
+ * Quick Notes 设计：
+ * - Step Note:
+ *   todo_id = 当前 Todo
+ *   subtask_id = 当前 Step
+ *
+ * - Todo Unsorted Note:
+ *   todo_id = 当前 Todo
+ *   subtask_id = null
+ *
+ * - 删除 Step 后：
+ *   quick_notes.subtask_id 使用 ON DELETE SET NULL，
+ *   Note 不会被删除，而是自动回到 Todo Unsorted。
+ *
+ * 后续：
+ * - Quick Note 拖动归类
+ * - TodoSubtasks compact variant
+ * - Task Companion 复用 compact variant
  */
 export default function TodoSubtasks({
   todoId,
 }: TodoSubtasksProps) {
-  const [subtasks, setSubtasks] =
-    useState<TodoSubtask[]>([]);
-  const [newTitle, setNewTitle] =
-    useState("");
-  const [loading, setLoading] =
-    useState(true);
-  const [busyId, setBusyId] =
-    useState<string | null>(null);
-  const [adding, setAdding] =
-    useState(false);
-  const [reordering, setReordering] =
-    useState(false);
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    subtasks,
+    setSubtasks,
+  ] =
+    useState<TodoSubtask[]>(
+      []
+    );
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 6,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter:
-        sortableKeyboardCoordinates,
-    })
-  );
+  const [
+    expandedNotesId,
+    setExpandedNotesId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    todoNotesExpanded,
+    setTodoNotesExpanded,
+  ] =
+    useState(false);
+
+  const [
+    newTitle,
+    setNewTitle,
+  ] =
+    useState("");
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
+
+  const [
+    busyId,
+    setBusyId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    adding,
+    setAdding,
+  ] =
+    useState(false);
+
+  const [
+    reordering,
+    setReordering,
+  ] =
+    useState(false);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+
+  const sensors =
+    useSensors(
+      useSensor(
+        PointerSensor,
+        {
+          activationConstraint:
+            {
+              distance: 6,
+            },
+        }
+      ),
+
+      useSensor(
+        KeyboardSensor,
+        {
+          coordinateGetter:
+            sortableKeyboardCoordinates,
+        }
+      )
+    );
+
 
   useEffect(() => {
     void loadSubtasks();
@@ -232,30 +363,46 @@ export default function TodoSubtasks({
     setLoading(true);
     setError(null);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
     const {
       data,
-      error: loadError,
-    } = await supabase
-      .from("todo_subtasks")
-      .select(`
-        id,
-        todo_id,
-        title,
-        completed,
-        completed_at,
-        sort_order,
-        source,
-        created_at
-      `)
-      .eq("todo_id", todoId)
-      .order("sort_order", {
-        ascending: true,
-      })
-      .order("created_at", {
-        ascending: true,
-      });
+      error:
+        loadError,
+    } =
+      await supabase
+        .from(
+          "todo_subtasks"
+        )
+        .select(`
+          id,
+          todo_id,
+          title,
+          completed,
+          completed_at,
+          sort_order,
+          source,
+          created_at
+        `)
+        .eq(
+          "todo_id",
+          todoId
+        )
+        .order(
+          "sort_order",
+          {
+            ascending:
+              true,
+          }
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              true,
+          }
+        );
 
     setLoading(false);
 
@@ -267,15 +414,17 @@ export default function TodoSubtasks({
       return;
     }
 
-    setSubtasks(data ?? []);
+    setSubtasks(
+      data ?? []
+    );
   }
 
 
   /**
    * 手动新增一个步骤。
    *
-   * 新步骤默认放在当前列表最后。
-   * 以后用户可以立刻拖到任何位置。
+   * 新 Step 默认放在列表末尾，
+   * 用户可以立刻拖到任何位置。
    */
   async function addSubtask() {
     const cleanTitle =
@@ -300,48 +449,79 @@ export default function TodoSubtasks({
 
     const optimisticItem:
       TodoSubtask = {
-        id: temporaryId,
-        todo_id: todoId,
-        title: cleanTitle,
-        completed: false,
-        completed_at: null,
-        sort_order: nextSortOrder,
-        source: "manual",
+        id:
+          temporaryId,
+
+        todo_id:
+          todoId,
+
+        title:
+          cleanTitle,
+
+        completed:
+          false,
+
+        completed_at:
+          null,
+
+        sort_order:
+          nextSortOrder,
+
+        source:
+          "manual",
+
         created_at:
-          new Date().toISOString(),
+          new Date()
+            .toISOString(),
       };
 
-    setSubtasks((current) => [
-      ...current,
-      optimisticItem,
-    ]);
+    setSubtasks(
+      (
+        current
+      ) => [
+        ...current,
+        optimisticItem,
+      ]
+    );
+
     setNewTitle("");
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
     const {
       data,
-      error: insertError,
-    } = await supabase
-      .from("todo_subtasks")
-      .insert({
-        todo_id: todoId,
-        title: cleanTitle,
-        sort_order:
-          nextSortOrder,
-        source: "manual",
-      })
-      .select(`
-        id,
-        todo_id,
-        title,
-        completed,
-        completed_at,
-        sort_order,
-        source,
-        created_at
-      `)
-      .single();
+      error:
+        insertError,
+    } =
+      await supabase
+        .from(
+          "todo_subtasks"
+        )
+        .insert({
+          todo_id:
+            todoId,
+
+          title:
+            cleanTitle,
+
+          sort_order:
+            nextSortOrder,
+
+          source:
+            "manual",
+        })
+        .select(`
+          id,
+          todo_id,
+          title,
+          completed,
+          completed_at,
+          sort_order,
+          source,
+          created_at
+        `)
+        .single();
 
     setAdding(false);
 
@@ -349,27 +529,44 @@ export default function TodoSubtasks({
       insertError ||
       !data
     ) {
-      setSubtasks((current) =>
-        current.filter(
-          (item) =>
-            item.id !== temporaryId
-        )
+      setSubtasks(
+        (
+          current
+        ) =>
+          current.filter(
+            (
+              item
+            ) =>
+              item.id !==
+              temporaryId
+          )
       );
 
       setError(
         "新增步骤失败：" +
-          (insertError?.message ??
-            "没有返回数据")
+          (
+            insertError
+              ?.message ??
+            "没有返回数据"
+          )
       );
+
       return;
     }
 
-    setSubtasks((current) =>
-      current.map((item) =>
-        item.id === temporaryId
-          ? data
-          : item
-      )
+    setSubtasks(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            item
+          ) =>
+            item.id ===
+            temporaryId
+              ? data
+              : item
+        )
     );
   }
 
@@ -377,10 +574,12 @@ export default function TodoSubtasks({
   /**
    * 完成 / 恢复一个步骤。
    *
-   * 完成只是状态改变，不删除数据。
+   * 完成只改变状态，
+   * Quick Notes 不受影响。
    */
   async function toggleSubtask(
-    subtask: TodoSubtask
+    subtask:
+      TodoSubtask
   ) {
     if (
       busyId ||
@@ -394,48 +593,80 @@ export default function TodoSubtasks({
 
     const nextCompletedAt =
       nextCompleted
-        ? new Date().toISOString()
+        ? new Date()
+            .toISOString()
         : null;
 
-    setBusyId(subtask.id);
-
-    setSubtasks((current) =>
-      current.map((item) =>
-        item.id === subtask.id
-          ? {
-              ...item,
-              completed:
-                nextCompleted,
-              completed_at:
-                nextCompletedAt,
-            }
-          : item
-      )
+    setBusyId(
+      subtask.id
     );
 
-    const supabase = createClient();
+    setSubtasks(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            item
+          ) =>
+            item.id ===
+            subtask.id
+              ? {
+                  ...item,
+
+                  completed:
+                    nextCompleted,
+
+                  completed_at:
+                    nextCompletedAt,
+                }
+              : item
+        )
+    );
+
+    const supabase =
+      createClient();
 
     const {
-      error: updateError,
-    } = await supabase
-      .from("todo_subtasks")
-      .update({
-        completed:
-          nextCompleted,
-        completed_at:
-          nextCompletedAt,
-      })
-      .eq("id", subtask.id);
-
-    setBusyId(null);
-
-    if (updateError) {
-      setSubtasks((current) =>
-        current.map((item) =>
-          item.id === subtask.id
-            ? subtask
-            : item
+      error:
+        updateError,
+    } =
+      await supabase
+        .from(
+          "todo_subtasks"
         )
+        .update({
+          completed:
+            nextCompleted,
+
+          completed_at:
+            nextCompletedAt,
+        })
+        .eq(
+          "id",
+          subtask.id
+        );
+
+    setBusyId(
+      null
+    );
+
+    if (
+      updateError
+    ) {
+      setSubtasks(
+        (
+          current
+        ) =>
+          current.map(
+            (
+              item
+            ) =>
+              item.id ===
+              subtask.id
+                ? subtask
+                : item
+          )
       );
 
       setError(
@@ -449,12 +680,13 @@ export default function TodoSubtasks({
   /**
    * 删除一个步骤。
    *
-   * 当前 Quick Notes 尚未接入。
-   * 等 Quick Notes 表建立后，我们会让 Notes 使用
-   * ON DELETE SET NULL，而不是随着 Step 被删除。
+   * quick_notes.subtask_id 应配置为 ON DELETE SET NULL。
+   * 所以 Step 删除后 Note 不会丢失，
+   * 而是自动进入当前 Todo 的 Unsorted Notes。
    */
   async function deleteSubtask(
-    subtask: TodoSubtask
+    subtask:
+      TodoSubtask
   ) {
     if (
       busyId ||
@@ -463,31 +695,54 @@ export default function TodoSubtasks({
       return;
     }
 
-    const previous = subtasks;
+    const previous =
+      subtasks;
 
-    setBusyId(subtask.id);
+    setBusyId(
+      subtask.id
+    );
 
-    const nextItems =
-      previous.filter(
-        (item) =>
-          item.id !== subtask.id
-      );
+    setSubtasks(
+      (
+        current
+      ) =>
+        current.filter(
+          (
+            item
+          ) =>
+            item.id !==
+            subtask.id
+        )
+    );
 
-    setSubtasks(nextItems);
-
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
     const {
-      error: deleteError,
-    } = await supabase
-      .from("todo_subtasks")
-      .delete()
-      .eq("id", subtask.id);
+      error:
+        deleteError,
+    } =
+      await supabase
+        .from(
+          "todo_subtasks"
+        )
+        .delete()
+        .eq(
+          "id",
+          subtask.id
+        );
 
-    setBusyId(null);
+    setBusyId(
+      null
+    );
 
-    if (deleteError) {
-      setSubtasks(previous);
+    if (
+      deleteError
+    ) {
+      setSubtasks(
+        previous
+      );
+
       setError(
         "删除步骤失败：" +
           deleteError.message
@@ -497,13 +752,15 @@ export default function TodoSubtasks({
 
 
   /**
-   * 拖动结束后保存新顺序。
+   * 拖动结束后保存新的 sort_order。
    *
-   * 先立即更新 UI，再把所有新的 sort_order 写回 Supabase。
-   * 如果任何一条更新失败，就恢复拖动前的顺序。
+   * 先立即更新本地 UI，
+   * 再后台同步 Supabase。
+   * 如果保存失败则回滚。
    */
   async function handleDragEnd(
-    event: DragEndEvent
+    event:
+      DragEndEvent
   ) {
     const {
       active,
@@ -512,7 +769,8 @@ export default function TodoSubtasks({
 
     if (
       !over ||
-      active.id === over.id ||
+      active.id ===
+        over.id ||
       reordering ||
       busyId ||
       adding
@@ -522,14 +780,20 @@ export default function TodoSubtasks({
 
     const oldIndex =
       subtasks.findIndex(
-        (item) =>
-          item.id === active.id
+        (
+          item
+        ) =>
+          item.id ===
+          active.id
       );
 
     const newIndex =
       subtasks.findIndex(
-        (item) =>
-          item.id === over.id
+        (
+          item
+        ) =>
+          item.id ===
+          over.id
       );
 
     if (
@@ -539,28 +803,46 @@ export default function TodoSubtasks({
       return;
     }
 
-    const previous = subtasks;
+    const previous =
+      subtasks;
 
     const reordered =
       arrayMove(
         previous,
         oldIndex,
         newIndex
-      ).map((item, index) => ({
-        ...item,
-        sort_order: index,
-      }));
+      ).map(
+        (
+          item,
+          index
+        ) => ({
+          ...item,
+          sort_order:
+            index,
+        })
+      );
 
-    setSubtasks(reordered);
-    setReordering(true);
-    setError(null);
+    setSubtasks(
+      reordered
+    );
 
-    const supabase = createClient();
+    setReordering(
+      true
+    );
+
+    setError(
+      null
+    );
+
+    const supabase =
+      createClient();
 
     const results =
       await Promise.all(
         reordered.map(
-          (item) =>
+          (
+            item
+          ) =>
             supabase
               .from(
                 "todo_subtasks"
@@ -576,16 +858,24 @@ export default function TodoSubtasks({
         )
       );
 
-    setReordering(false);
+    setReordering(
+      false
+    );
 
     const updateError =
       results.find(
-        (result) =>
+        (
+          result
+        ) =>
           result.error
       )?.error;
 
-    if (updateError) {
-      setSubtasks(previous);
+    if (
+      updateError
+    ) {
+      setSubtasks(
+        previous
+      );
 
       setError(
         "保存步骤顺序失败：" +
@@ -597,17 +887,25 @@ export default function TodoSubtasks({
 
   const completedCount =
     subtasks.filter(
-      (item) =>
+      (
+        item
+      ) =>
         item.completed
     ).length;
+
 
   const sortableIds =
     useMemo(
       () =>
         subtasks.map(
-          (item) => item.id
+          (
+            item
+          ) =>
+            item.id
         ),
-      [subtasks]
+      [
+        subtasks,
+      ]
     );
 
 
@@ -620,23 +918,28 @@ export default function TodoSubtasks({
           </h3>
 
           <p className="mt-1 text-xs text-ink-faint">
-            {subtasks.length === 0
+            {subtasks.length ===
+            0
               ? "把大任务拆成几个更容易开始的小步骤。"
               : `${completedCount}/${subtasks.length} 已完成`}
           </p>
         </div>
 
-        {subtasks.length > 0 && (
+        {subtasks.length >
+          0 && (
           <span className="rounded-full bg-sage-50 px-2.5 py-1 text-[10px] text-sage-700">
             {Math.round(
-              (completedCount /
-                subtasks.length) *
+              (
+                completedCount /
+                subtasks.length
+              ) *
                 100
             )}
             %
           </span>
         )}
       </div>
+
 
       <div className="mt-4">
         {loading && (
@@ -646,78 +949,131 @@ export default function TodoSubtasks({
         )}
 
         {!loading &&
-          subtasks.length > 0 && (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={
-                closestCenter
+          subtasks.length >
+            0 && (
+          <DndContext
+            sensors={
+              sensors
+            }
+            collisionDetection={
+              closestCenter
+            }
+            onDragEnd={
+              handleDragEnd
+            }
+          >
+            <SortableContext
+              items={
+                sortableIds
               }
-              onDragEnd={
-                handleDragEnd
+              strategy={
+                verticalListSortingStrategy
               }
             >
-              <SortableContext
-                items={
-                  sortableIds
-                }
-                strategy={
-                  verticalListSortingStrategy
-                }
-              >
-                <div className="space-y-2">
-                  {subtasks.map(
-                    (
-                      subtask,
-                      index
-                    ) => (
-                      <SortableSubtaskRow
+              <div className="space-y-2">
+                {subtasks.map(
+                  (
+                    subtask,
+                    index
+                  ) => {
+                    const notesExpanded =
+                      expandedNotesId ===
+                      subtask.id;
+
+                    return (
+                      <div
                         key={
                           subtask.id
                         }
-                        subtask={
-                          subtask
-                        }
-                        index={index}
-                        busy={
-                          busyId ===
-                          subtask.id
-                        }
-                        disabled={
-                          Boolean(
-                            busyId
-                          ) ||
-                          adding ||
-                          reordering
-                        }
-                        onToggle={
-                          toggleSubtask
-                        }
-                        onDelete={
-                          deleteSubtask
-                        }
-                      />
-                    )
-                  )}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
+                      >
+                        <SortableSubtaskRow
+                          subtask={
+                            subtask
+                          }
+                          index={
+                            index
+                          }
+                          busy={
+                            busyId ===
+                            subtask.id
+                          }
+                          disabled={
+                            Boolean(
+                              busyId
+                            ) ||
+                            adding ||
+                            reordering
+                          }
+                          notesExpanded={
+                            notesExpanded
+                          }
+                          onToggle={
+                            toggleSubtask
+                          }
+                          onDelete={
+                            deleteSubtask
+                          }
+                          onToggleNotes={(
+                            subtaskId
+                          ) =>
+                            setExpandedNotesId(
+                              (
+                                current
+                              ) =>
+                                current ===
+                                subtaskId
+                                  ? null
+                                  : subtaskId
+                            )
+                          }
+                        />
+
+                        {notesExpanded && (
+                          <div className="ml-10 mt-2">
+                            <QuickNotes
+                              todoId={
+                                todoId
+                              }
+                              subtaskId={
+                                subtask.id
+                              }
+                              placeholder="为这个步骤记一条 Quick Note…"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
       </div>
+
 
       <div className="mt-4 flex gap-2">
         <input
-          value={newTitle}
-          onChange={(event) =>
+          value={
+            newTitle
+          }
+          onChange={(
+            event
+          ) =>
             setNewTitle(
-              event.target.value
+              event.target
+                .value
             )
           }
-          onKeyDown={(event) => {
+          onKeyDown={(
+            event
+          ) => {
             if (
               event.key ===
               "Enter"
             ) {
               event.preventDefault();
+
               void addSubtask();
             }
           }}
@@ -742,17 +1098,73 @@ export default function TodoSubtasks({
         </button>
       </div>
 
+
+      {/*
+       * Todo-level Unsorted Quick Notes
+       *
+       * 默认折叠，避免 Todo 页面变得过于拥挤。
+       * 用户需要时再展开。
+       *
+       * 未来：
+       * - 可以把这里的 Note 拖到某个 Step
+       * - 可以把 Step Note 拖回这里
+       * - 可以进一步拖到 Global Notes Inbox
+       */}
+      <div className="mt-4 border-t border-line/70 pt-4">
+        <button
+          type="button"
+          onClick={() =>
+            setTodoNotesExpanded(
+              (
+                current
+              ) =>
+                !current
+            )
+          }
+          className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-white/60"
+        >
+          <span className="flex items-center gap-2 text-xs font-medium text-ink-soft">
+            <MessageSquareText className="h-4 w-4 text-sage-700" />
+
+            Unsorted Quick Notes
+          </span>
+
+          {todoNotesExpanded ? (
+            <ChevronUp className="h-4 w-4 text-ink-faint" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-ink-faint" />
+          )}
+        </button>
+
+        {todoNotesExpanded && (
+          <div className="mt-2">
+            <QuickNotes
+              todoId={
+                todoId
+              }
+              subtaskId={
+                null
+              }
+              placeholder="记一条尚未归类的 Quick Note…"
+            />
+          </div>
+        )}
+      </div>
+
+
       {reordering && (
         <p className="mt-2 text-[10px] text-ink-faint">
           正在保存新的步骤顺序…
         </p>
       )}
 
+
       {error && (
         <p className="mt-3 text-xs text-blush-500">
           {error}
         </p>
       )}
+
 
       <button
         type="button"
