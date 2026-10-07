@@ -4,8 +4,11 @@ import {
   Check,
   Circle,
   MessageSquareText,
+  Pencil,
   Plus,
+  Save,
   Trash2,
+  X,
 } from "lucide-react";
 
 import {
@@ -57,7 +60,7 @@ type TodoSubtasksProps = {
   todoId: string;
 
   /*
-   * 打开 Todo-level Quick Notes Panel。
+   * 打开 Todo-level 快速笔记 Panel。
    *
    * null      -> 打开 Unsorted
    * UUID      -> 打开某个 Step 对应的 Notes section
@@ -83,6 +86,12 @@ type SortableSubtaskRowProps = {
   index: number;
   busy: boolean;
   disabled: boolean;
+  editing: boolean;
+  editTitle: string;
+  onEditTitleChange: (value: string) => void;
+  onStartEdit: (subtask: TodoSubtask) => void;
+  onSaveEdit: (subtask: TodoSubtask) => void;
+  onCancelEdit: () => void;
   onToggle: (subtask: TodoSubtask) => void;
   onDelete: (subtask: TodoSubtask) => void;
   onOpenNotes?: (subtaskId: string) => void;
@@ -98,6 +107,12 @@ function SortableSubtaskRow({
   index,
   busy,
   disabled,
+  editing,
+  editTitle,
+  onEditTitleChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
   onToggle,
   onDelete,
   onOpenNotes,
@@ -175,49 +190,125 @@ function SortableSubtaskRow({
         )}
       </button>
 
-      <p
-        className={`min-w-0 flex-1 text-sm ${
-          subtask.completed
-            ? "text-ink-faint line-through"
-            : "text-ink"
-        }`}
-      >
-        {subtask.title}
-      </p>
+      {editing ? (
+        <input
+          value={editTitle}
+          onChange={(event) =>
+            onEditTitleChange(
+              event.target.value
+            )
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onSaveEdit(subtask);
+            }
 
-      {subtask.source === "ai" && (
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onCancelEdit();
+            }
+          }}
+          className="input h-8 min-w-0 flex-1 px-2 text-sm"
+          aria-label="编辑步骤名称"
+          autoFocus
+        />
+      ) : (
+        <p
+          className={`min-w-0 flex-1 text-sm ${
+            subtask.completed
+              ? "text-ink-faint line-through"
+              : "text-ink"
+          }`}
+        >
+          {subtask.title}
+        </p>
+      )}
+
+      {!editing &&
+        subtask.source === "ai" && (
         <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[9px] text-mist-500">
           AI
         </span>
       )}
 
-      {/*
-       * 这里只发出“打开右侧 Notes”的事件，
-       * TodoSubtasks 自己不再 render QuickNotes。
-       */}
-      <button
-        type="button"
-        onClick={() =>
-          onOpenNotes?.(subtask.id)
-        }
-        className="flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-        aria-label="打开这个步骤的 Quick Notes"
-        title="Quick Notes"
-      >
-        <MessageSquareText className="h-3.5 w-3.5" />
-      </button>
+      {editing ? (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              onSaveEdit(subtask)
+            }
+            disabled={
+              busy ||
+              !editTitle.trim()
+            }
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sage-700 transition hover:bg-sage-50 disabled:opacity-40"
+            aria-label="保存步骤"
+            title="保存"
+          >
+            <Save className="h-3.5 w-3.5" />
+          </button>
 
-      <button
-        type="button"
-        onClick={() =>
-          onDelete(subtask)
-        }
-        disabled={busy}
-        className="opacity-0 transition group-hover:opacity-100 disabled:opacity-40"
-        aria-label="删除步骤"
-      >
-        <Trash2 className="h-3.5 w-3.5 text-ink-faint hover:text-blush-500" />
-      </button>
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            disabled={busy}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-paper hover:text-ink-soft disabled:opacity-40"
+            aria-label="取消编辑"
+            title="取消"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              onStartEdit(subtask)
+            }
+            disabled={
+              busy ||
+              subtask.id.startsWith("temp-")
+            }
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint opacity-70 transition hover:bg-sage-50 hover:text-sage-700 group-hover:opacity-100 disabled:opacity-30"
+            aria-label="编辑步骤"
+            title="编辑步骤"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+
+          {/*
+           * 这里只发出“打开右侧 Notes”的事件，
+           * TodoSubtasks 自己不再 render QuickNotes。
+           */}
+          <button
+            type="button"
+            onClick={() =>
+              onOpenNotes?.(subtask.id)
+            }
+            className="flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
+            aria-label="打开这个步骤的快速笔记"
+            title="快速笔记"
+          >
+            <MessageSquareText className="h-3.5 w-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onDelete(subtask)
+            }
+            disabled={busy}
+            className="opacity-0 transition group-hover:opacity-100 disabled:opacity-40"
+            aria-label="删除步骤"
+            title="删除步骤"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-ink-faint hover:text-blush-500" />
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -240,6 +331,18 @@ export default function TodoSubtasks({
   const [
     newTitle,
     setNewTitle,
+  ] = useState("");
+
+  const [
+    editingId,
+    setEditingId,
+  ] = useState<string | null>(
+    null
+  );
+
+  const [
+    editTitle,
+    setEditTitle,
   ] = useState("");
 
   const [
@@ -528,6 +631,170 @@ export default function TodoSubtasks({
 
 
   /* =======================================================
+     Edit title
+
+     Todo / Today / Calendar / Mini Focus 都共享同一张
+     todo_subtasks 表，所以这里修改后所有入口都会读到同一结果。
+
+     键盘：
+     - Enter  保存
+     - Escape 取消
+  ======================================================= */
+
+  function startEditingSubtask(
+    subtask: TodoSubtask
+  ) {
+    if (
+      busyId ||
+      adding ||
+      reordering ||
+      subtask.id.startsWith("temp-")
+    ) {
+      return;
+    }
+
+    setEditingId(
+      subtask.id
+    );
+
+    setEditTitle(
+      subtask.title
+    );
+
+    setError(null);
+  }
+
+
+  function cancelEditingSubtask() {
+    setEditingId(null);
+    setEditTitle("");
+  }
+
+
+  async function saveSubtaskTitle(
+    subtask: TodoSubtask
+  ) {
+    const cleanTitle =
+      editTitle.trim();
+
+    if (
+      !cleanTitle ||
+      busyId ||
+      adding ||
+      reordering
+    ) {
+      return;
+    }
+
+    if (
+      cleanTitle ===
+      subtask.title
+    ) {
+      cancelEditingSubtask();
+      return;
+    }
+
+    const previousTitle =
+      subtask.title;
+
+    setBusyId(
+      subtask.id
+    );
+
+    setError(null);
+
+    /*
+     * Optimistic update：
+     * 父级 TodayTodoWorkspace 会立即把新标题同步给 QuickNotes。
+     */
+    setSubtasks(
+      (current) =>
+        current.map(
+          (item) =>
+            item.id === subtask.id
+              ? {
+                  ...item,
+                  title:
+                    cleanTitle,
+                }
+              : item
+        )
+    );
+
+    try {
+      const supabase =
+        createClient();
+
+      const {
+        error:
+          updateError,
+      } =
+        await supabase
+          .from(
+            "todo_subtasks"
+          )
+          .update({
+            title:
+              cleanTitle,
+          })
+          .eq(
+            "id",
+            subtask.id
+          );
+
+      if (
+        updateError
+      ) {
+        setSubtasks(
+          (current) =>
+            current.map(
+              (item) =>
+                item.id ===
+                subtask.id
+                  ? {
+                      ...item,
+                      title:
+                        previousTitle,
+                    }
+                  : item
+            )
+        );
+
+        setError(
+          "修改步骤失败：" +
+            updateError.message
+        );
+
+        return;
+      }
+
+      cancelEditingSubtask();
+    } catch {
+      setSubtasks(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id ===
+                subtask.id
+                ? {
+                    ...item,
+                    title:
+                      previousTitle,
+                  }
+                : item
+          )
+      );
+
+      setError(
+        "修改步骤失败。"
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+
+  /* =======================================================
      Complete / restore
   ======================================================= */
 
@@ -714,7 +981,8 @@ export default function TodoSubtasks({
       active.id === over.id ||
       reordering ||
       busyId ||
-      adding
+      adding ||
+      editingId
     ) {
       return;
     }
@@ -900,8 +1168,28 @@ export default function TodoSubtasks({
                       }
                       disabled={
                         Boolean(busyId) ||
+                        Boolean(editingId) ||
                         adding ||
                         reordering
+                      }
+                      editing={
+                        editingId ===
+                        subtask.id
+                      }
+                      editTitle={
+                        editTitle
+                      }
+                      onEditTitleChange={
+                        setEditTitle
+                      }
+                      onStartEdit={
+                        startEditingSubtask
+                      }
+                      onSaveEdit={
+                        saveSubtaskTitle
+                      }
+                      onCancelEdit={
+                        cancelEditingSubtask
                       }
                       onToggle={
                         toggleSubtask
@@ -941,9 +1229,18 @@ export default function TodoSubtasks({
               event.preventDefault();
               void addSubtask();
             }
+
+            if (
+              event.key === "Escape"
+            ) {
+              setNewTitle("");
+            }
           }}
-          placeholder="添加一个小步骤…"
+          placeholder="添加一个小步骤，按 Enter 保存…"
           className="input min-w-0 flex-1"
+          disabled={
+            Boolean(editingId)
+          }
         />
 
         <button
@@ -951,6 +1248,7 @@ export default function TodoSubtasks({
           disabled={
             adding ||
             reordering ||
+            Boolean(editingId) ||
             !newTitle.trim()
           }
           onClick={() =>
@@ -979,7 +1277,7 @@ export default function TodoSubtasks({
           </span>
 
           <span className="text-[10px] text-ink-faint">
-            Open panel
+            打开面板
           </span>
         </button>
       </div>
@@ -1007,7 +1305,7 @@ export default function TodoSubtasks({
       >
         ✨ AI 帮我拆分
         <span className="ml-1 opacity-60">
-          Coming later
+          稍后加入
         </span>
       </button>
     </section>
