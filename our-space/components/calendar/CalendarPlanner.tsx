@@ -115,6 +115,13 @@ const BASE_VISIBLE_END_HOUR = 23;
 const HOUR_HEIGHT = 88;
 const SLOT_MINUTES = 15;
 const SLOT_HEIGHT = HOUR_HEIGHT / 4;
+
+/*
+ * 给时间轴顶部留一点呼吸空间。
+ * 第一条小时刻度使用 -translate-y-1/2，若从 top: 0 开始会被 Header 截断。
+ */
+const TIMELINE_TOP_PADDING = 20;
+
 const TIMELINE_BOTTOM_SPACE = 28;
 const DEFAULT_SESSION_MINUTES = 30;
 
@@ -1255,7 +1262,9 @@ export default function CalendarPlanner({
     const container = timelineScrollRef.current;
     const target = Math.max(
       0,
-      currentTimeInfo.top - container.clientHeight * 0.35
+      TIMELINE_TOP_PADDING +
+        currentTimeInfo.top -
+        container.clientHeight * 0.35
     );
 
     requestAnimationFrame(() => {
@@ -1956,7 +1965,10 @@ export default function CalendarPlanner({
               <div
                 className="relative"
                 style={{
-                  height: visibleTotalHeight + TIMELINE_BOTTOM_SPACE,
+                  height:
+                    visibleTotalHeight +
+                    TIMELINE_BOTTOM_SPACE +
+                    TIMELINE_TOP_PADDING,
                 }}
               >
                 {/* Hour labels */}
@@ -1965,7 +1977,11 @@ export default function CalendarPlanner({
                     <div
                       key={hour}
                       className="absolute right-3 -translate-y-1/2 text-[11px] tabular-nums text-ink-faint"
-                      style={{ top: index * HOUR_HEIGHT }}
+                      style={{
+                        top:
+                          TIMELINE_TOP_PADDING +
+                          index * HOUR_HEIGHT,
+                      }}
                     >
                       {String(hour).padStart(2, "0")}:00
                     </div>
@@ -1973,8 +1989,11 @@ export default function CalendarPlanner({
                 </div>
 
                 <div
-                  className="absolute left-[68px] right-0 top-0"
-                  style={{ height: visibleTotalHeight }}
+                  className="absolute left-[68px] right-0"
+                  style={{
+                    top: TIMELINE_TOP_PADDING,
+                    height: visibleTotalHeight,
+                  }}
                 >
                   {/* Slots */}
                   {slots.map((slot) => (
@@ -1986,19 +2005,18 @@ export default function CalendarPlanner({
                     />
                   ))}
 
-                  {/* Current time indicator */}
+                  {/* Current time indicator
+                      完全留在右侧时间网格，不再侵入左边数字刻度。 */}
                   {currentTimeInfo && (
                     <div
-                      className="pointer-events-none absolute -left-[58px] right-0 z-30 flex items-center"
+                      className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
                       style={{ top: currentTimeInfo.top }}
                     >
-                      <span className="w-[52px] rounded-full bg-sage-600 px-2 py-1 text-center text-[9px] font-semibold tabular-nums text-white shadow-sm">
+                      <span className="ml-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-sage-600 ring-2 ring-white shadow-sm" />
+                      <span className="h-[2px] flex-1 rounded-full bg-sage-500/80" />
+                      <span className="ml-2 mr-3 inline-flex shrink-0 items-center rounded-full bg-sage-600 px-2.5 py-1 text-[10px] font-semibold tabular-nums tracking-[0.02em] text-white shadow-sm">
                         {currentTimeInfo.label}
-                      </span>
-                      <span className="ml-1 h-2.5 w-2.5 rounded-full bg-sage-500 shadow-sm" />
-                      <span className="h-px flex-1 bg-sage-500/65" />
-                      <span className="ml-2 mr-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-sage-700">
-                        now
+                        <span className="ml-1 opacity-85">Now</span>
                       </span>
                     </div>
                   )}
