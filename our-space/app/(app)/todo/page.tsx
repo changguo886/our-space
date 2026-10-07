@@ -1,4 +1,6 @@
-import { requireGroup } from "@/lib/session";
+import {
+  requireGroup,
+} from "@/lib/session";
 
 import {
   formatLongDate,
@@ -14,6 +16,8 @@ import TodoList, {
 
 import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
 
+import OverdueTodoList from "@/components/OverdueTodoList";
+
 
 export const dynamic =
   "force-dynamic";
@@ -25,56 +29,77 @@ export default async function TodoPage() {
     user,
     profile,
     group,
-  } = await requireGroup();
+  } =
+    await requireGroup();
+
 
   const tz =
-    tzOf(profile);
+    tzOf(
+      profile
+    );
 
+
+  /*
+   * “今天”仍然使用用户 profile 的时区。
+   *
+   * 后面的「移到今天」也使用这个日期，
+   * 而不是浏览器临时计算日期。
+   */
   const today =
-    todayIn(tz);
+    todayIn(
+      tz
+    );
 
 
   const {
-    data: todos,
+    data:
+      todos,
+
     error,
-  } = await supabase
-    .from("todos")
-    .select(`
-      id,
-      title,
-      description,
-      estimated_minutes,
-      status,
-      group_id,
-      task_date,
-      started_at,
-      elapsed_seconds,
-      completed_at,
-      created_at,
-      scheduled_start,
-      scheduled_end,
-      category,
-      custom_tag
-    `)
-    .eq(
-      "user_id",
-      user.id
-    )
-    .or(
-      `group_id.is.null,group_id.eq.${group.id}`
-    )
-    .order(
-      "task_date",
-      {
-        ascending: false,
-      }
-    )
-    .order(
-      "created_at",
-      {
-        ascending: false,
-      }
-    );
+  } =
+    await supabase
+      .from(
+        "todos"
+      )
+      .select(`
+        id,
+        title,
+        description,
+        estimated_minutes,
+        status,
+        group_id,
+        task_date,
+        started_at,
+        elapsed_seconds,
+        completed_at,
+        created_at,
+        scheduled_start,
+        scheduled_end,
+        category,
+        custom_tag
+      `)
+      .eq(
+        "user_id",
+        user.id
+      )
+      .or(
+        `group_id.is.null,group_id.eq.${group.id}`
+      )
+      .order(
+        "task_date",
+        {
+          ascending:
+            false,
+        }
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      );
+
 
   if (error) {
     throw new Error(
@@ -82,9 +107,14 @@ export default async function TodoPage() {
     );
   }
 
+
   const allTodos =
     todos ?? [];
 
+
+  /* =======================================================
+     Today
+  ======================================================= */
 
   const todayTodos =
     allTodos.filter(
@@ -106,6 +136,10 @@ export default async function TodoPage() {
     );
 
 
+  /* =======================================================
+     Overdue
+  ======================================================= */
+
   const overdueTodos =
     allTodos.filter(
       (todo) =>
@@ -116,6 +150,10 @@ export default async function TodoPage() {
     );
 
 
+  /* =======================================================
+     Completed history
+  ======================================================= */
+
   const completedHistory =
     allTodos
       .filter(
@@ -125,12 +163,18 @@ export default async function TodoPage() {
           todo.status ===
             "completed"
       )
-      .slice(0, 20);
+      .slice(
+        0,
+        20
+      );
 
 
   return (
     <div className="mx-auto max-w-[1180px]">
-      {/* Header stays comfortably narrow */}
+      {/* =================================================
+          Page Header
+      ================================================= */}
+
       <header className="mx-auto max-w-2xl">
         <h1 className="text-2xl font-semibold">
           Todo
@@ -151,11 +195,10 @@ export default async function TodoPage() {
       </header>
 
 
-      {/*
-       * Today workspace:
-       * closed  -> normal centered Today card
-       * open    -> Today card + independent Quick Notes card
-       */}
+      {/* =================================================
+          Today Workspace
+      ================================================= */}
+
       <TodayTodoWorkspace
         todayTodos={
           todayTodos as Todo[]
@@ -166,7 +209,10 @@ export default async function TodoPage() {
       />
 
 
-      {/* 添加 */}
+      {/* =================================================
+          Add Todo
+      ================================================= */}
+
       <section className="card mx-auto mt-6 max-w-2xl p-5">
         <div className="mb-5">
           <h2 className="font-medium">
@@ -177,6 +223,7 @@ export default async function TodoPage() {
             创建后也可以再修改分类和排期。
           </p>
         </div>
+
 
         <AddTodoForm
           userId={
@@ -195,7 +242,20 @@ export default async function TodoPage() {
       </section>
 
 
-      {/* 以前没完成 */}
+      {/* =================================================
+          Overdue Todos
+
+          这里现在使用专门的 OverdueTodoList。
+
+          用户可以点击：
+          「移到今天」
+
+          数据库只会更新：
+          todos.task_date
+
+          Calendar session / Focus time 都不会改变。
+      ================================================= */}
+
       {overdueTodos.length >
         0 && (
         <section className="card mx-auto mt-6 max-w-2xl p-5">
@@ -205,20 +265,27 @@ export default async function TodoPage() {
             </h2>
 
             <p className="mt-1 text-xs text-ink-faint">
-              不需要一次全部补完。
+              不需要一次全部补完。想继续做的任务可以直接移到今天。
             </p>
           </div>
 
-          <TodoList
+
+          <OverdueTodoList
             todos={
               overdueTodos as Todo[]
+            }
+            todayDate={
+              today
             }
           />
         </section>
       )}
 
 
-      {/* 最近完成 */}
+      {/* =================================================
+          Completed History
+      ================================================= */}
+
       {completedHistory.length >
         0 && (
         <section className="mx-auto mt-8 max-w-2xl">
@@ -228,6 +295,7 @@ export default async function TodoPage() {
             </h2>
           </div>
 
+
           <div className="opacity-80">
             <TodoList
               todos={
@@ -235,6 +303,7 @@ export default async function TodoPage() {
               }
             />
           </div>
+
 
           <p className="mt-4 text-center text-xs text-ink-faint">
             更早的完成记录之后会放进历史日历。
