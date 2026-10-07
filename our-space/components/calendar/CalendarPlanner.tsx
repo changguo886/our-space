@@ -44,7 +44,7 @@ import {
 
 import { createClient } from "@/lib/supabase/client";
 import TodoSubtasks from "@/components/TodoSubtasks";
-import QuickNotes from "@/components/QuickNotes";
+import Quick笔记 from "@/components/QuickNotes";
 
 /* =========================================================
    Types
@@ -1934,7 +1934,7 @@ export default function CalendarPlanner({
               <div className="flex items-center gap-2">
                 {!showFullDay && (
                   <span className="hidden rounded-full bg-black/[0.035] px-3 py-1.5 text-[10px] text-ink-faint sm:block">
-                    Smart window · {String(visibleStartHour).padStart(2, "0")}:00–
+                    智能时段 · {String(visibleStartHour).padStart(2, "0")}:00–
                     {String(visibleEndHour).padStart(2, "0")}:00
                   </span>
                 )}
@@ -2012,11 +2012,11 @@ export default function CalendarPlanner({
                       className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
                       style={{ top: currentTimeInfo.top }}
                     >
-                      <span className="ml-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-sage-600 ring-2 ring-white shadow-sm" />
-                      <span className="h-[2px] flex-1 rounded-full bg-sage-500/80" />
-                      <span className="ml-2 mr-3 inline-flex shrink-0 items-center rounded-full bg-sage-600 px-2.5 py-1 text-[10px] font-semibold tabular-nums tracking-[0.02em] text-white shadow-sm">
+                      <span className="ml-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-ink ring-2 ring-white shadow-sm" />
+                      <span className="h-[2px] flex-1 rounded-full bg-ink/70" />
+                      <span className="ml-2 mr-3 inline-flex shrink-0 items-center rounded-full bg-ink px-2.5 py-1 text-[10px] font-semibold tabular-nums tracking-[0.02em] text-white shadow-sm">
                         {currentTimeInfo.label}
-                        <span className="ml-1 opacity-85">Now</span>
+                        <span className="ml-1 opacity-80">现在</span>
                       </span>
                     </div>
                   )}
@@ -2115,7 +2115,7 @@ export default function CalendarPlanner({
                   icon={<Clock3 className="h-3.5 w-3.5" />}
                   onClick={() => setContextTab("overview")}
                 >
-                  Overview
+                  概览
                 </ContextTabButton>
 
                 <ContextTabButton
@@ -2123,7 +2123,7 @@ export default function CalendarPlanner({
                   icon={<ListChecks className="h-3.5 w-3.5" />}
                   onClick={() => setContextTab("steps")}
                 >
-                  Steps
+                  步骤
                 </ContextTabButton>
 
                 <ContextTabButton
@@ -2236,7 +2236,7 @@ export default function CalendarPlanner({
                         {selectedSessionInfo.todo.description && (
                           <div className="rounded-2xl bg-paper/70 px-4 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
-                              Description
+                              任务说明
                             </p>
                             <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-ink-soft">
                               {selectedSessionInfo.todo.description}
@@ -2279,7 +2279,7 @@ export default function CalendarPlanner({
                           </div>
                         )}
 
-                        {/* Reminder placeholder: V3 layout reserves the place,
+                        {/* 提醒 placeholder: V3 layout reserves the place,
                             actual reminder data/global listener is next phase. */}
                         <div className="rounded-2xl border border-dashed border-line bg-white/35 p-3">
                           <div className="flex items-start gap-2.5">
