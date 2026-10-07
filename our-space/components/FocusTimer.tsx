@@ -14,6 +14,7 @@ import {
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import MiniFocusWorkspace from "@/components/MiniFocusWorkspace";
 
 import {
   Check,
@@ -142,6 +143,11 @@ export default function FocusTimer({
   const [
     floatingCompact,
     setFloatingCompact,
+  ] = useState(false);
+
+  const [
+    floatingWorkspaceOpen,
+    setFloatingWorkspaceOpen,
   ] = useState(false);
 
   const [
@@ -372,6 +378,45 @@ export default function FocusTimer({
             ? "已完成"
             : "准备开始";
 
+  function toggleFloatingWorkspace() {
+    const pipWindow =
+      floatingWindowRef.current;
+
+    if (
+      !pipWindow ||
+      pipWindow.closed
+    ) {
+      return;
+    }
+
+    const next =
+      !floatingWorkspaceOpen;
+
+    setFloatingWorkspaceOpen(
+      next
+    );
+
+    setFloatingCompact(
+      false
+    );
+
+    try {
+      pipWindow.resizeTo(
+        next
+          ? 380
+          : 320,
+        next
+          ? 520
+          : 220
+      );
+    } catch {
+      /*
+       * 某些浏览器 / 系统会限制 PiP window resize。
+       * 即使 resize 失败，UI 仍会正常展开 / 收起。
+       */
+    }
+  }
+
   function toggleFloatingCompact() {
     const pipWindow =
       floatingWindowRef.current;
@@ -396,8 +441,12 @@ export default function FocusTimer({
         );
       } else {
         pipWindow.resizeTo(
-          320,
-          190
+          floatingWorkspaceOpen
+            ? 380
+            : 320,
+          floatingWorkspaceOpen
+            ? 520
+            : 220
         );
       }
     } catch {
@@ -427,6 +476,7 @@ export default function FocusTimer({
 
     setFloatingOpen(false);
     setFloatingCompact(false);
+    setFloatingWorkspaceOpen(false);
 
     if (
       pipWindow &&
@@ -476,7 +526,7 @@ export default function FocusTimer({
       const pipWindow =
         await api.requestWindow({
           width: 320,
-          height: 190,
+          height: 220,
         });
 
       pipWindow.document.title =
@@ -1339,6 +1389,56 @@ export default function FocusTimer({
         </div>
 
         {/*
+         * 打开 / 收起 Steps & Notes 工作区。
+         * 默认仍保持轻量计时窗，不长期展开完整 Notes。
+         */}
+        <button
+          type="button"
+          onClick={
+            toggleFloatingWorkspace
+          }
+          title={
+            floatingWorkspaceOpen
+              ? "收起 Steps & Notes"
+              : "打开 Steps & Notes"
+          }
+          style={{
+            ...buttonBase,
+
+            height:
+              "25px",
+
+            padding:
+              "0 8px",
+
+            borderRadius:
+              "999px",
+
+            background:
+              floatingWorkspaceOpen
+                ? "#E9F1E7"
+                : "transparent",
+
+            color:
+              floatingWorkspaceOpen
+                ? "#597356"
+                : "#999D96",
+
+            fontSize:
+              "9px",
+
+            fontWeight:
+              600,
+          }}
+        >
+          {
+            floatingWorkspaceOpen
+              ? "Hide"
+              : "Steps + Notes"
+          }
+        </button>
+
+        {/*
          * 收到侧边
          */}
         <button
@@ -1529,13 +1629,39 @@ export default function FocusTimer({
         </span>
       </div>
 
+      {floatingWorkspaceOpen && (
+        <div
+          style={{
+            marginTop:
+              "10px",
+
+            minHeight:
+              0,
+
+            flex:
+              1,
+
+            display:
+              "flex",
+          }}
+        >
+          <MiniFocusWorkspace
+            todoId={
+              todo.id
+            }
+          />
+        </div>
+      )}
+
       {/*
        * Controls
        */}
       <div
         style={{
           marginTop:
-            "auto",
+            floatingWorkspaceOpen
+              ? "10px"
+              : "auto",
 
           display:
             "flex",
@@ -1750,6 +1876,7 @@ export default function FocusTimer({
     timeUp,
     busy,
     targetSeconds,
+    floatingWorkspaceOpen,
   ]);
 
   /*
@@ -2160,13 +2287,13 @@ export default function FocusTimer({
               }}
               className="text-xs text-ink-faint underline decoration-line underline-offset-4 transition hover:text-sage-700"
             >
-              打开桌面悬浮窗
+              打开 Mini Focus Companion
             </button>
           )}
 
           {floatingOpen && (
             <p className="text-xs text-sage-700">
-              桌面悬浮窗已开启
+              Mini Focus Companion 已开启
             </p>
           )}
 
