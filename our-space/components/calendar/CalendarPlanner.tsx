@@ -1490,7 +1490,10 @@ export default function CalendarPlanner({
 
     if (conflict) {
       setError(
-        `这个时间段和「${conflict.todo.title}」重叠。请换一个时间。`
+        cal.overlap.replace(
+          "{title}",
+          conflict.todo.title
+        )
       );
       return;
     }
@@ -1530,8 +1533,8 @@ export default function CalendarPlanner({
       );
       setSelectedSessionId(null);
       setError(
-        "保存排期失败：" +
-          (insertError?.message ?? "没有返回时间段数据")
+        cal.saveScheduleFailed +
+          (insertError?.message ?? cal.missingSessionData)
       );
       return;
     }
@@ -1607,7 +1610,7 @@ export default function CalendarPlanner({
           scheduled_end: previousEnd,
         })
       );
-      setError("移动时间段失败：" + updateError.message);
+      setError(cal.moveSessionFailed + updateError.message);
     }
   }
 
@@ -1678,7 +1681,10 @@ export default function CalendarPlanner({
 
     if (conflict) {
       setError(
-        `拉长后会和「${conflict.todo.title}」重叠，所以没有保存。`
+        cal.resizeConflict.replace(
+          "{title}",
+          conflict.todo.title
+        )
       );
       return;
     }
@@ -1706,7 +1712,7 @@ export default function CalendarPlanner({
           scheduled_end: previousEnd,
         })
       );
-      setError("修改时间长度失败：" + resizeError.message);
+      setError(cal.resizeFailed + resizeError.message);
     }
   }
 
@@ -1766,7 +1772,7 @@ export default function CalendarPlanner({
       );
 
       setError(
-        "保存提醒失败：" +
+        cal.saveReminderFailed +
           reminderError.message
       );
     }
@@ -1792,7 +1798,7 @@ export default function CalendarPlanner({
     if (deleteError) {
       setTodos(previousTodos);
       setSelectedSessionId(session.id);
-      setError("取消排期失败：" + deleteError.message);
+      setError(cal.removeSessionFailed + deleteError.message);
     }
   }
 
@@ -1821,7 +1827,7 @@ export default function CalendarPlanner({
     const title = editTitle.trim();
 
     if (!title) {
-      setError("任务名称不能为空。");
+      setError(cal.emptyTaskTitle);
       return;
     }
 
@@ -1835,7 +1841,7 @@ export default function CalendarPlanner({
       minutes !== null &&
       Number.isNaN(minutes)
     ) {
-      setError("预计时间需要是大于 0 的数字。");
+      setError(cal.invalidEstimatedTime);
       return;
     }
 
@@ -1875,7 +1881,7 @@ export default function CalendarPlanner({
 
     if (saveError) {
       setTodos(previousTodos);
-      setError("保存修改失败：" + saveError.message);
+      setError(cal.saveEditFailed + saveError.message);
       return;
     }
 
@@ -1925,7 +1931,7 @@ export default function CalendarPlanner({
 
     if (completeError) {
       setTodos(previousTodos);
-      setError("完成任务失败：" + completeError.message);
+      setError(cal.completeTaskFailed + completeError.message);
     }
   }
 
@@ -1943,7 +1949,9 @@ export default function CalendarPlanner({
 
     if (running) {
       const shouldSwitch = window.confirm(
-        `「${running.title}」还在计时。\n\n要暂停它并开始「${todo.title}」吗？`
+        cal.switchFocusConfirm
+          .replace("{running}", running.title)
+          .replace("{next}", todo.title)
       );
 
       if (!shouldSwitch) {
@@ -1975,7 +1983,7 @@ export default function CalendarPlanner({
 
       if (pauseError) {
         setStartingFocusTodoId(null);
-        setError("暂停当前专注失败：" + pauseError.message);
+        setError(cal.pauseFocusFailed + pauseError.message);
         return;
       }
 
@@ -2198,7 +2206,7 @@ export default function CalendarPlanner({
               <div className="flex items-center gap-2">
                 {!showFullDay && (
                   <span className="hidden rounded-full bg-black/[0.035] px-3 py-1.5 text-[10px] text-ink-faint sm:block">
-                    {cal.today}主要时段 · {String(visibleStartHour).padStart(2, "0")}:00–
+                    {cal.mainHours} · {String(visibleStartHour).padStart(2, "0")}:00–
                     {String(visibleEndHour).padStart(2, "0")}:00
                   </span>
                 )}
