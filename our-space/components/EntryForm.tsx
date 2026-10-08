@@ -4,13 +4,44 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { NotebookText, PenLine, Send, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 
 type Fields = { today_tasks: string; today_note: string; tomorrow_plan: string };
 
-const QUESTIONS: { key: keyof Fields; label: string; placeholder: string; Icon: typeof PenLine; rows: number }[] = [
-  { key: "today_tasks", label: "今天做了什么？", placeholder: "比如：背了50个单词 / 看了一个工作岗位 / 去了超市 / 好好吃了一顿饭…", Icon: NotebookText, rows: 3 },
-  { key: "today_note", label: "今天想说的一句话", placeholder: "比如：今天心情还不错 / 有点焦虑 / 很舍不得同事…", Icon: PenLine, rows: 2 },
-  { key: "tomorrow_plan", label: "明天想做什么？", placeholder: "比如：看一篇论文 / 去吃想吃的店 / 早点睡…", Icon: Send, rows: 2 },
+const QUESTIONS: {
+  key: keyof Fields;
+  labelKey:
+    | "todayTasks"
+    | "todayNote"
+    | "tomorrowPlan";
+  placeholderKey:
+    | "todayTasksPlaceholder"
+    | "todayNotePlaceholder"
+    | "tomorrowPlanPlaceholder";
+  Icon: typeof PenLine;
+  rows: number;
+}[] = [
+  {
+    key: "today_tasks",
+    labelKey: "todayTasks",
+    placeholderKey: "todayTasksPlaceholder",
+    Icon: NotebookText,
+    rows: 3,
+  },
+  {
+    key: "today_note",
+    labelKey: "todayNote",
+    placeholderKey: "todayNotePlaceholder",
+    Icon: PenLine,
+    rows: 2,
+  },
+  {
+    key: "tomorrow_plan",
+    labelKey: "tomorrowPlan",
+    placeholderKey: "tomorrowPlanPlaceholder",
+    Icon: Send,
+    rows: 2,
+  },
 ];
 
 export default function EntryForm({
@@ -25,6 +56,9 @@ export default function EntryForm({
   initial: Fields;
 }) {
   const router = useRouter();
+  const { dictionary } = useI18n();
+  const t = dictionary.today.journal;
+  const common = dictionary.common;
   const [values, setValues] = useState<Fields>(initial);
   const [saved, setSaved] = useState<Fields>(initial);
   const [busy, setBusy] = useState(false);
@@ -62,7 +96,7 @@ if (error) {
 
   setMsg({
     ok: false,
-    text: `保存失败：${error.message}`,
+    text: t.saveFailed + error.message,
   });
 
   return;
@@ -72,7 +106,7 @@ setSaved(values);
 
 setMsg({
   ok: true,
-  text: "已经保存好啦",
+  text: t.saved,
 });
 
 router.refresh();
@@ -80,18 +114,18 @@ router.refresh();
 
   return (
     <form onSubmit={save} className="mt-6 space-y-4">
-      {QUESTIONS.map(({ key, label, placeholder, Icon, rows }) => (
+      {QUESTIONS.map(({ key, labelKey, placeholderKey, Icon, rows }) => (
         <div key={key} className="card p-5">
           <label htmlFor={key} className="label">
             <Icon className="h-4 w-4 text-ink-soft" strokeWidth={1.8} />
-            {label}
+            {t[labelKey]}
           </label>
           <textarea
             id={key}
             rows={rows}
             maxLength={4000}
             className="input resize-none border-transparent bg-cream/60"
-            placeholder={placeholder}
+            placeholder={t[placeholderKey]}
             value={values[key]}
             onChange={(e) => {
               setValues({ ...values, [key]: e.target.value });
@@ -102,7 +136,7 @@ router.refresh();
       ))}
 
       <button className="btn-primary w-full py-3.5" disabled={busy || (!dirty && msg?.ok !== false)}>
-        {busy ? "保存中…" : "保存今天的记录"}
+        {busy ? common.saving : t.save}
       </button>
       <div className="h-5 text-center text-sm">
         {msg ? (
@@ -111,7 +145,7 @@ router.refresh();
             {msg.text}
           </span>
         ) : dirty ? (
-          <span className="text-ink-faint">还没保存</span>
+          <span className="text-ink-faint">{t.unsaved}</span>
         ) : null}
       </div>
     </form>
