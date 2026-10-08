@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 
 type Space = {
   id: string;
@@ -18,6 +19,8 @@ export default function SpaceManager({
   activeSpaceId: string;
 }) {
   const router = useRouter();
+  const { dictionary } = useI18n();
+  const t = dictionary.settings;
 
   const [mode, setMode] = useState<"create" | "join">("create");
   const [spaceName, setSpaceName] = useState("");
@@ -32,7 +35,7 @@ export default function SpaceManager({
     const name = spaceName.trim();
 
     if (!name) {
-      setError("请输入空间名字。");
+      setError(t.enterSpaceName);
       return;
     }
 
@@ -49,7 +52,7 @@ export default function SpaceManager({
     setBusy(false);
 
     if (error) {
-      setError("创建失败：" + error.message);
+      setError(t.createFailed + error.message);
       return;
     }
 
@@ -62,7 +65,7 @@ export default function SpaceManager({
     }
 
     setSpaceName("");
-    setMessage("新空间已经创建。");
+    setMessage(t.spaceCreated);
 
     router.refresh();
   }
@@ -73,7 +76,7 @@ export default function SpaceManager({
     const code = inviteCode.trim();
 
     if (!code) {
-      setError("请输入邀请码。");
+      setError(t.enterInviteCode);
       return;
     }
 
@@ -93,11 +96,11 @@ export default function SpaceManager({
       const msg = error.message;
 
       if (msg.includes("invalid invite")) {
-        setError("没有找到这个邀请码，请检查一下。");
+        setError(t.invalidInvite);
       } else if (msg.includes("full")) {
-        setError("这个空间已经满 10 人了。");
+        setError(t.spaceFull);
       } else {
-        setError("加入失败：" + msg);
+        setError(t.joinFailed + msg);
       }
 
       return;
@@ -112,7 +115,7 @@ export default function SpaceManager({
     }
 
     setInviteCode("");
-    setMessage("已经加入这个空间。");
+    setMessage(t.spaceJoined);
 
     router.refresh();
   }
@@ -120,7 +123,7 @@ export default function SpaceManager({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-medium">我的 Spaces</h2>
+        <h2 className="font-medium">{t.mySpaces}</h2>
 
         <div className="mt-4 space-y-2">
           {spaces.map((space) => (
@@ -135,7 +138,7 @@ export default function SpaceManager({
               <div className="font-medium">{space.name}</div>
 
               <div className="mt-1 text-xs text-ink-faint">
-                邀请码：{space.invite_code}
+                {t.inviteCode}：{space.invite_code}
               </div>
             </div>
           ))}
@@ -156,7 +159,7 @@ export default function SpaceManager({
               : "text-ink-soft"
           }`}
         >
-          创建新 Space
+          {t.createSpace}
         </button>
 
         <button
@@ -172,7 +175,7 @@ export default function SpaceManager({
               : "text-ink-soft"
           }`}
         >
-          用邀请码加入
+          {t.joinWithCode}
         </button>
       </div>
 
@@ -180,27 +183,27 @@ export default function SpaceManager({
         <form onSubmit={createSpace} className="space-y-3">
           <input
             className="input"
-            placeholder="例如：GRE 学习搭子"
+            placeholder={t.spaceNamePlaceholder}
             maxLength={40}
             value={spaceName}
             onChange={(e) => setSpaceName(e.target.value)}
           />
 
           <button className="btn-primary w-full" disabled={busy}>
-            {busy ? "创建中…" : "创建 Space"}
+            {busy ? t.creating : t.createSpaceButton}
           </button>
         </form>
       ) : (
         <form onSubmit={joinSpace} className="space-y-3">
           <input
             className="input uppercase tracking-widest"
-            placeholder="输入邀请码"
+            placeholder={t.inviteCodePlaceholder}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
           />
 
           <button className="btn-primary w-full" disabled={busy}>
-            {busy ? "加入中…" : "加入 Space"}
+            {busy ? t.joining : t.joinSpaceButton}
           </button>
         </form>
       )}
