@@ -1,3 +1,4 @@
+import Link from "next/link";
 
 import { notFound } from "next/navigation";
 
@@ -51,6 +52,17 @@ export default async function FocusPage({
       todo={todo}
       initialPreferences={preferences}
     />
+
+    <p className="text-center text-xs text-ink-faint">
+      提示音现在由设置统一管理。
+      {" "}
+      <Link
+        href="/settings"
+        className="text-sage-700 underline-offset-2 hover:underline"
+      >
+        调整声音设置
+      </Link>
+    </p>
   </div>
 );
 }
