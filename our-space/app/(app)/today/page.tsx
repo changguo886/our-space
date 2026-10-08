@@ -100,6 +100,10 @@ export default async function TodayPage() {
       media_type:
         | "image"
         | "video";
+      section:
+        | "today_tasks"
+        | "today_note"
+        | "tomorrow_plan";
       storage_path: string;
       signed_url: string;
       sort_order: number;
@@ -112,7 +116,7 @@ export default async function TodayPage() {
     } = await supabase
       .from("daily_entry_media")
       .select(
-        "id, media_type, storage_path, sort_order"
+        "id, media_type, section, storage_path, sort_order"
       )
       .eq(
         "entry_id",
@@ -167,6 +171,11 @@ export default async function TodayPage() {
                 item.media_type as
                   | "image"
                   | "video",
+              section:
+                item.section as
+                  | "today_tasks"
+                  | "today_note"
+                  | "tomorrow_plan",
               signed_url:
                 signedByPath.get(
                   item.storage_path
