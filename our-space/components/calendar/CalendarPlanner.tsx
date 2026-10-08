@@ -44,7 +44,7 @@ import {
 
 import { createClient } from "@/lib/supabase/client";
 import TodoSubtasks from "@/components/TodoSubtasks";
-import Quick笔记 from "@/components/QuickNotes";
+import QuickNotes from "@/components/QuickNotes";
 
 /* =========================================================
    Types
@@ -2012,11 +2012,11 @@ export default function CalendarPlanner({
                       className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
                       style={{ top: currentTimeInfo.top }}
                     >
-                      <span className="ml-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-ink ring-2 ring-white shadow-sm" />
-                      <span className="h-[2px] flex-1 rounded-full bg-ink/70" />
-                      <span className="ml-2 mr-3 inline-flex shrink-0 items-center rounded-full bg-ink px-2.5 py-1 text-[10px] font-semibold tabular-nums tracking-[0.02em] text-white shadow-sm">
+                      <span className="ml-0.5 h-3 w-3 shrink-0 rounded-full bg-[#4f5d4c] ring-[3px] ring-white shadow-md" />
+                      <span className="h-[2.5px] flex-1 rounded-full bg-[#7f967a]" />
+                      <span className="ml-2 mr-3 inline-flex shrink-0 items-center rounded-full bg-[#3f473f] px-3 py-1.5 text-[11px] font-semibold tabular-nums tracking-[0.02em] text-white shadow-[0_4px_14px_rgba(63,71,63,0.28)] ring-1 ring-black/5">
                         {currentTimeInfo.label}
-                        <span className="ml-1 opacity-80">现在</span>
+                        <span className="ml-1.5 text-white/80">现在</span>
                       </span>
                     </div>
                   )}
