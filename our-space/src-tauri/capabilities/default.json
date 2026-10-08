@@ -3,7 +3,9 @@
   "identifier": "default",
   "description": "enables the default permissions",
   "windows": [
-    "main"
+    "main",
+    "focus-timer-*",
+    "focus-workspace-*"
   ],
   "permissions": [
     "core:default"
