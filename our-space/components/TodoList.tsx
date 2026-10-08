@@ -15,6 +15,7 @@ import {
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -91,13 +92,11 @@ type TodoListProps = {
 
 const CATEGORIES: {
   value: TodoCategory;
-  label: string;
   selectedClass: string;
   badgeClass: string;
 }[] = [
   {
     value: "work",
-    label: "工作",
     selectedClass:
       "border-mist-500 bg-mist-100 text-mist-500",
     badgeClass:
@@ -105,7 +104,6 @@ const CATEGORIES: {
   },
   {
     value: "study",
-    label: "学习",
     selectedClass:
       "border-sage-500 bg-sage-100 text-sage-700",
     badgeClass:
@@ -113,7 +111,6 @@ const CATEGORIES: {
   },
   {
     value: "life",
-    label: "生活",
     selectedClass:
       "border-amber-300 bg-amber-50 text-amber-700",
     badgeClass:
@@ -121,7 +118,6 @@ const CATEGORIES: {
   },
   {
     value: "rest",
-    label: "休息",
     selectedClass:
       "border-blush-500 bg-blush-100 text-blush-500",
     badgeClass:
@@ -129,7 +125,6 @@ const CATEGORIES: {
   },
   {
     value: "other",
-    label: "其他",
     selectedClass:
       "border-ink-faint bg-black/[0.04] text-ink-soft",
     badgeClass:
@@ -159,14 +154,18 @@ function toLocalInputValue(
 
 
 function formatScheduledTime(
-  start?: string | null,
-  end?: string | null
+  start: string | null | undefined,
+  end: string | null | undefined,
+  language: "zh-CN" | "en",
+  nextDayLabel: string
 ) {
   if (!start) return null;
 
   const formatter =
     new Intl.DateTimeFormat(
-      "en-GB",
+      language === "zh-CN"
+        ? "zh-CN"
+        : "en-GB",
       {
         hour: "2-digit",
         minute: "2-digit",
@@ -204,38 +203,44 @@ function formatScheduledTime(
 
   return sameDay
     ? `${startText} – ${endText}`
-    : `${startText} – ${endText} 次日`;
+    : `${startText} – ${endText} ${nextDayLabel}`;
 }
 
 
 function statusInfo(
-  status: string
+  status: string,
+  labels: {
+    running: string;
+    paused: string;
+    completed: string;
+    pending: string;
+  }
 ) {
   switch (status) {
     case "running":
       return {
-        label: "进行中",
+        label: labels.running,
         className:
           "bg-sage-100 text-sage-700",
       };
 
     case "paused":
       return {
-        label: "已暂停",
+        label: labels.paused,
         className:
           "bg-amber-50 text-amber-700",
       };
 
     case "completed":
       return {
-        label: "已完成",
+        label: labels.completed,
         className:
           "bg-mist-100 text-mist-500",
       };
 
     default:
       return {
-        label: "待开始",
+        label: labels.pending,
         className:
           "bg-black/[0.04] text-ink-faint",
       };
@@ -244,8 +249,9 @@ function statusInfo(
 
 
 function categoryInfo(
-  category?: TodoCategory | null,
-  customTag?: string | null
+  category: TodoCategory | null | undefined,
+  customTag: string | null | undefined,
+  labels: Record<TodoCategory, string>
 ) {
   if (!category) {
     return null;
@@ -266,7 +272,7 @@ function categoryInfo(
       category === "other" &&
       customTag?.trim()
         ? customTag.trim()
-        : config.label,
+        : labels[category],
 
     className:
       config.badgeClass,
@@ -285,6 +291,17 @@ export default function TodoList({
 }: TodoListProps) {
   const router =
     useRouter();
+
+  const {
+    dictionary,
+    language,
+  } = useI18n();
+
+  const t =
+    dictionary.todo;
+
+  const common =
+    dictionary.common;
 
   const [
     editingId,
@@ -408,7 +425,7 @@ export default function TodoList({
 
     if (error) {
       setError(
-        "更新任务失败：" +
+        t.updateFailed +
           error.message
       );
 
@@ -502,7 +519,7 @@ export default function TodoList({
 
     if (!cleanTitle) {
       setError(
-        "任务名称不能为空。"
+        t.noTitle
       );
       return;
     }
@@ -520,7 +537,7 @@ export default function TodoList({
       )
     ) {
       setError(
-        "预计时间需要是大于 0 的数字。"
+        t.invalidDuration
       );
       return;
     }
@@ -541,7 +558,7 @@ export default function TodoList({
 
       if (end <= start) {
         setError(
-          "结束时间需要晚于开始时间。"
+          t.endAfterStart
         );
         return;
       }
@@ -597,7 +614,7 @@ export default function TodoList({
 
     if (error) {
       setError(
-        "保存失败：" +
+        t.saveFailed +
           error.message
       );
       return;
@@ -617,7 +634,10 @@ export default function TodoList({
   ) {
     const confirmed =
       window.confirm(
-        `确定删除「${todo.title}」吗？`
+        t.deleteConfirm.replace(
+          "{title}",
+          todo.title
+        )
       );
 
     if (!confirmed) {
@@ -640,7 +660,7 @@ export default function TodoList({
 
     if (error) {
       setError(
-        "删除失败：" +
+        t.deleteFailed +
           error.message
       );
       return;
@@ -659,7 +679,7 @@ export default function TodoList({
   if (todos.length === 0) {
     return (
       <p className="text-sm text-ink-faint">
-        这里还没有任务。
+        {t.empty}
       </p>
     );
   }
@@ -686,18 +706,29 @@ export default function TodoList({
           busyId === todo.id;
 
         const status =
-          statusInfo(todo.status);
+          statusInfo(
+            todo.status,
+            {
+              running: t.running,
+              paused: t.paused,
+              completed: t.completed,
+              pending: t.pending,
+            }
+          );
 
         const category =
           categoryInfo(
             todo.category,
-            todo.custom_tag
+            todo.custom_tag,
+            t.categories
           );
 
         const scheduledTime =
           formatScheduledTime(
             todo.scheduled_start,
-            todo.scheduled_end
+            todo.scheduled_end,
+            language,
+            t.nextDay
           );
 
 
@@ -714,7 +745,7 @@ export default function TodoList({
               <div className="space-y-5">
                 <div>
                   <label className="mb-1.5 block text-xs text-ink-faint">
-                    任务名称
+                    {t.taskName}
                   </label>
 
                   <input
@@ -733,7 +764,7 @@ export default function TodoList({
 
                 <div>
                   <label className="mb-1.5 block text-xs text-ink-faint">
-                    任务细节
+                    {t.taskDetails}
                   </label>
 
                   <textarea
@@ -746,7 +777,7 @@ export default function TodoList({
                         e.target.value
                       )
                     }
-                    placeholder="写一点具体目标、步骤或备注……"
+                    placeholder={t.detailsPlaceholder}
                     disabled={busy}
                   />
                 </div>
@@ -755,7 +786,7 @@ export default function TodoList({
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <label className="text-xs text-ink-faint">
-                      分类
+                      {t.category}
                     </label>
 
                     {editCategory && (
@@ -771,7 +802,7 @@ export default function TodoList({
                         }}
                         className="text-[11px] text-ink-faint hover:text-ink-soft"
                       >
-                        清除
+                        {common.clear}
                       </button>
                     )}
                   </div>
@@ -810,7 +841,7 @@ export default function TodoList({
                                 : "border-line bg-white/70 text-ink-soft hover:bg-white"
                             }`}
                           >
-                            {item.label}
+                            {t.categories[item.value]}
                           </button>
                         );
                       }
@@ -823,12 +854,12 @@ export default function TodoList({
                   "other" && (
                   <div>
                     <label className="mb-1.5 block text-xs text-ink-faint">
-                      自定义标签
+                      {t.customTag}
                     </label>
 
                     <input
                       className="input"
-                      placeholder="比如：健身 / 创作 / 社交"
+                      placeholder={t.customTagPlaceholder}
                       value={
                         editCustomTag
                       }
@@ -845,7 +876,7 @@ export default function TodoList({
 
                 <div>
                   <label className="mb-1.5 block text-xs text-ink-faint">
-                    预计时间
+                    {t.estimatedTime}
                   </label>
 
                   <DurationInput
@@ -868,13 +899,13 @@ export default function TodoList({
 
                 <div>
                   <p className="mb-2 text-xs text-ink-faint">
-                    日程安排
+                    {t.schedule}
                   </p>
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <label className="mb-1.5 block text-[11px] text-ink-faint">
-                        开始
+                        {t.start}
                       </label>
 
                       <input
@@ -894,7 +925,7 @@ export default function TodoList({
 
                     <div>
                       <label className="mb-1.5 block text-[11px] text-ink-faint">
-                        结束
+                        {t.end}
                       </label>
 
                       <input
@@ -925,7 +956,7 @@ export default function TodoList({
                     className="btn-ghost flex items-center gap-1.5 text-sm"
                   >
                     <X className="h-4 w-4" />
-                    取消
+                    {common.cancel}
                   </button>
 
                   <button
@@ -938,8 +969,8 @@ export default function TodoList({
                   >
                     <Save className="h-4 w-4" />
                     {busy
-                      ? "保存中…"
-                      : "保存"}
+                      ? common.saving
+                      : common.save}
                   </button>
                 </div>
               </div>
@@ -967,8 +998,8 @@ export default function TodoList({
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
                 title={
                   completed
-                    ? "标记为未完成"
-                    : "标记完成"
+                    ? t.markIncomplete
+                    : t.markComplete
                 }
               >
                 {completed ? (
@@ -1025,9 +1056,9 @@ export default function TodoList({
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
                   {todo.estimated_minutes && (
                     <span>
-                      预计{" "}
+                      {t.estimatedShort}{" "}
                       {todo.estimated_minutes}{" "}
-                      分钟
+                      {common.minutes}
                     </span>
                   )}
 
@@ -1041,7 +1072,7 @@ export default function TodoList({
                   {!scheduledTime &&
                     !completed && (
                     <span>
-                      未排期
+                      {t.unscheduled}
                     </span>
                   )}
                 </div>
@@ -1059,8 +1090,8 @@ export default function TodoList({
                   >
                     {expandedSubtasksId ===
                     todo.id
-                      ? "收起任务步骤 ↑"
-                      : "拆分任务 ↓"}
+                      ? t.collapseSteps
+                      : t.splitTask}
                   </button>
                 </div>
               </div>
@@ -1074,7 +1105,7 @@ export default function TodoList({
                   }
                   disabled={busy}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-                  title="编辑任务"
+                  title={t.editTask}
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
@@ -1086,7 +1117,7 @@ export default function TodoList({
                   }
                   disabled={busy}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
-                  title="删除任务"
+                  title={t.deleteTask}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -1099,7 +1130,7 @@ export default function TodoList({
                     }
                     disabled={busy}
                     className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-700"
-                    title="开始专注"
+                    title={t.startFocus}
                   >
                     <Play className="ml-0.5 h-4 w-4 fill-current" />
                   </button>
