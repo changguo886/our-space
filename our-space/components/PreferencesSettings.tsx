@@ -16,6 +16,7 @@ import {
 } from "react";
 
 import {
+  announcePreferencesUpdate,
   migrateLegacyFocusPreferences,
   saveUserPreferences,
   SOUND_IDS,
@@ -168,6 +169,10 @@ export default function PreferencesSettings({
         );
 
       setPreferences(
+        saved
+      );
+
+      announcePreferencesUpdate(
         saved
       );
 
