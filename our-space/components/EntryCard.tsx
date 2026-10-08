@@ -75,6 +75,9 @@ export default function EntryCard({
               media={
                 entry.media ?? []
               }
+              mediaControls={
+                false
+              }
             />
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-2">
