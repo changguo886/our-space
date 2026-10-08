@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 import {
   PREFERENCES_BROADCAST_CHANNEL,
   PREFERENCES_UPDATED_EVENT,
@@ -62,16 +63,26 @@ function formatClock(iso: string) {
   });
 }
 
-function reminderLabel(minutesBefore: number) {
+function reminderLabel(
+  minutesBefore: number,
+  labels: {
+    startsNow: string;
+    startsInHour: string;
+    startsInMinutes: string;
+  }
+) {
   if (minutesBefore === 0) {
-    return "现在开始";
+    return labels.startsNow;
   }
 
   if (minutesBefore === 60) {
-    return "1 小时后开始";
+    return labels.startsInHour;
   }
 
-  return `${minutesBefore} 分钟后开始`;
+  return labels.startsInMinutes.replace(
+    "{minutes}",
+    String(minutesBefore)
+  );
 }
 
 function reminderKey(
@@ -89,6 +100,8 @@ export default function GlobalReminderProvider({
   initialPreferences,
 }: Props) {
   const router = useRouter();
+  const { dictionary } = useI18n();
+  const reminderText = dictionary.reminder;
 
   const [
     preferences,
@@ -278,7 +291,8 @@ export default function GlobalReminderProvider({
                 {
                   body:
                     reminderLabel(
-                      minutesBefore
+                      minutesBefore,
+                      reminderText
                     ) +
                     " · " +
                     formatClock(
@@ -331,6 +345,7 @@ export default function GlobalReminderProvider({
       [
         router,
         preferences,
+        reminderText,
       ]
     );
 
@@ -558,7 +573,8 @@ export default function GlobalReminderProvider({
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium text-sage-700">
               {reminderLabel(
-                activeReminder.minutesBefore
+                activeReminder.minutesBefore,
+                reminderText
               )}
             </p>
 
@@ -583,7 +599,7 @@ export default function GlobalReminderProvider({
             type="button"
             onClick={dismiss}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-faint transition hover:bg-paper hover:text-ink"
-            aria-label="关闭提醒"
+            aria-label={reminderText.close}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -601,7 +617,7 @@ export default function GlobalReminderProvider({
             className="flex items-center justify-center gap-2 px-3 py-3 text-xs font-medium text-ink-soft transition hover:bg-paper"
           >
             <CalendarDays className="h-3.5 w-3.5" />
-            查看日历
+            {reminderText.viewCalendar}
           </button>
 
           <button
@@ -619,7 +635,7 @@ export default function GlobalReminderProvider({
             className="flex items-center justify-center gap-2 border-l border-line/70 bg-sage-50 px-3 py-3 text-xs font-medium text-sage-700 transition hover:bg-sage-100"
           >
             <Play className="h-3.5 w-3.5 fill-current" />
-            开始专注
+            {reminderText.startFocus}
           </button>
         </div>
       </div>
