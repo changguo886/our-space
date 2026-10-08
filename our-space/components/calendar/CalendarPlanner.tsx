@@ -280,14 +280,14 @@ function formatMinutes(minutes: number) {
   const mins = minutes % 60;
 
   if (hours > 0 && mins > 0) {
-    return `${hours}h ${mins}m`;
+    return `${hours} 小时 ${mins} 分钟`;
   }
 
   if (hours > 0) {
-    return `${hours}h`;
+    return `${hours} 小时`;
   }
 
-  return `${mins}m`;
+  return `${mins} 分钟`;
 }
 
 function snapMinutes(minutes: number) {
@@ -1084,10 +1084,10 @@ function QuietHoursBand({
       <span className="flex shrink-0 items-center gap-2 rounded-full border border-line/70 bg-white/70 px-3 py-1 text-[10px] text-ink-faint shadow-sm transition group-hover:border-sage-200 group-hover:text-sage-700">
         <ChevronDown className="h-3 w-3" />
         {formatClockMinutes(startHour * 60)} – {formatClockMinutes(endHour * 60)}
-        <span>· {hours}h collapsed</span>
+        <span>· 已收起 {hours} 小时</span>
         {includesNow && (
           <span className="ml-1 rounded-full bg-sage-100 px-1.5 py-0.5 font-medium text-sage-700">
-            Now · {formatClockMinutes(nowMinutes)}
+            现在 · {formatClockMinutes(nowMinutes)}
           </span>
         )}
       </span>
@@ -1452,7 +1452,7 @@ export default function CalendarPlanner({
       setSelectedSessionId(null);
       setError(
         "保存排期失败：" +
-          (insertError?.message ?? "没有返回 Session 数据")
+          (insertError?.message ?? "没有返回时间段数据")
       );
       return;
     }
@@ -1896,7 +1896,7 @@ export default function CalendarPlanner({
 
       if (pauseError) {
         setStartingFocusTodoId(null);
-        setError("暂停当前 Focus 失败：" + pauseError.message);
+        setError("暂停当前专注失败：" + pauseError.message);
         return;
       }
 
@@ -1951,7 +1951,7 @@ export default function CalendarPlanner({
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-semibold">日历</h1>
               <span className="rounded-full bg-sage-50 px-2 py-1 text-[10px] font-medium text-sage-700">
-                V3 · 24h smart timeline
+                V3 · 全天智能时间轴
               </span>
             </div>
 
@@ -1978,7 +1978,7 @@ export default function CalendarPlanner({
                 onClick={() => setShowFullDay(false)}
                 className="rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50"
               >
-                智能折叠
+                收起空闲时段
               </button>
             )}
 
@@ -2116,7 +2116,7 @@ export default function CalendarPlanner({
               <div className="flex items-center gap-2">
                 {!showFullDay && (
                   <span className="hidden rounded-full bg-black/[0.035] px-3 py-1.5 text-[10px] text-ink-faint sm:block">
-                    智能时段 · {String(visibleStartHour).padStart(2, "0")}:00–
+                    当前显示 · {String(visibleStartHour).padStart(2, "0")}:00–
                     {String(visibleEndHour).padStart(2, "0")}:00
                   </span>
                 )}
@@ -2313,7 +2313,7 @@ export default function CalendarPlanner({
                   icon={<FileText className="h-3.5 w-3.5" />}
                   onClick={() => setContextTab("notes")}
                 >
-                  Notes
+                  笔记
                 </ContextTabButton>
               </div>
 
@@ -2328,7 +2328,7 @@ export default function CalendarPlanner({
                         <div>
                           <p className="text-sm font-medium">编辑任务</p>
                           <p className="mt-1 text-[11px] leading-4 text-ink-faint">
-                            这里只编辑任务本体。Session 时间继续通过时间轴拖动 / 拉伸管理。
+                            这里只编辑任务本身。时间段继续通过时间轴拖动或拉伸调整。
                           </p>
                         </div>
 
@@ -2430,7 +2430,7 @@ export default function CalendarPlanner({
 
                         <div className="grid grid-cols-2 gap-2">
                           <div className="rounded-2xl border border-line/70 bg-white/60 p-3">
-                            <p className="text-[10px] text-ink-faint">本次 Session</p>
+                            <p className="text-[10px] text-ink-faint">本次安排</p>
                             <p className="mt-1 text-lg font-medium text-ink">
                               {formatMinutes(
                                 sessionDurationMinutes(
