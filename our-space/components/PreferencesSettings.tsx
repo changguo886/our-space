@@ -24,6 +24,7 @@ import {
   type UserPreferences,
 } from "@/lib/preferences";
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 
 
 const SOUND_LABELS: Record<
@@ -49,6 +50,9 @@ export default function PreferencesSettings({
   userId,
   initialPreferences,
 }: Props) {
+  const { dictionary } = useI18n();
+  const t = dictionary.settings;
+  const common = dictionary.common;
   const [
     preferences,
     setPreferences,
@@ -194,7 +198,7 @@ export default function PreferencesSettings({
         unknownError instanceof
           Error
           ? unknownError.message
-          : "保存设置失败。"
+          : t.saveFailed
       );
     } finally {
       setSavingKey(null);
@@ -267,7 +271,7 @@ export default function PreferencesSettings({
       .play()
       .catch(() => {
         setError(
-          "浏览器阻止了声音播放，请再点一次试听。"
+          t.playBlocked
         );
       });
 
@@ -296,18 +300,18 @@ export default function PreferencesSettings({
 
           <div className="min-w-0 flex-1">
             <h2 className="font-medium">
-              常规
+              {t.general}
             </h2>
 
             <p className="mt-1 text-xs leading-5 text-ink-faint">
-              语言偏好已经进入统一设置。完整英文界面会在 i18n 阶段开放。
+              {t.generalDescription}
             </p>
           </div>
         </div>
 
         <div className="mt-5">
           <label className="label">
-            语言
+            {t.language}
           </label>
 
           <select
@@ -315,21 +319,41 @@ export default function PreferencesSettings({
             value={
               preferences.language
             }
-            disabled
-            aria-label="界面语言"
+            disabled={
+              savingKey ===
+              "language"
+            }
+            aria-label={
+              t.languageAria
+            }
+            onChange={(event) => {
+              const language =
+                event.target.value as
+                  UserPreferences["language"];
+
+              setPreferences(
+                (current) => ({
+                  ...current,
+                  language,
+                })
+              );
+
+              void savePatch(
+                "language",
+                {
+                  language,
+                }
+              );
+            }}
           >
             <option value="zh-CN">
-              简体中文
+              {t.simplifiedChinese}
             </option>
 
             <option value="en">
-              English
+              {t.english}
             </option>
           </select>
-
-          <p className="mt-2 text-[11px] leading-4 text-ink-faint">
-            当前先保持简体中文。English 会在主要页面完成翻译后正式开放切换。
-          </p>
         </div>
       </section>
 
@@ -341,11 +365,11 @@ export default function PreferencesSettings({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-medium">
-              声音与提醒
+              {t.soundTitle}
             </h2>
 
             <p className="mt-1 text-xs leading-5 text-ink-faint">
-              集中管理专注结束音和日历提醒音。关闭声音不会关闭 Reminder Toast 或系统通知。
+              {t.soundDescription}
             </p>
           </div>
 
@@ -382,13 +406,13 @@ export default function PreferencesSettings({
             }`}
             aria-label={
               preferences.sound_enabled
-                ? "关闭自动提示音"
-                : "开启自动提示音"
+                ? t.disableSound
+                : t.enableSound
             }
             title={
               preferences.sound_enabled
-                ? "关闭自动提示音"
-                : "开启自动提示音"
+                ? t.disableSound
+                : t.enableSound
             }
           >
             {preferences.sound_enabled ? (
@@ -403,13 +427,13 @@ export default function PreferencesSettings({
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-ink">
-                自动播放声音
+                {t.automaticSound}
               </p>
 
               <p className="mt-1 text-[11px] leading-4 text-ink-faint">
                 {preferences.sound_enabled
-                  ? "Focus 完成和 Reminder 到期时允许自动播放。"
-                  : "当前静音；视觉提醒仍会继续显示。"}
+                  ? t.soundOnDescription
+                  : t.soundOffDescription}
               </p>
             </div>
 
@@ -421,8 +445,8 @@ export default function PreferencesSettings({
               }`}
             >
               {preferences.sound_enabled
-                ? "已开启"
-                : "已关闭"}
+                ? t.enabled
+                : t.disabled}
             </span>
           </div>
         </div>
@@ -434,7 +458,7 @@ export default function PreferencesSettings({
               htmlFor="sound-volume"
               className="label mb-0"
             >
-              音量
+              {t.volume}
             </label>
 
             <span className="text-xs tabular-nums text-ink-faint">
@@ -467,15 +491,15 @@ export default function PreferencesSettings({
           />
 
           <div className="mt-1 flex items-center justify-between text-[10px] text-ink-faint">
-            <span>静音</span>
+            <span>{common.mute}</span>
             <span>100%</span>
           </div>
         </div>
 
 
         <SoundPreferenceSection
-          title="专注结束音"
-          description="Focus 计时完成时使用。"
+          title={t.focusSound}
+          description={t.focusSoundDescription}
           icon={
             <TimerReset className="h-4 w-4" />
           }
@@ -496,6 +520,8 @@ export default function PreferencesSettings({
           onPreview={
             previewSound
           }
+          previewLabel={common.preview}
+          previewLabel={common.preview}
           onChange={(soundId) => {
             setPreferences(
               (current) => ({
@@ -517,8 +543,8 @@ export default function PreferencesSettings({
 
 
         <SoundPreferenceSection
-          title="日历提醒音"
-          description="Session Reminder 到期时使用。"
+          title={t.reminderSound}
+          description={t.reminderSoundDescription}
           icon={
             <Bell className="h-4 w-4" />
           }
@@ -565,12 +591,12 @@ export default function PreferencesSettings({
             {savingKey ? (
               <>
                 <span className="h-3 w-3 animate-spin rounded-full border border-sage-300 border-t-sage-700" />
-                正在保存…
+                {common.saving}
               </>
             ) : (
               <>
                 <Check className="h-3.5 w-3.5 text-sage-700" />
-                设置已保存
+                {common.saved}
               </>
             )}
           </div>
@@ -597,6 +623,7 @@ function SoundPreferenceSection({
   previewingSound,
   onPreview,
   onChange,
+  previewLabel,
 }: {
   title: string;
   description: string;
@@ -611,6 +638,7 @@ function SoundPreferenceSection({
   onChange: (
     soundId: SoundId
   ) => void;
+  previewLabel: string;
 }) {
   return (
     <div className="mt-6 border-t border-line pt-5">
@@ -695,8 +723,8 @@ function SoundPreferenceSection({
                     )
                   }
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-sage-100"
-                  aria-label={`试听 ${SOUND_LABELS[soundId]}`}
-                  title="试听"
+                  aria-label={`${previewLabel} ${SOUND_LABELS[soundId]}`}
+                  title={previewLabel}
                 >
                   <Play
                     className={`ml-0.5 h-3.5 w-3.5 fill-current ${
