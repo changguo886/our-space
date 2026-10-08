@@ -1,9 +1,9 @@
 
-import SoundSelector from "@/components/SoundSelector";
 import { notFound } from "next/navigation";
 
 import { requireGroup } from "@/lib/session";
 import FocusTimer from "@/components/FocusTimer";
+import { getUserPreferences } from "@/lib/preferences";
 
 export const dynamic = "force-dynamic";
 
@@ -39,13 +39,18 @@ export default async function FocusPage({
     notFound();
   }
 
+  const preferences =
+    await getUserPreferences(
+      supabase,
+      user.id
+    );
+
  return (
   <div className="mx-auto max-w-3xl space-y-6">
-    <FocusTimer todo={todo} />
-
-    <div className="mx-auto max-w-md">
-      <SoundSelector />
-    </div>
+    <FocusTimer
+      todo={todo}
+      initialPreferences={preferences}
+    />
   </div>
 );
 }
