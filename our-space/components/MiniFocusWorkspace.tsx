@@ -165,7 +165,7 @@ export default function MiniFocusWorkspace({
           subtasksResult.error
         ) {
           setError(
-            "读取 Steps 失败：" +
+            "读取步骤失败：" +
               subtasksResult.error
                 .message
           );
@@ -180,7 +180,7 @@ export default function MiniFocusWorkspace({
           notesResult.error
         ) {
           setError(
-            "读取 Notes 失败：" +
+            "读取笔记失败：" +
               notesResult.error
                 .message
           );
@@ -302,7 +302,7 @@ export default function MiniFocusWorkspace({
         );
 
         setError(
-          "更新 Step 失败：" +
+          "更新步骤失败：" +
             updateError.message
         );
       }
@@ -314,7 +314,7 @@ export default function MiniFocusWorkspace({
       );
 
       setError(
-        "更新 Step 失败：" +
+        "更新步骤失败：" +
           (
             unknownError instanceof
               Error
@@ -401,7 +401,7 @@ export default function MiniFocusWorkspace({
         !data
       ) {
         setError(
-          "新增 Note 失败：" +
+          "新增笔记失败：" +
             (
               insertError
                 ?.message ??
@@ -424,7 +424,7 @@ export default function MiniFocusWorkspace({
       unknownError
     ) {
       setError(
-        "新增 Note 失败：" +
+        "新增笔记失败：" +
           (
             unknownError instanceof
               Error
@@ -462,8 +462,8 @@ export default function MiniFocusWorkspace({
       >
         {(
           [
-            ["steps", "Steps"],
-            ["notes", "Notes"],
+            ["steps", "步骤"],
+            ["notes", "笔记"],
           ] as const
         ).map(
           ([value, label]) => (
@@ -517,7 +517,7 @@ export default function MiniFocusWorkspace({
               color: "#999D96",
             }}
           >
-            Loading work context...
+            正在加载专注内容…
           </div>
         ) : tab ===
           "steps" ? (
@@ -545,7 +545,7 @@ export default function MiniFocusWorkspace({
                     letterSpacing: "0.08em",
                   }}
                 >
-                  CURRENT STEP
+                  当前步骤
                 </div>
 
                 <div
@@ -573,7 +573,7 @@ export default function MiniFocusWorkspace({
                   color: "#999D96",
                 }}
               >
-                No steps yet.
+                还没有步骤。
               </div>
             ) : (
               subtasks.map(
@@ -723,8 +723,8 @@ export default function MiniFocusWorkspace({
                 rows={2}
                 placeholder={
                   currentSubtask
-                    ? "Note for current step"
-                    : "Quick note"
+                    ? "记录当前步骤"
+                    : "快速笔记"
                 }
                 style={{
                   boxSizing: "border-box",
@@ -763,7 +763,7 @@ export default function MiniFocusWorkspace({
                     currentSubtask
                       ? "→ " +
                         currentSubtask.title
-                      : "→ Unsorted"
+                      : "→ 未分类"
                   }
                 </span>
 
