@@ -6,7 +6,12 @@ import { formatLongDate, nameOf, timeIn, tzOf } from "@/lib/utils";
 import Avatar from "@/components/Avatar";
 import ReactionBar from "@/components/ReactionBar";
 import CommentSection, { type CommentRow } from "@/components/CommentSection";
-import { ENTRY_SELECT, EntryBody, type EntryRow } from "@/components/EntryCard";
+import {
+  ENTRY_SELECT,
+  EntryBody,
+  EntryMediaGrid,
+  type EntryRow,
+} from "@/components/EntryCard";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +34,79 @@ export default async function EntryPage({ params }: { params: Promise<{ id: stri
   if (!entryData) notFound();
 
   const entry = entryData as unknown as EntryRow;
+
+  const {
+    data: mediaRows,
+    error: mediaError,
+  } = await supabase
+    .from("daily_entry_media")
+    .select(
+      "id, entry_id, media_type, storage_path, sort_order"
+    )
+    .eq("entry_id", id)
+    .order(
+      "sort_order",
+      {
+        ascending: true,
+      }
+    );
+
+  if (
+    !mediaError &&
+    mediaRows &&
+    mediaRows.length > 0
+  ) {
+    const {
+      data: signedRows,
+    } = await supabase
+      .storage
+      .from("daily-media")
+      .createSignedUrls(
+        mediaRows.map(
+          (item) =>
+            item.storage_path
+        ),
+        60 * 60
+      );
+
+    const signedByPath =
+      new Map(
+        (signedRows ?? [])
+          .filter(
+            (item) =>
+              item.signedUrl
+          )
+          .map(
+            (item) => [
+              item.path,
+              item.signedUrl,
+            ]
+          )
+      );
+
+    entry.media =
+      mediaRows
+        .map(
+          (item) => ({
+            ...item,
+            media_type:
+              item.media_type as
+                | "image"
+                | "video",
+            signed_url:
+              signedByPath.get(
+                item.storage_path
+              ) ?? "",
+          })
+        )
+        .filter(
+          (item) =>
+            Boolean(
+              item.signed_url
+            )
+        );
+  }
+
   const isOwn = entry.user_id === user.id;
 
   return (
@@ -54,6 +132,9 @@ export default async function EntryPage({ params }: { params: Promise<{ id: stri
 
         <div className="mt-5">
           <EntryBody entry={entry} tint={isOwn ? "bg-mist-50" : "bg-blush-50"} />
+          <EntryMediaGrid
+            media={entry.media ?? []}
+          />
         </div>
 
         <div className="mt-4">
