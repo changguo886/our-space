@@ -12,6 +12,10 @@ export type EntryMedia = {
   id: string;
   entry_id: string;
   media_type: "image" | "video";
+  section:
+    | "today_tasks"
+    | "today_note"
+    | "tomorrow_plan";
   storage_path: string;
   sort_order: number;
   signed_url: string;
@@ -33,75 +37,6 @@ export type EntryRow = {
 };
 
 export { EntryBody };
-
-export function EntryMediaGrid({
-  media,
-}: {
-  media: EntryMedia[];
-}) {
-  if (media.length === 0) {
-    return null;
-  }
-
-  if (
-    media.length === 1 &&
-    media[0].media_type ===
-      "video"
-  ) {
-    return (
-      <div className="mt-3 overflow-hidden rounded-2xl border border-line bg-black/[0.03]">
-        <video
-          src={media[0].signed_url}
-          controls
-          preload="metadata"
-          className="max-h-[520px] w-full bg-black object-contain"
-        />
-      </div>
-    );
-  }
-
-  const count = media.length;
-  const gridClass =
-    count === 1
-      ? "grid-cols-1"
-      : count === 2
-        ? "grid-cols-2"
-        : "grid-cols-3";
-
-  return (
-    <div
-      className={`mt-3 grid gap-1.5 overflow-hidden rounded-2xl ${gridClass}`}
-    >
-      {media.map(
-        (
-          item,
-          index
-        ) => (
-          <div
-            key={item.id}
-            className={`overflow-hidden bg-black/[0.03] ${
-              count === 1
-                ? "aspect-[4/3]"
-                : "aspect-square"
-            } ${
-              count === 4 &&
-              index === 0
-                ? ""
-                : ""
-            }`}
-          >
-            <img
-              src={item.signed_url}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover"
-            />
-          </div>
-        )
-      )}
-    </div>
-  );
-}
 
 export default function EntryCard({
   entry,
@@ -130,12 +65,18 @@ export default function EntryCard({
 
         <div className="min-w-0 flex-1">
           <Link href={`/entry/${entry.id}`} className="block transition hover:opacity-90">
-            <EntryBody entry={entry} tint={isOwn ? "bg-mist-50" : "bg-blush-50"} />
+            <EntryBody
+              entry={entry}
+              tint={
+                isOwn
+                  ? "bg-mist-50"
+                  : "bg-blush-50"
+              }
+              media={
+                entry.media ?? []
+              }
+            />
           </Link>
-
-          <EntryMediaGrid
-            media={entry.media ?? []}
-          />
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <ReactionBar entryId={entry.id} userId={viewerId} isOwn={isOwn} initial={entry.reactions ?? []} />
             <Link
