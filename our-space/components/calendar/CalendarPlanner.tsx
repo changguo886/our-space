@@ -1077,7 +1077,7 @@ function QuietHoursBand({
       type="button"
       onClick={onExpand}
       className="group flex w-full items-center gap-3 border-y border-line/60 bg-paper/55 px-4 py-2.5 text-left transition hover:bg-sage-50/55"
-      title="展开完整 24 小时时间轴"
+      title="展开这段时间，查看完整 24 小时"
     >
       <span className="h-px flex-1 bg-line" />
 
@@ -1956,7 +1956,7 @@ export default function CalendarPlanner({
             </div>
 
             <p className="mt-1 text-sm text-ink-faint">
-              安排时间，而不是被固定工作时段限制。
+              按自己的节奏安排一天，空闲时段会自动收起。
             </p>
           </div>
 
@@ -1978,7 +1978,7 @@ export default function CalendarPlanner({
                 onClick={() => setShowFullDay(false)}
                 className="rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50"
               >
-                收起空闲时段
+                恢复精简视图
               </button>
             )}
 
@@ -2116,7 +2116,7 @@ export default function CalendarPlanner({
               <div className="flex items-center gap-2">
                 {!showFullDay && (
                   <span className="hidden rounded-full bg-black/[0.035] px-3 py-1.5 text-[10px] text-ink-faint sm:block">
-                    当前显示 · {String(visibleStartHour).padStart(2, "0")}:00–
+                    今天主要时段 · {String(visibleStartHour).padStart(2, "0")}:00–
                     {String(visibleEndHour).padStart(2, "0")}:00
                   </span>
                 )}
