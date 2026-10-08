@@ -131,10 +131,11 @@ export default function EntryCard({
         <div className="min-w-0 flex-1">
           <Link href={`/entry/${entry.id}`} className="block transition hover:opacity-90">
             <EntryBody entry={entry} tint={isOwn ? "bg-mist-50" : "bg-blush-50"} />
-            <EntryMediaGrid
-              media={entry.media ?? []}
-            />
           </Link>
+
+          <EntryMediaGrid
+            media={entry.media ?? []}
+          />
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <ReactionBar entryId={entry.id} userId={viewerId} isOwn={isOwn} initial={entry.reactions ?? []} />
             <Link
