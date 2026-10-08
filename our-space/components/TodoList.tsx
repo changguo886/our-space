@@ -15,6 +15,10 @@ import {
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import DurationInput, {
+  durationValueToMinutes,
+  type DurationUnit,
+} from "@/components/DurationInput";
 
 import TodoSubtasks, {
   type TodoSubtask,
@@ -303,6 +307,14 @@ export default function TodoList({
   ] = useState("");
 
   const [
+    editDurationUnit,
+    setEditDurationUnit,
+  ] =
+    useState<DurationUnit>(
+      "minute"
+    );
+
+  const [
     editCategory,
     setEditCategory,
   ] =
@@ -430,6 +442,10 @@ export default function TodoList({
       todo.description ?? ""
     );
 
+    setEditDurationUnit(
+      "minute"
+    );
+
     setEditMinutes(
       todo.estimated_minutes
         ? String(
@@ -467,6 +483,9 @@ export default function TodoList({
     setEditTitle("");
     setEditDescription("");
     setEditMinutes("");
+    setEditDurationUnit(
+      "minute"
+    );
     setEditCategory(null);
     setEditCustomTag("");
     setEditScheduledStart("");
@@ -489,21 +508,19 @@ export default function TodoList({
     }
 
     const parsedMinutes =
-      editMinutes.trim()
-        ? Number(editMinutes)
-        : null;
+      durationValueToMinutes(
+        editMinutes,
+        editDurationUnit
+      );
 
     if (
       parsedMinutes !== null &&
-      (
-        !Number.isFinite(
-          parsedMinutes
-        ) ||
-        parsedMinutes <= 0
+      Number.isNaN(
+        parsedMinutes
       )
     ) {
       setError(
-        "预计时间需要是大于 0 的分钟数。"
+        "预计时间需要是大于 0 的数字。"
       );
       return;
     }
@@ -828,21 +845,22 @@ export default function TodoList({
 
                 <div>
                   <label className="mb-1.5 block text-xs text-ink-faint">
-                    预计时间（分钟）
+                    预计时间
                   </label>
 
-                  <input
-                    className="input"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={editMinutes}
-                    onChange={(e) =>
-                      setEditMinutes(
-                        e.target.value
-                      )
+                  <DurationInput
+                    value={
+                      editMinutes
                     }
-                    placeholder="例如 45"
+                    unit={
+                      editDurationUnit
+                    }
+                    onValueChange={
+                      setEditMinutes
+                    }
+                    onUnitChange={
+                      setEditDurationUnit
+                    }
                     disabled={busy}
                   />
                 </div>
