@@ -20,6 +20,7 @@ import {
   type UserPreferences,
 } from "@/lib/preferences";
 import MiniFocusWorkspace from "@/components/MiniFocusWorkspace";
+import { useI18n } from "@/components/I18nProvider";
 
 import {
   Check,
@@ -60,46 +61,25 @@ type WindowWithDocumentPiP =
       DocumentPictureInPictureApi;
   };
 
-const COMPLETION_MESSAGES = [
-  "今天又向前走了一点。",
-  "完成比完美更重要。",
-  "辛苦啦，这件事已经做好了。",
-  "一点一点，也是在前进。",
-  "给今天的自己记一笔。",
-  "做完了，可以休息一下。",
-  "今天的努力没有白费。",
-  "很好，这一件已经完成了。",
-];
-
 const COMPLETION_LEVELS: {
   value: CompletionLevel;
   emoji: string;
-  label: string;
-  description: string;
 }[] = [
   {
     value: "tiny_progress",
     emoji: "🌱",
-    label: "小小进展",
-    description: "做了一点，也很好",
   },
   {
     value: "partial",
     emoji: "🌿",
-    label: "完成了一部分",
-    description: "事情已经往前走了",
   },
   {
     value: "mostly_done",
     emoji: "🌸",
-    label: "基本完成",
-    description: "已经完成大部分啦",
   },
   {
     value: "fully_done",
     emoji: "💐",
-    label: "完全完成",
-    description: "圆满收尾",
   },
 ];
 
@@ -108,6 +88,9 @@ export default function FocusTimer({
   initialPreferences,
 }: FocusTimerProps) {
   const router = useRouter();
+  const { dictionary } = useI18n();
+  const focusText = dictionary.focus;
+  const common = dictionary.common;
 
   const [
     preferences,
@@ -453,15 +436,15 @@ export default function FocusTimer({
 
   const floatingStatusText =
     timeUp
-      ? "时间到"
+      ? focusText.status.timeUp
       : status === "running"
-        ? "专注中"
+        ? focusText.status.focusing
         : status === "paused"
-          ? "已暂停"
+          ? focusText.status.paused
           : status ===
               "completed"
-            ? "已完成"
-            : "准备开始";
+            ? focusText.status.completed
+            : focusText.status.ready;
 
   function toggleFloatingWorkspace() {
     const pipWindow =
@@ -601,7 +584,7 @@ export default function FocusTimer({
 
     if (!api) {
       setFloatingError(
-        "当前浏览器不支持桌面悬浮计时窗，请使用最新版 Chrome。"
+        focusText.floatingUnsupported
       );
 
       return;
@@ -615,7 +598,7 @@ export default function FocusTimer({
         });
 
       pipWindow.document.title =
-        `Focus · ${todo.title}`;
+        focusText.floatingTitle.replace("{title}", todo.title);
 
       /*
        * 清空默认内容
@@ -703,7 +686,7 @@ export default function FocusTimer({
       );
 
       setFloatingError(
-        "没有成功打开悬浮窗，可以再点一次「打开悬浮窗」。"
+        focusText.floatingOpenFailed
       );
     }
   }
@@ -818,7 +801,7 @@ export default function FocusTimer({
 
     if (error) {
       alert(
-        "开始计时失败：" +
+        focusText.startFailed +
           error.message
       );
 
@@ -878,7 +861,7 @@ export default function FocusTimer({
 
     if (error) {
       alert(
-        "暂停失败：" +
+        focusText.pauseFailed +
           error.message
       );
 
@@ -945,7 +928,7 @@ export default function FocusTimer({
 
     if (error) {
       alert(
-        "完成任务失败：" +
+        focusText.completeFailed +
           error.message
       );
 
@@ -988,11 +971,14 @@ export default function FocusTimer({
 
     setFeedbackError(null);
 
+    const completionMessages =
+      focusText.completionMessages;
+
     const randomMessage =
-      COMPLETION_MESSAGES[
+      completionMessages[
         Math.floor(
           Math.random() *
-            COMPLETION_MESSAGES.length
+            completionMessages.length
         )
       ];
 
@@ -1040,7 +1026,7 @@ export default function FocusTimer({
 
     if (error) {
       setFeedbackError(
-        "没有保存成功，再试一次？"
+        focusText.feedbackFailed
       );
 
       return;
@@ -1090,7 +1076,7 @@ export default function FocusTimer({
 
     if (error) {
       alert(
-        "重置失败：" +
+        focusText.resetFailed +
           error.message
       );
 
@@ -1201,7 +1187,7 @@ export default function FocusTimer({
         onClick={
           toggleFloatingCompact
         }
-        title="展开悬浮窗"
+        title={focusText.expandFloating}
         style={{
           ...buttonBase,
 
@@ -1306,7 +1292,7 @@ export default function FocusTimer({
           onClick={
             pauseTimer
           }
-          title="暂停"
+          title={focusText.pause}
           style={{
             ...buttonBase,
 
@@ -1350,7 +1336,7 @@ export default function FocusTimer({
           onClick={() =>
             startTimer(false)
           }
-          title="继续"
+          title={focusText.continue}
           style={{
             ...buttonBase,
 
@@ -1480,8 +1466,8 @@ export default function FocusTimer({
           }
           title={
             floatingWorkspaceOpen
-              ? "收起步骤与笔记"
-              : "打开步骤与笔记"
+              ? focusText.collapseWorkspace
+              : focusText.openWorkspace
           }
           style={{
             ...buttonBase,
@@ -1514,8 +1500,8 @@ export default function FocusTimer({
         >
           {
             floatingWorkspaceOpen
-              ? "收起"
-              : "步骤与笔记"
+              ? focusText.hide
+              : focusText.stepsAndNotes
           }
         </button>
 
@@ -1527,7 +1513,7 @@ export default function FocusTimer({
           onClick={
             toggleFloatingCompact
           }
-          title="收起到侧边"
+          title={focusText.collapseSide}
           style={{
             ...buttonBase,
 
@@ -1561,7 +1547,7 @@ export default function FocusTimer({
           onClick={
             closeFloatingTimer
           }
-          title="关闭悬浮窗"
+          title={focusText.closeFloating}
           style={{
             ...buttonBase,
 
@@ -1703,9 +1689,9 @@ export default function FocusTimer({
         </span>
 
         <span>
-          已专注{" "}
-          {formatTime(
-            currentElapsed
+          {focusText.focusedFor.replace(
+            "{time}",
+            formatTime(currentElapsed)
           )}
         </span>
       </div>
@@ -1790,7 +1776,7 @@ export default function FocusTimer({
                   600,
               }}
             >
-              继续专注
+              {focusText.continueFocus}
             </button>
 
             <button
@@ -1824,7 +1810,7 @@ export default function FocusTimer({
                   600,
               }}
             >
-              完成
+              {focusText.complete}
             </button>
           </>
         ) : (
@@ -1837,7 +1823,7 @@ export default function FocusTimer({
                 onClick={
                   pauseTimer
                 }
-                title="暂停"
+                title={focusText.pause}
                 style={{
                   ...buttonBase,
 
@@ -1878,7 +1864,7 @@ export default function FocusTimer({
                     false
                   )
                 }
-                title="继续"
+                title={focusText.continue}
                 style={{
                   ...buttonBase,
 
@@ -1911,7 +1897,7 @@ export default function FocusTimer({
               onClick={
                 completeTimer
               }
-              title="完成任务"
+              title={focusText.completeTask}
               style={{
                 ...buttonBase,
 
@@ -1958,6 +1944,7 @@ export default function FocusTimer({
     busy,
     targetSeconds,
     floatingWorkspaceOpen,
+    focusText,
   ]);
 
   /*
@@ -2006,7 +1993,7 @@ export default function FocusTimer({
         </div>
 
         <p className="mt-6 text-sm text-ink-faint">
-          完成啦
+          {focusText.completedTitle}
         </p>
 
         <h1 className="mt-2 max-w-lg text-2xl font-semibold">
@@ -2019,7 +2006,7 @@ export default function FocusTimer({
 
         <div className="card mt-7 px-8 py-5">
           <p className="text-xs text-ink-faint">
-            本次专注
+            {focusText.thisFocus}
           </p>
 
           <p className="mt-1 text-3xl font-semibold text-sage-700">
@@ -2032,11 +2019,11 @@ export default function FocusTimer({
         <div className="mt-8 w-full max-w-xl">
           <div>
             <h2 className="text-base font-medium text-ink">
-              这次完成得怎么样？
+              {focusText.completionQuestion}
             </h2>
 
             <p className="mt-1 text-xs text-ink-faint">
-              不需要打分，只是给今天留一个小小的记录。
+              {focusText.completionHint}
             </p>
           </div>
 
@@ -2081,13 +2068,17 @@ export default function FocusTimer({
 
                     <span className="mt-3 text-sm font-medium text-ink">
                       {
-                        item.label
+                        focusText.completionLevels[
+                          item.value
+                        ].label
                       }
                     </span>
 
                     <span className="mt-1 text-[11px] leading-relaxed text-ink-faint">
                       {
-                        item.description
+                        focusText.completionLevels[
+                          item.value
+                        ].description
                       }
                     </span>
                   </button>
@@ -2099,14 +2090,14 @@ export default function FocusTimer({
           <div className="mt-4 min-h-6 text-center text-xs">
             {feedbackSaving && (
               <span className="text-ink-faint">
-                保存中…
+                {common.saving}
               </span>
             )}
 
             {!feedbackSaving &&
               feedbackSaved && (
                 <span className="text-sage-700">
-                  ✓ 已经记下啦
+                  {focusText.feedbackSaved}
                 </span>
               )}
 
@@ -2123,7 +2114,7 @@ export default function FocusTimer({
               !feedbackSaved &&
               !feedbackError && (
                 <span className="text-ink-faint">
-                  也可以跳过
+                  {focusText.skipFeedback}
                 </span>
               )}
           </div>
@@ -2141,7 +2132,7 @@ export default function FocusTimer({
             }}
             className="btn-primary"
           >
-            返回 Todo
+            {focusText.backToTasks}
           </button>
 
           <button
@@ -2155,7 +2146,7 @@ export default function FocusTimer({
             }}
             className="btn-ghost"
           >
-            回到今天
+            {focusText.backToToday}
           </button>
         </div>
       </div>
@@ -2171,17 +2162,17 @@ export default function FocusTimer({
     <div className="flex min-h-[70vh] flex-col items-center justify-center px-4">
       <p className="text-sm text-ink-faint">
         {timeUp
-          ? "本轮时间到"
+          ? focusText.status.roundTimeUp
           : status ===
               "running"
-            ? "专注中"
+            ? focusText.status.focusing
             : status ===
                 "paused"
-              ? "已暂停"
+              ? focusText.status.paused
               : status ===
                   "completed"
-                ? "已完成"
-                : "准备开始"}
+                ? focusText.status.completed
+                : focusText.status.ready}
       </p>
 
       <h1 className="mt-3 max-w-lg text-center text-2xl font-semibold">
@@ -2240,10 +2231,11 @@ export default function FocusTimer({
 
           <p className="mt-3 text-sm text-ink-faint">
             {targetSeconds
-              ? `已专注 ${formatTime(
-                  currentElapsed
-                )}`
-              : "已专注时间"}
+              ? focusText.focusedFor.replace(
+                  "{time}",
+                  formatTime(currentElapsed)
+                )
+              : focusText.focusedTime}
           </p>
         </div>
       </div>
@@ -2254,12 +2246,11 @@ export default function FocusTimer({
       {timeUp && (
         <div className="mt-7 w-full max-w-sm rounded-2xl border border-sage-100 bg-sage-50 px-5 py-5 text-center">
           <p className="font-medium text-sage-700">
-            时间到啦
+            {focusText.timeUpTitle}
           </p>
 
           <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-            可以再继续一会儿，
-            也可以结束这项任务。
+            {focusText.timeUpHint}
           </p>
 
           <div className="mt-5 flex justify-center gap-3">
@@ -2271,7 +2262,7 @@ export default function FocusTimer({
               disabled={busy}
               className="rounded-xl bg-sage-100 px-4 py-2.5 text-sm font-medium text-sage-700 transition hover:bg-sage-300/60"
             >
-              继续专注
+              {focusText.continueFocus}
             </button>
 
             <button
@@ -2282,7 +2273,7 @@ export default function FocusTimer({
               disabled={busy}
               className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
             >
-              完成任务
+              {focusText.complete}任务
             </button>
           </div>
         </div>
@@ -2302,7 +2293,7 @@ export default function FocusTimer({
               }
               disabled={busy}
               className="flex h-14 w-14 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-amber-700 shadow-soft transition hover:bg-amber-100"
-              title="暂停"
+              title={focusText.pause}
             >
               <Pause className="h-5 w-5" />
             </button>
@@ -2318,7 +2309,7 @@ export default function FocusTimer({
                   "completed"
               }
               className="flex h-14 w-14 items-center justify-center rounded-full bg-sage-100 text-sage-700 shadow-soft transition hover:bg-sage-300/70"
-              title="开始 / 继续"
+              title={focusText.startOrContinue}
             >
               <Play className="ml-0.5 h-5 w-5 fill-current" />
             </button>
@@ -2331,7 +2322,7 @@ export default function FocusTimer({
             }
             disabled={busy}
             className="flex h-16 w-16 items-center justify-center rounded-full bg-blush-100 text-blush-500 shadow-soft transition hover:bg-blush-50"
-            title="完成任务"
+            title={focusText.completeTask}
           >
             <Square className="h-5 w-5 fill-current" />
           </button>
@@ -2343,7 +2334,7 @@ export default function FocusTimer({
             }
             disabled={busy}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-mist-100 text-mist-500 shadow-soft transition hover:bg-mist-50"
-            title="重置"
+            title={focusText.reset}
           >
             <RotateCcw className="h-5 w-5" />
           </button>
@@ -2368,13 +2359,13 @@ export default function FocusTimer({
               }}
               className="text-xs text-ink-faint underline decoration-line underline-offset-4 transition hover:text-sage-700"
             >
-              打开迷你专注窗口
+              {focusText.openMini}
             </button>
           )}
 
           {floatingOpen && (
             <p className="text-xs text-sage-700">
-              迷你专注窗口已开启
+              {focusText.miniOpened}
             </p>
           )}
 
@@ -2398,7 +2389,7 @@ export default function FocusTimer({
           }
           className="btn-ghost text-sm"
         >
-          ← 返回今天
+          ← {focusText.backToToday}
         </button>
       </div>
     </div>
