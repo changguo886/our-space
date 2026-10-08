@@ -3,6 +3,7 @@ import { requireGroup } from "@/lib/session";
 import Nav from "@/components/Nav";
 import TimezoneSync from "@/components/TimezoneSync";
 import SpaceSelector from "@/components/SpaceSelector";
+import GlobalReminderProvider from "@/components/GlobalReminderProvider";
 
 export default async function AppLayout({
   children,
@@ -18,6 +19,10 @@ export default async function AppLayout({
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[1440px]">
       <Nav />
+
+      <GlobalReminderProvider
+        userId={profile.id}
+      />
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-10 lg:px-10">
         <SpaceSelector
