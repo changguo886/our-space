@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -17,28 +18,12 @@ type Category =
 
 const CATEGORIES: {
   value: Category;
-  label: string;
 }[] = [
-  {
-    value: "work",
-    label: "工作",
-  },
-  {
-    value: "study",
-    label: "学习",
-  },
-  {
-    value: "life",
-    label: "生活",
-  },
-  {
-    value: "rest",
-    label: "休息",
-  },
-  {
-    value: "other",
-    label: "其他",
-  },
+  { value: "work" },
+  { value: "study" },
+  { value: "life" },
+  { value: "rest" },
+  { value: "other" },
 ];
 
 export default function AddTodoForm({
@@ -53,6 +38,8 @@ export default function AddTodoForm({
   taskDate: string;
 }) {
   const router = useRouter();
+  const { dictionary } = useI18n();
+  const t = dictionary.todo;
 
   const [title, setTitle] =
     useState("");
@@ -115,7 +102,7 @@ export default function AddTodoForm({
 
     if (!cleanTitle) {
       setError(
-        "请输入任务名称。"
+        t.noTitle
       );
       return;
     }
@@ -133,7 +120,7 @@ export default function AddTodoForm({
       )
     ) {
       setError(
-        "预计时间需要是大于 0 的数字。"
+        t.invalidDuration
       );
       return;
     }
@@ -190,7 +177,7 @@ export default function AddTodoForm({
 
     if (error) {
       setError(
-        "添加失败：" +
+        t.addFailed +
           error.message
       );
       return;
@@ -222,12 +209,12 @@ export default function AddTodoForm({
       {/* 任务名称 */}
       <div>
         <label className="mb-1.5 block text-xs text-ink-faint">
-          任务
+          {t.task}
         </label>
 
         <input
           className="input"
-          placeholder="想做什么？"
+          placeholder={t.taskPlaceholder}
           value={title}
           onChange={(e) =>
             setTitle(
@@ -241,12 +228,12 @@ export default function AddTodoForm({
       {/* 任务细节 */}
       <div>
         <label className="mb-1.5 block text-xs text-ink-faint">
-          任务细节
+          {t.taskDetails}
         </label>
 
         <textarea
           className="input min-h-[96px] w-full resize-y"
-          placeholder="比如：要做到什么程度、重点看什么、需要注意什么……"
+          placeholder={t.detailsPlaceholder}
           value={description}
           onChange={(e) =>
             setDescription(
@@ -257,7 +244,7 @@ export default function AddTodoForm({
         />
 
         <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-          可选。适合写步骤、目标、资料位置或提醒。
+          {t.detailsHelp}
         </p>
       </div>
 
@@ -265,7 +252,7 @@ export default function AddTodoForm({
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-xs text-ink-faint">
-            分类
+            {t.category}
           </label>
 
           {category && (
@@ -276,7 +263,7 @@ export default function AddTodoForm({
               }
               className="text-[11px] text-ink-faint transition hover:text-ink-soft"
             >
-              清除
+              {dictionary.common.clear}
             </button>
           )}
         </div>
@@ -319,7 +306,7 @@ export default function AddTodoForm({
                       : "border-line bg-white/70 text-ink-soft hover:bg-white"
                   }`}
                 >
-                  {item.label}
+                  {t.categories[item.value]}
                 </button>
               );
             }
@@ -331,12 +318,12 @@ export default function AddTodoForm({
       {category === "other" && (
         <div>
           <label className="mb-1.5 block text-xs text-ink-faint">
-            自定义标签
+            {t.customTag}
           </label>
 
           <input
             className="input"
-            placeholder="比如：健身 / 创作 / 社交"
+            placeholder={t.customTagPlaceholder}
             value={customTag}
             onChange={(e) =>
               setCustomTag(
@@ -351,7 +338,7 @@ export default function AddTodoForm({
       {/* 预计时间 */}
       <div>
         <label className="mb-1.5 block text-xs text-ink-faint">
-          预计时间
+          {t.estimatedTime}
         </label>
 
         <DurationInput
@@ -367,14 +354,14 @@ export default function AddTodoForm({
         />
 
         <p className="mt-1.5 text-[11px] text-ink-faint">
-          只改变输入方式；保存到数据库时仍统一换算成分钟。
+          {t.durationHelp}
         </p>
       </div>
 
       {/* 可见范围 */}
       <div>
         <label className="mb-1.5 block text-xs text-ink-faint">
-          可见范围
+          {t.visibility}
         </label>
 
         <select
@@ -390,12 +377,11 @@ export default function AddTodoForm({
           disabled={busy}
         >
           <option value="private">
-            仅自己可见
+            {t.privateVisibility}
           </option>
 
           <option value="space">
-            分享到{" "}
-            {activeSpaceName}
+            {t.shareToSpace.replace("{space}", activeSpaceName)}
           </option>
         </select>
       </div>
@@ -406,8 +392,8 @@ export default function AddTodoForm({
         disabled={busy}
       >
         {busy
-          ? "添加中…"
-          : "添加任务"}
+          ? t.adding
+          : t.addTask}
       </button>
 
       {error && (
