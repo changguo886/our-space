@@ -49,6 +49,7 @@ import DurationInput, {
 } from "@/components/DurationInput";
 import TodoSubtasks from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
+import { useI18n } from "@/components/I18nProvider";
 
 /* =========================================================
    Types
@@ -130,17 +131,14 @@ const TIMELINE_TOP_PADDING = 20;
 const TIMELINE_BOTTOM_SPACE = 28;
 const DEFAULT_SESSION_MINUTES = 30;
 
-const REMINDER_OPTIONS: {
-  value: number | null;
-  label: string;
-}[] = [
-  { value: null, label: "不提醒" },
-  { value: 0, label: "开始时" },
-  { value: 5, label: "提前 5 分钟" },
-  { value: 10, label: "提前 10 分钟" },
-  { value: 15, label: "提前 15 分钟" },
-  { value: 30, label: "提前 30 分钟" },
-  { value: 60, label: "提前 1 小时" },
+const REMINDER_OPTIONS: (number | null)[] = [
+  null,
+  0,
+  5,
+  10,
+  15,
+  30,
+  60,
 ];
 
 /* =========================================================
@@ -150,7 +148,6 @@ const REMINDER_OPTIONS: {
 const CATEGORY_INFO: Record<
   Category,
   {
-    label: string;
     card: string;
     badge: string;
     selected: string;
@@ -158,35 +155,30 @@ const CATEGORY_INFO: Record<
   }
 > = {
   work: {
-    label: "工作",
     card: "border-mist-100 bg-mist-50",
     badge: "bg-mist-100 text-mist-500",
     selected: "border-mist-500 bg-mist-100 text-mist-500",
     drop: "bg-mist-50",
   },
   study: {
-    label: "学习",
     card: "border-sage-100 bg-sage-50",
     badge: "bg-sage-100 text-sage-700",
     selected: "border-sage-500 bg-sage-100 text-sage-700",
     drop: "bg-sage-50",
   },
   life: {
-    label: "生活",
     card: "border-amber-100 bg-amber-50/70",
     badge: "bg-amber-50 text-amber-700",
     selected: "border-amber-300 bg-amber-50 text-amber-700",
     drop: "bg-amber-50",
   },
   rest: {
-    label: "休息",
     card: "border-blush-100 bg-blush-50",
     badge: "bg-blush-100 text-blush-500",
     selected: "border-blush-500 bg-blush-100 text-blush-500",
     drop: "bg-blush-50",
   },
   other: {
-    label: "其他",
     card: "border-line bg-black/[0.018]",
     badge: "bg-black/[0.04] text-ink-soft",
     selected: "border-ink-faint bg-black/[0.04] text-ink-soft",
@@ -194,10 +186,14 @@ const CATEGORY_INFO: Record<
   },
 };
 
-function categoryOf(todo: CalendarTodo) {
+function categoryOf(
+  todo: CalendarTodo,
+  labels: Record<Category, string>,
+  unclassified: string
+) {
   if (!todo.category) {
     return {
-      label: "未分类",
+      label: unclassified,
       card: "border-line bg-white",
       badge: "bg-black/[0.04] text-ink-faint",
       selected: "border-line bg-white text-ink-soft",
@@ -212,7 +208,7 @@ function categoryOf(todo: CalendarTodo) {
     label:
       todo.category === "other" && todo.custom_tag?.trim()
         ? todo.custom_tag.trim()
-        : base.label,
+        : labels[todo.category],
   };
 }
 
@@ -231,14 +227,20 @@ function addDays(dateString: string, amount: number) {
   return `${y}-${m}-${d}`;
 }
 
-function formatDateTitle(dateString: string) {
+function formatDateTitle(
+  dateString: string,
+  language: "zh-CN" | "en"
+) {
   const [year, month, day] = dateString.split("-").map(Number);
 
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  }).format(new Date(year, month - 1, day));
+  return new Intl.DateTimeFormat(
+    language,
+    {
+      month: language === "zh-CN" ? "long" : "short",
+      day: "numeric",
+      weekday: language === "zh-CN" ? "long" : "short",
+    }
+  ).format(new Date(year, month - 1, day));
 }
 
 function localDatePart(iso: string) {
@@ -275,19 +277,34 @@ function makeLocalDate(
   return new Date(year, month - 1, day, hour, minute, 0, 0);
 }
 
-function formatMinutes(minutes: number) {
+function formatMinutes(
+  minutes: number,
+  language: "zh-CN" | "en"
+) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
 
+  if (language === "zh-CN") {
+    if (hours > 0 && mins > 0) {
+      return `${hours} 小时 ${mins} 分钟`;
+    }
+
+    if (hours > 0) {
+      return `${hours} 小时`;
+    }
+
+    return `${mins} 分钟`;
+  }
+
   if (hours > 0 && mins > 0) {
-    return `${hours} 小时 ${mins} 分钟`;
+    return `${hours}h ${mins}m`;
   }
 
   if (hours > 0) {
-    return `${hours} 小时`;
+    return `${hours}h`;
   }
 
-  return `${mins} 分钟`;
+  return `${mins}m`;
 }
 
 function snapMinutes(minutes: number) {
@@ -657,11 +674,19 @@ function PoolTask({
   todo: CalendarTodo;
   nowMs: number;
 }) {
+  const { dictionary, language } = useI18n();
+  const cal = dictionary.calendar;
+  const todoText = dictionary.todo;
+
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `todo:${todo.id}`,
   });
 
-  const category = categoryOf(todo);
+  const category = categoryOf(
+    todo,
+    todoText.categories,
+    cal.unclassified
+  );
   const scheduled = activeScheduledMinutes(todo, nowMs);
   const remaining =
     remainingPlannableMinutes(todo, nowMs);
@@ -717,17 +742,37 @@ function PoolTask({
         </div>
 
         <p className="mt-1 text-[11px] text-ink-faint">
-          有效已安排 {formatMinutes(scheduled)}
+          {cal.activeScheduled.replace(
+            "{duration}",
+            formatMinutes(scheduled, language)
+          )}
           {overplanned > 0 ? (
-            <> · 多安排 {formatMinutes(overplanned)}</>
+            <>
+              {" · "}
+              {cal.overplanned.replace(
+                "{duration}",
+                formatMinutes(overplanned, language)
+              )}
+            </>
           ) : (
-            remaining !== null && <> · 剩余 {formatMinutes(remaining)}</>
+            remaining !== null && (
+              <>
+                {" · "}
+                {cal.remaining.replace(
+                  "{duration}",
+                  formatMinutes(remaining, language)
+                )}
+              </>
+            )
           )}
         </p>
 
         {expiredCount > 0 && (
           <p className="mt-1 text-[10px] text-amber-700">
-            {expiredCount} 个过期排期已保留为历史，不占用当前计划额度
+            {cal.expiredSessions.replace(
+              "{count}",
+              String(expiredCount)
+            )}
           </p>
         )}
       </div>
@@ -746,7 +791,13 @@ function DragPreview({
   todo: CalendarTodo;
   durationMinutes: number;
 }) {
-  const category = categoryOf(todo);
+  const { dictionary, language } = useI18n();
+  const cal = dictionary.calendar;
+  const category = categoryOf(
+    todo,
+    dictionary.todo.categories,
+    cal.unclassified
+  );
 
   return (
     <div
@@ -766,7 +817,10 @@ function DragPreview({
       </div>
 
       <p className="mt-1 text-[11px] text-ink-faint">
-        本次安排 {formatMinutes(durationMinutes)}
+        {cal.thisPlan.replace(
+          "{duration}",
+          formatMinutes(durationMinutes, language)
+        )}
       </p>
     </div>
   );
@@ -789,7 +843,14 @@ function CalendarSlot({
     id: slot.id,
   });
 
-  const category = activeTodo ? categoryOf(activeTodo) : null;
+  const { dictionary } = useI18n();
+  const category = activeTodo
+    ? categoryOf(
+        activeTodo,
+        dictionary.todo.categories,
+        dictionary.calendar.unclassified
+      )
+    : null;
   const previewStart = makeLocalDate(slot.date, slot.hour, slot.minute);
   const previewEnd = new Date(
     previewStart.getTime() + activeDurationMinutes * 60000
@@ -865,12 +926,19 @@ function ScheduledSession({
     newEnd: string
   ) => void;
 }) {
+  const { dictionary } = useI18n();
+  const cal = dictionary.calendar;
+
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `session:${session.id}`,
   });
 
   const [previewEnd, setPreviewEnd] = useState<string | null>(null);
-  const category = categoryOf(todo);
+  const category = categoryOf(
+    todo,
+    dictionary.todo.categories,
+    cal.unclassified
+  );
   const start = new Date(session.scheduled_start);
   const effectiveEnd = previewEnd ?? session.scheduled_end;
 
@@ -969,7 +1037,7 @@ function ScheduledSession({
             onClick={(event) => event.stopPropagation()}
             style={{ touchAction: "none" }}
             className="mt-0.5 shrink-0 cursor-grab rounded-md p-0.5 text-ink-faint/40 hover:bg-black/[0.03] active:cursor-grabbing"
-            title="拖动这个时间段"
+            title={cal.dragSession}
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
@@ -988,14 +1056,14 @@ function ScheduledSession({
                 {starting && (
                   <span className="flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[9px] text-sage-700">
                     <LoaderCircle className="h-2.5 w-2.5 animate-spin" />
-                    启动中
+                    {cal.starting}
                   </span>
                 )}
 
                 {!starting && running && (
                   <span className="flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[9px] text-sage-700">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sage-500" />
-                    专注中
+                    {cal.focusing}
                   </span>
                 )}
 
@@ -1026,7 +1094,7 @@ function ScheduledSession({
         {saving && (
           <div className="absolute bottom-2 right-3 flex items-center gap-1 text-[9px] text-ink-faint">
             <LoaderCircle className="h-2.5 w-2.5 animate-spin" />
-            保存中
+            {cal.saving}
           </div>
         )}
 
@@ -1036,7 +1104,7 @@ function ScheduledSession({
             onPointerDown={beginResize}
             onClick={(event) => event.stopPropagation()}
             className="absolute bottom-0 left-1/2 flex h-3 w-16 -translate-x-1/2 cursor-ns-resize items-center justify-center rounded-t-md text-ink-faint/35 hover:bg-black/[0.035] hover:text-ink-faint"
-            title="拖动修改结束时间"
+            title={cal.resizeSession}
           >
             <GripHorizontal className="h-3.5 w-3.5" />
           </button>
@@ -1061,6 +1129,8 @@ function QuietHoursBand({
   nowMinutes: number | null;
   onExpand: () => void;
 }) {
+  const { dictionary } = useI18n();
+  const cal = dictionary.calendar;
   const hours = endHour - startHour;
 
   if (hours <= 0) {
@@ -1077,17 +1147,22 @@ function QuietHoursBand({
       type="button"
       onClick={onExpand}
       className="group flex w-full items-center gap-3 border-y border-line/60 bg-paper/55 px-4 py-2.5 text-left transition hover:bg-sage-50/55"
-      title="展开这段时间，查看完整 24 小时"
+      title={cal.expandHiddenHours}
     >
       <span className="h-px flex-1 bg-line" />
 
       <span className="flex shrink-0 items-center gap-2 rounded-full border border-line/70 bg-white/70 px-3 py-1 text-[10px] text-ink-faint shadow-sm transition group-hover:border-sage-200 group-hover:text-sage-700">
         <ChevronDown className="h-3 w-3" />
         {formatClockMinutes(startHour * 60)} – {formatClockMinutes(endHour * 60)}
-        <span>· 已收起 {hours} 小时</span>
+        <span>
+          · {cal.hiddenHours.replace(
+            "{hours}",
+            String(hours)
+          )}
+        </span>
         {includesNow && (
           <span className="ml-1 rounded-full bg-sage-100 px-1.5 py-0.5 font-medium text-sage-700">
-            现在 · {formatClockMinutes(nowMinutes)}
+            {cal.now} · {formatClockMinutes(nowMinutes)}
           </span>
         )}
       </span>
@@ -1137,6 +1212,20 @@ export default function CalendarPlanner({
   initialDate,
 }: Props) {
   const router = useRouter();
+  const { dictionary, language } = useI18n();
+  const cal = dictionary.calendar;
+  const todoText = dictionary.todo;
+  const common = dictionary.common;
+
+  const reminderOptions = [
+    { value: null, label: cal.reminderOptions.none },
+    { value: 0, label: cal.reminderOptions.atStart },
+    { value: 5, label: cal.reminderOptions.min5 },
+    { value: 10, label: cal.reminderOptions.min10 },
+    { value: 15, label: cal.reminderOptions.min15 },
+    { value: 30, label: cal.reminderOptions.min30 },
+    { value: 60, label: cal.reminderOptions.hour1 },
+  ];
 
   const [todos, setTodos] = useState<CalendarTodo[]>(initialTodos);
   const [selectedDate, setSelectedDate] = useState(initialDate);
@@ -1949,14 +2038,14 @@ export default function CalendarPlanner({
         <header className="mb-5 flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold">日历</h1>
+              <h1 className="text-2xl font-semibold">{cal.title}</h1>
               <span className="rounded-full bg-sage-50 px-2 py-1 text-[10px] font-medium text-sage-700">
-                V3 · 全天智能时间轴
+                {cal.badge}
               </span>
             </div>
 
             <p className="mt-1 text-sm text-ink-faint">
-              按自己的节奏安排一天，空闲时段会自动收起。
+              {cal.description}
             </p>
           </div>
 
@@ -1968,7 +2057,7 @@ export default function CalendarPlanner({
                   onClick={() => setShowFullDay(true)}
                   className="rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50"
                 >
-                  显示 24 小时
+                  {cal.show24Hours}
                 </button>
               )}
 
@@ -1978,7 +2067,7 @@ export default function CalendarPlanner({
                 onClick={() => setShowFullDay(false)}
                 className="rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50"
               >
-                恢复精简视图
+                {cal.compactView}
               </button>
             )}
 
@@ -1986,7 +2075,7 @@ export default function CalendarPlanner({
               type="button"
               className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
               onClick={() => setSelectedDate(addDays(selectedDate, -1))}
-              aria-label="前一天"
+              aria-label={cal.previousDay}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -1999,14 +2088,14 @@ export default function CalendarPlanner({
                 setSelectedDate(initialDate);
               }}
             >
-              今天
+              {cal.today}
             </button>
 
             <button
               type="button"
               className="btn-ghost flex h-9 w-9 items-center justify-center p-0"
               onClick={() => setSelectedDate(addDays(selectedDate, 1))}
-              aria-label="后一天"
+              aria-label={cal.nextDay}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -2019,7 +2108,7 @@ export default function CalendarPlanner({
             <button
               type="button"
               onClick={() => setError(null)}
-              aria-label="关闭错误提示"
+              aria-label={cal.closeError}
             >
               <X className="h-4 w-4" />
             </button>
@@ -2034,21 +2123,21 @@ export default function CalendarPlanner({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-medium">任务池</h2>
+                  <h2 className="font-medium">{cal.taskPool}</h2>
                   <span className="rounded-full bg-sage-50 px-2 py-0.5 text-[10px] text-sage-700">
-                    {poolTodos.length} 待安排
+                    {cal.waitingCount.replace("{count}", String(poolTodos.length))}
                   </span>
                 </div>
 
                 <p className="mt-1 text-xs leading-5 text-ink-faint">
-                  拖到时间轴安排一段工作时间；未排完的任务会继续留在这里。
+                  {cal.poolDescription}
                 </p>
               </div>
 
               <Link
                 href="/todo"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage-100 text-sage-700 transition hover:bg-sage-300/50"
-                aria-label="新建任务"
+                aria-label={cal.addTask}
               >
                 <Plus className="h-4 w-4" />
               </Link>
@@ -2058,10 +2147,10 @@ export default function CalendarPlanner({
               {poolTodos.length === 0 && (
                 <div className="rounded-2xl bg-sage-50 px-4 py-6 text-center">
                   <p className="text-sm text-ink-soft">
-                    需要安排的任务都已经放进日历了
+                    {cal.poolEmpty}
                   </p>
                   <p className="mt-1 text-xs text-ink-faint">
-                    可以继续调整时间，也可以开始专注。
+                    {cal.poolEmptyHint}
                   </p>
                 </div>
               )}
@@ -2074,7 +2163,7 @@ export default function CalendarPlanner({
             {fullyPlannedTodos.length > 0 && (
               <details className="mt-4 border-t border-line pt-3">
                 <summary className="cursor-pointer select-none text-[11px] text-ink-faint transition hover:text-ink-soft">
-                  已排满 {fullyPlannedTodos.length} 个任务
+                  {cal.fullyPlanned.replace("{count}", String(fullyPlannedTodos.length))}
                 </summary>
 
                 <div className="mt-3 space-y-2">
@@ -2088,7 +2177,7 @@ export default function CalendarPlanner({
                 </div>
 
                 <p className="mt-2 text-[10px] leading-4 text-ink-faint">
-                  仍可继续拖动；超出预计时间只提示，不阻止排期。
+                  {cal.fullyPlannedHint}
                 </p>
               </details>
             )}
@@ -2100,14 +2189,17 @@ export default function CalendarPlanner({
           <section className="card min-w-0 overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
               <div>
-                <p className="font-medium">{formatDateTitle(selectedDate)}</p>
+                <p className="font-medium">{formatDateTitle(selectedDate, language)}</p>
                 <p className="mt-1 text-xs text-ink-faint">
-                  {scheduledSessions.length} 个时间段
+                  {cal.sessionCount.replace("{count}", String(scheduledSessions.length))}
                   {scheduledSessions.length > 0 && (
                     <>
                       {" · "}
                       {new Set(scheduledSessions.map(({ todo }) => todo.id)).size}{" "}
-                      个任务
+                      {cal.taskCount.replace(
+                        "{count}",
+                        String(new Set(scheduledSessions.map(({ todo }) => todo.id)).size)
+                      )}
                     </>
                   )}
                 </p>
@@ -2116,14 +2208,14 @@ export default function CalendarPlanner({
               <div className="flex items-center gap-2">
                 {!showFullDay && (
                   <span className="hidden rounded-full bg-black/[0.035] px-3 py-1.5 text-[10px] text-ink-faint sm:block">
-                    今天主要时段 · {String(visibleStartHour).padStart(2, "0")}:00–
+                    {cal.today}主要时段 · {String(visibleStartHour).padStart(2, "0")}:00–
                     {String(visibleEndHour).padStart(2, "0")}:00
                   </span>
                 )}
 
                 {activeTodo && (
                   <span className="hidden rounded-full bg-sage-50 px-3 py-1.5 text-xs text-sage-700 sm:block">
-                    松手后立即落位
+                    {cal.dropToPlace}
                   </span>
                 )}
               </div>
@@ -2198,7 +2290,7 @@ export default function CalendarPlanner({
                       <span className="h-[2.5px] flex-1 rounded-full bg-[#7f967a]" />
                       <span className="ml-2 mr-3 inline-flex shrink-0 items-center rounded-full bg-[#3f473f] px-3 py-1.5 text-[11px] font-semibold tabular-nums tracking-[0.02em] text-white shadow-[0_4px_14px_rgba(63,71,63,0.28)] ring-1 ring-black/5">
                         {currentTimeInfo.label}
-                        <span className="ml-1.5 text-white/80">现在</span>
+                        <span className="ml-1.5 text-white/80">{cal.now}</span>
                       </span>
                     </div>
                   )}
@@ -2242,7 +2334,7 @@ export default function CalendarPlanner({
             {busyId && (
               <div className="flex items-center justify-end gap-1.5 border-t border-line bg-paper/60 px-5 py-2 text-[10px] text-ink-faint">
                 <LoaderCircle className="h-3 w-3 animate-spin" />
-                后台保存中…
+                {cal.backgroundSaving}
               </div>
             )}
           </section>
@@ -2264,10 +2356,16 @@ export default function CalendarPlanner({
 
                     <span
                       className={`rounded-full px-2 py-0.5 text-[9px] ${categoryOf(
-                        selectedSessionInfo.todo
+                        selectedSessionInfo.todo,
+                        todoText.categories,
+                        cal.unclassified
                       ).badge}`}
                     >
-                      {categoryOf(selectedSessionInfo.todo).label}
+                      {categoryOf(
+                        selectedSessionInfo.todo,
+                        todoText.categories,
+                        cal.unclassified
+                      ).label}
                     </span>
                   </div>
 
@@ -2285,7 +2383,7 @@ export default function CalendarPlanner({
                     setEditingTodoId(null);
                   }}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ink-faint transition hover:bg-paper hover:text-ink"
-                  aria-label="关闭任务详情"
+                  aria-label={cal.closeDetails}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -2297,7 +2395,7 @@ export default function CalendarPlanner({
                   icon={<Clock3 className="h-3.5 w-3.5" />}
                   onClick={() => setContextTab("overview")}
                 >
-                  概览
+                  {cal.overview}
                 </ContextTabButton>
 
                 <ContextTabButton
@@ -2305,7 +2403,7 @@ export default function CalendarPlanner({
                   icon={<ListChecks className="h-3.5 w-3.5" />}
                   onClick={() => setContextTab("steps")}
                 >
-                  步骤
+                  {cal.steps}
                 </ContextTabButton>
 
                 <ContextTabButton
@@ -2313,7 +2411,7 @@ export default function CalendarPlanner({
                   icon={<FileText className="h-3.5 w-3.5" />}
                   onClick={() => setContextTab("notes")}
                 >
-                  笔记
+                  {cal.notes}
                 </ContextTabButton>
               </div>
 
@@ -2326,9 +2424,9 @@ export default function CalendarPlanner({
                     {editingTodoId === selectedSessionInfo.todo.id ? (
                       <div className="space-y-4">
                         <div>
-                          <p className="text-sm font-medium">编辑任务</p>
+                          <p className="text-sm font-medium">{cal.editTask}</p>
                           <p className="mt-1 text-[11px] leading-4 text-ink-faint">
-                            这里只编辑任务本身。时间段继续通过时间轴拖动或拉伸调整。
+                            {cal.editTaskHint}
                           </p>
                         </div>
 
@@ -2336,7 +2434,7 @@ export default function CalendarPlanner({
                           value={editTitle}
                           onChange={(event) => setEditTitle(event.target.value)}
                           className="input w-full"
-                          placeholder="任务名称"
+                          placeholder={todoText.taskName}
                         />
 
                         <div className="flex flex-wrap gap-2">
@@ -2356,7 +2454,7 @@ export default function CalendarPlanner({
                                       : "border-line bg-white text-ink-soft"
                                   }`}
                                 >
-                                  {info.label}
+                                  {todoText.categories[category]}
                                 </button>
                               );
                             }
@@ -2370,13 +2468,13 @@ export default function CalendarPlanner({
                               setEditCustomTag(event.target.value)
                             }
                             className="input w-full"
-                            placeholder="自定义类别"
+                            placeholder={cal.customCategory}
                           />
                         )}
 
                         <div>
                           <span className="mb-1 block text-xs text-ink-faint">
-                            预计时间
+                            {todoText.estimatedTime}
                           </span>
 
                           <DurationInput
@@ -2397,7 +2495,7 @@ export default function CalendarPlanner({
                             onClick={cancelEditing}
                             className="btn-ghost"
                           >
-                            取消
+                            {common.cancel}
                           </button>
 
                           <button
@@ -2411,7 +2509,7 @@ export default function CalendarPlanner({
                             ) : (
                               <Save className="h-4 w-4" />
                             )}
-                            保存
+                            {common.save}
                           </button>
                         </div>
                       </div>
@@ -2420,7 +2518,7 @@ export default function CalendarPlanner({
                         {selectedSessionInfo.todo.description && (
                           <div className="rounded-2xl bg-paper/70 px-4 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
-                              任务说明
+                              {cal.taskDescription}
                             </p>
                             <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-ink-soft">
                               {selectedSessionInfo.todo.description}
@@ -2430,21 +2528,23 @@ export default function CalendarPlanner({
 
                         <div className="grid grid-cols-2 gap-2">
                           <div className="rounded-2xl border border-line/70 bg-white/60 p-3">
-                            <p className="text-[10px] text-ink-faint">本次安排</p>
+                            <p className="text-[10px] text-ink-faint">{cal.currentSession}</p>
                             <p className="mt-1 text-lg font-medium text-ink">
                               {formatMinutes(
                                 sessionDurationMinutes(
                                   selectedSessionInfo.session
-                                )
+                                ),
+                                language
                               )}
                             </p>
                           </div>
 
                           <div className="rounded-2xl border border-line/70 bg-white/60 p-3">
-                            <p className="text-[10px] text-ink-faint">历史累计安排</p>
+                            <p className="text-[10px] text-ink-faint">{cal.historicalScheduled}</p>
                             <p className="mt-1 text-lg font-medium text-ink">
                               {formatMinutes(
-                                scheduledMinutes(selectedSessionInfo.todo)
+                                scheduledMinutes(selectedSessionInfo.todo),
+                                language
                               )}
                             </p>
                           </div>
@@ -2456,14 +2556,15 @@ export default function CalendarPlanner({
                         ) !== null && (
                           <div className="rounded-2xl bg-sage-50 px-4 py-3">
                             <p className="text-[10px] text-sage-700/70">
-                              当前待安排
+                              {cal.remainingToPlan}
                             </p>
                             <p className="mt-1 text-sm font-medium text-sage-700">
                               {formatMinutes(
                                 remainingPlannableMinutes(
                                   selectedSessionInfo.todo,
                                   now
-                                ) ?? 0
+                                ) ?? 0,
+                                language
                               )}
                             </p>
                           </div>
@@ -2477,10 +2578,10 @@ export default function CalendarPlanner({
                               <div className="flex items-center justify-between gap-3">
                                 <div>
                                   <p className="text-xs font-medium text-ink-soft">
-                                    提醒
+                                    {cal.reminder}
                                   </p>
                                   <p className="mt-1 text-[10px] leading-4 text-ink-faint">
-                                    提醒会跟随这个时间段一起移动。
+                                    {cal.reminder}会跟随这个时间段一起移动。
                                   </p>
                                 </div>
 
@@ -2535,9 +2636,9 @@ export default function CalendarPlanner({
                                   )
                                 }
                                 className="input mt-3 w-full text-xs"
-                                aria-label="设置提醒时间"
+                                aria-label={cal.reminderAria}
                               >
-                                {REMINDER_OPTIONS.map(
+                                {reminderOptions.map(
                                   (option) => (
                                     <option
                                       key={
@@ -2575,12 +2676,12 @@ export default function CalendarPlanner({
                           )}
 
                           {startingFocusTodoId === selectedSessionInfo.todo.id
-                            ? "打开中…"
+                            ? cal.opening
                             : new Date(
                                   selectedSessionInfo.session.scheduled_start
                                 ).getTime() > Date.now()
-                              ? "提前开始"
-                              : "开始专注"}
+                              ? cal.startEarly
+                              : cal.startFocus}
                         </button>
 
                         <div className="grid grid-cols-2 gap-2">
@@ -2590,7 +2691,7 @@ export default function CalendarPlanner({
                             className="btn-ghost flex items-center justify-center gap-2 text-xs"
                           >
                             <Pencil className="h-3.5 w-3.5" />
-                            编辑
+                            {common.edit}
                           </button>
 
                           <button
@@ -2599,7 +2700,7 @@ export default function CalendarPlanner({
                             className="flex items-center justify-center gap-2 rounded-xl bg-blush-50 px-3 py-2 text-xs font-medium text-blush-500 transition hover:bg-blush-100"
                           >
                             <Check className="h-3.5 w-3.5" />
-                            完成
+                            {todoText.completed}
                           </button>
                         </div>
 
@@ -2614,7 +2715,7 @@ export default function CalendarPlanner({
                           className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          取消这一段排期
+                          {cal.cancelSession}
                         </button>
                       </>
                     )}
