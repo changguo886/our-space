@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/components/I18nProvider";
 
 type Space = {
   id: string;
@@ -17,6 +18,7 @@ export default function SpaceSelector({
   activeSpaceId,
 }: SpaceSelectorProps) {
   const router = useRouter();
+  const { dictionary } = useI18n();
 
   function switchSpace(spaceId: string) {
     // 保存当前选择的 Space，一年后过期
@@ -34,7 +36,7 @@ export default function SpaceSelector({
         htmlFor="space-selector"
         className="mb-2 block text-xs text-ink-faint"
       >
-        当前空间
+        {dictionary.settings.currentSpaceLabel}
       </label>
 
       <select
