@@ -872,7 +872,7 @@ export default function QuickNotes({
                 subtaskId={null}
                 notes={unsortedNotes}
                 subtasks={sortedSubtasks}
-                {q.drag}ging={Boolean(activeNoteId)}
+                dragging={Boolean(activeNoteId)}
                 collapsed={collapsedSections.has(sectionKey(null))}
                 onToggleCollapsed={() => toggleSection(null)}
                 composerOpen={composerSubtaskId === null}
@@ -910,7 +910,7 @@ export default function QuickNotes({
                   subtaskId={subtask.id}
                   notes={notesForSubtask(subtask.id)}
                   subtasks={sortedSubtasks}
-                  {q.drag}ging={Boolean(activeNoteId)}
+                  dragging={Boolean(activeNoteId)}
                   collapsed={collapsedSections.has(sectionKey(subtask.id))}
                   onToggleCollapsed={() => toggleSection(subtask.id)}
                   composerOpen={composerSubtaskId === subtask.id}
@@ -1078,7 +1078,7 @@ function NoteSection({
       <div
         ref={setHeaderDropRef}
         className={`flex min-h-11 items-center gap-2 px-2.5 py-2 transition ${
-          {q.drag}ging && isHeaderOver ? "bg-sage-100/75" : "bg-white/45"
+          dragging && isHeaderOver ? "bg-sage-100/75" : "bg-white/45"
         }`}
       >
         <button
@@ -1178,9 +1178,9 @@ function NoteSection({
           <div
             ref={setEndDropRef}
             className={`mt-2 flex items-center justify-center rounded-xl border border-dashed transition-all ${
-              {q.drag}ging ? "h-10" : "h-1 border-transparent"
+              dragging ? "h-10" : "h-1 border-transparent"
             } ${
-              {q.drag}ging && isEndOver
+              dragging && isEndOver
                 ? "border-sage-400 bg-sage-50 text-sage-700"
                 : dragging
                   ? "border-line/80 bg-white/20 text-ink-faint"
