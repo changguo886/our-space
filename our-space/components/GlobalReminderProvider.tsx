@@ -328,7 +328,10 @@ export default function GlobalReminderProvider({
             60_000
           );
       },
-      [router]
+      [
+        router,
+        preferences,
+      ]
     );
 
   const checkReminders =
