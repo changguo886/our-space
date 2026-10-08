@@ -9,6 +9,9 @@ create table if not exists public.daily_entry_media (
   entry_id    uuid not null references public.daily_entries(id) on delete cascade,
   user_id     uuid not null references public.profiles(id) on delete cascade,
   media_type  text not null check (media_type in ('image', 'video')),
+  section     text not null check (
+    section in ('today_tasks', 'today_note', 'tomorrow_plan')
+  ),
   storage_path text not null unique,
   mime_type   text,
   size_bytes  bigint,
@@ -16,8 +19,27 @@ create table if not exists public.daily_entry_media (
   created_at  timestamptz not null default now()
 );
 
+alter table public.daily_entry_media
+  add column if not exists section text;
+
+update public.daily_entry_media
+set section = 'today_tasks'
+where section is null;
+
+alter table public.daily_entry_media
+  alter column section set not null;
+
+alter table public.daily_entry_media
+  drop constraint if exists daily_entry_media_section_check;
+
+alter table public.daily_entry_media
+  add constraint daily_entry_media_section_check
+  check (
+    section in ('today_tasks', 'today_note', 'tomorrow_plan')
+  );
+
 create index if not exists daily_entry_media_entry_order_idx
-  on public.daily_entry_media (entry_id, sort_order, created_at);
+  on public.daily_entry_media (entry_id, section, sort_order, created_at);
 
 alter table public.daily_entry_media enable row level security;
 
