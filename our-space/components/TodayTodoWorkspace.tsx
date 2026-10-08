@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import QuickNotes from "@/components/QuickNotes";
+import { useI18n } from "@/components/I18nProvider";
 
 import TodoList, {
   type Todo,
@@ -64,10 +65,24 @@ function sameQuickNotesSubtasks(
 export default function TodayTodoWorkspace({
   todayTodos,
   todayCompleted = [],
-  title = "今天",
-  description = "一点一点完成就好。",
+  title,
+  description,
   showProgress = true,
 }: TodayTodoWorkspaceProps) {
+  const { dictionary } =
+    useI18n();
+
+  const todoText =
+    dictionary.todo;
+
+  const resolvedTitle =
+    title ??
+    todoText.todayTitle;
+
+  const resolvedDescription =
+    description ??
+    todoText.todayDescription;
+
   const [
     notesContext,
     setNotesContext,
@@ -199,11 +214,11 @@ export default function TodayTodoWorkspace({
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="font-medium">
-                {title}
+                {resolvedTitle}
               </h2>
 
               <p className="mt-1 text-xs text-ink-faint">
-                {description}
+                {resolvedDescription}
               </p>
             </div>
 
@@ -216,7 +231,7 @@ export default function TodayTodoWorkspace({
                 </p>
 
                 <p className="text-xs text-ink-faint">
-                  已完成
+                  {todoText.progressCompleted}
                 </p>
               </div>
             )}
@@ -240,7 +255,7 @@ export default function TodayTodoWorkspace({
             0 && (
             <div className="mt-5 border-t border-line pt-5">
               <p className="mb-3 text-xs font-medium text-ink-faint">
-                今天完成
+                {todoText.completedToday}
               </p>
 
               <TodoList
