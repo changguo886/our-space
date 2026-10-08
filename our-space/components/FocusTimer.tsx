@@ -40,6 +40,7 @@ type FocusTimerProps = {
     elapsed_seconds: number;
   };
   initialPreferences: UserPreferences;
+  disableFloatingWindow?: boolean;
 };
 
 type CompletionLevel =
@@ -86,6 +87,7 @@ const COMPLETION_LEVELS: {
 export default function FocusTimer({
   todo,
   initialPreferences,
+  disableFloatingWindow = false,
 }: FocusTimerProps) {
   const router = useRouter();
   const { dictionary } = useI18n();
@@ -770,7 +772,10 @@ export default function FocusTimer({
      *
      * 所以一定放在 Supabase await 之前。
      */
-    if (openFloating) {
+    if (
+      openFloating &&
+      !disableFloatingWindow
+    ) {
       void openFloatingTimer();
     }
 
@@ -2348,8 +2353,9 @@ export default function FocusTimer({
        * 如果用户自己 × 掉，
        * 可以在这里重新打开。
        */}
-      {status !==
-        "completed" && (
+      {!disableFloatingWindow &&
+        status !==
+          "completed" && (
         <div className="mt-6 text-center">
           {!floatingOpen && (
             <button
