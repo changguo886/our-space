@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/components/I18nProvider";
+
 export type DurationUnit =
   | "minute"
   | "hour";
@@ -45,6 +47,10 @@ export default function DurationInput({
   onUnitChange,
   disabled = false,
 }: DurationInputProps) {
+  const { dictionary } = useI18n();
+  const common = dictionary.common;
+  const todo = dictionary.todo;
+
   function changeUnit(nextUnit: DurationUnit) {
     if (nextUnit === unit) {
       return;
@@ -71,7 +77,7 @@ export default function DurationInput({
         type="number"
         min={unit === "hour" ? "0.1" : "1"}
         step={unit === "hour" ? "0.25" : "1"}
-        placeholder={unit === "hour" ? "例如 1.5" : "例如 45"}
+        placeholder={unit === "hour" ? "1.5" : "45"}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         disabled={disabled}
@@ -84,10 +90,10 @@ export default function DurationInput({
         }
         disabled={disabled}
         className="border-l border-line bg-paper/60 px-3 text-xs font-medium text-ink-soft outline-none disabled:cursor-not-allowed disabled:opacity-60"
-        aria-label="预计时间单位"
+        aria-label={todo.estimatedTime}
       >
-        <option value="minute">分钟</option>
-        <option value="hour">小时</option>
+        <option value="minute">{common.minutes}</option>
+        <option value="hour">{common.hours}</option>
       </select>
     </div>
   );
