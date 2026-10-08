@@ -200,11 +200,13 @@ export default function PreferencesSettings({
         1600
       );
     } catch (unknownError) {
+      console.error(
+        "Failed to save preferences:",
+        unknownError
+      );
+
       setError(
-        unknownError instanceof
-          Error
-          ? unknownError.message
-          : t.saveFailed
+        t.saveFailed
       );
     } finally {
       setSavingKey(null);
