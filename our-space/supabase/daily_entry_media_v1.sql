@@ -41,6 +41,54 @@ alter table public.daily_entry_media
 create index if not exists daily_entry_media_entry_order_idx
   on public.daily_entry_media (entry_id, section, sort_order, created_at);
 
+-- Database-side guard for the V1 post limit:
+-- either up to 6 images, or exactly 1 video, never mixed.
+create or replace function public.enforce_daily_entry_media_limit()
+returns trigger
+language plpgsql
+set search_path = public
+as $
+declare
+  image_count integer;
+  video_count integer;
+begin
+  -- Serialize media inserts for the same daily entry.
+  perform 1
+  from public.daily_entries
+  where id = new.entry_id
+  for update;
+
+  select
+    count(*) filter (where media_type = 'image'),
+    count(*) filter (where media_type = 'video')
+  into image_count, video_count
+  from public.daily_entry_media
+  where entry_id = new.entry_id;
+
+  if new.media_type = 'image' then
+    if video_count > 0 then
+      raise exception 'images and video cannot be mixed in one daily entry';
+    end if;
+
+    if image_count >= 6 then
+      raise exception 'a daily entry can contain at most 6 images';
+    end if;
+  elsif new.media_type = 'video' then
+    if image_count > 0 or video_count > 0 then
+      raise exception 'a daily entry can contain only 1 video and no images';
+    end if;
+  end if;
+
+  return new;
+end;
+$;
+
+drop trigger if exists daily_entry_media_limit on public.daily_entry_media;
+create trigger daily_entry_media_limit
+  before insert on public.daily_entry_media
+  for each row
+  execute function public.enforce_daily_entry_media_limit();
+
 alter table public.daily_entry_media enable row level security;
 
 drop policy if exists daily_entry_media_select on public.daily_entry_media;
