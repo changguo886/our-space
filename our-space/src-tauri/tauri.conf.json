@@ -10,22 +10,23 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-   "windows": [
-  {
-    "label": "main",
-    "title": "Our Days",
-    "width": 1280,
-    "height": 820,
-    "minWidth": 960,
-    "minHeight": 640,
-    "resizable": true,
-    "fullscreen": false,
-    "center": true
-  }
- ],
+    "windows": [
+      {
+        "label": "main",
+        "title": "Our Days",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
