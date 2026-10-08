@@ -6,6 +6,24 @@ import {
   useState,
 } from "react";
 
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+
+import { CSS } from "@dnd-kit/utilities";
+
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
 
@@ -40,6 +58,131 @@ const buttonBase: React.CSSProperties = {
   cursor: "pointer",
   fontFamily: "inherit",
 };
+
+function SortableMiniStep({
+  subtask,
+  index,
+  current,
+  busy,
+  onToggle,
+}: {
+  subtask: MiniSubtask;
+  index: number;
+  current: boolean;
+  busy: boolean;
+  onToggle: (subtask: MiniSubtask) => void;
+}) {
+  const { dictionary } = useI18n();
+  const mini = dictionary.focus.mini;
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: subtask.id,
+    disabled: busy,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "8px 9px",
+        borderRadius: "10px",
+        background: isDragging
+          ? "#F0F5EE"
+          : current
+            ? "#F7FAF6"
+            : "#FFFFFF",
+        border: current
+          ? "1px solid #DDE8D8"
+          : "1px solid #F0EEE9",
+        color: subtask.completed
+          ? "#A1A59F"
+          : "#4A5048",
+        opacity: isDragging ? 0.78 : 1,
+        boxShadow: isDragging
+          ? "0 8px 24px rgba(60,50,40,0.10)"
+          : "none",
+      }}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        disabled={busy}
+        title={mini.reorder}
+        aria-label={mini.reorder}
+        style={{
+          ...buttonBase,
+          width: "24px",
+          flex: "0 0 auto",
+          padding: 0,
+          background: "transparent",
+          color: current ? "#597356" : "#A1A59F",
+          fontSize: "9px",
+          fontWeight: 700,
+          cursor: busy ? "default" : "grab",
+          touchAction: "none",
+        }}
+      >
+        {String(index + 1).padStart(2, "0")}
+      </button>
+
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => onToggle(subtask)}
+        style={{
+          ...buttonBase,
+          width: "15px",
+          height: "15px",
+          flex: "0 0 auto",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+          borderRadius: "999px",
+          border: subtask.completed
+            ? "1px solid #93AC8A"
+            : "1px solid #BCC0BA",
+          background: subtask.completed
+            ? "#E9F1E7"
+            : "transparent",
+          color: "#597356",
+          fontSize: "9px",
+        }}
+      >
+        {subtask.completed ? "✓" : ""}
+      </button>
+
+      <span
+        style={{
+          minWidth: 0,
+          flex: 1,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          textDecoration: subtask.completed
+            ? "line-through"
+            : "none",
+          fontSize: "10px",
+        }}
+      >
+        {subtask.title}
+      </span>
+    </div>
+  );
+}
 
 export default function MiniFocusWorkspace({
   todoId,
@@ -93,6 +236,14 @@ export default function MiniFocusWorkspace({
     setDraft,
   ] =
     useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
 
   useEffect(() => {
     let cancelled =
@@ -324,6 +475,81 @@ export default function MiniFocusWorkspace({
                   unknownError
                 )
           )
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleStepDragEnd(
+    event: DragEndEvent
+  ) {
+    const { active, over } = event;
+
+    if (
+      !over ||
+      active.id === over.id ||
+      busy
+    ) {
+      return;
+    }
+
+    const oldIndex = subtasks.findIndex(
+      (item) => item.id === active.id
+    );
+    const newIndex = subtasks.findIndex(
+      (item) => item.id === over.id
+    );
+
+    if (
+      oldIndex < 0 ||
+      newIndex < 0
+    ) {
+      return;
+    }
+
+    const previous = subtasks;
+    const reordered = arrayMove(
+      previous,
+      oldIndex,
+      newIndex
+    ).map((item, index) => ({
+      ...item,
+      sort_order: index,
+    }));
+
+    setSubtasks(reordered);
+    setBusy(true);
+    setError(null);
+
+    try {
+      const supabase = createClient();
+      const results = await Promise.all(
+        reordered.map((item) =>
+          supabase
+            .from("todo_subtasks")
+            .update({
+              sort_order: item.sort_order,
+            })
+            .eq("id", item.id)
+        )
+      );
+
+      const updateError = results.find(
+        (result) => result.error
+      )?.error;
+
+      if (updateError) {
+        setSubtasks(previous);
+        setError(
+          mini.saveOrderFailed +
+            updateError.message
+        );
+      }
+    } catch {
+      setSubtasks(previous);
+      setError(
+        mini.saveOrderFailedShort
       );
     } finally {
       setBusy(false);
@@ -577,126 +803,44 @@ export default function MiniFocusWorkspace({
                 {mini.noSteps}
               </div>
             ) : (
-              subtasks.map(
-                (
-                  subtask,
-                  index
-                ) => {
-                  const current =
-                    currentSubtask
-                      ?.id ===
-                    subtask.id;
-
-                  return (
-                    <button
-                      key={
-                        subtask.id
-                      }
-                      type="button"
-                      disabled={
-                        busy
-                      }
-                      onClick={() =>
-                        void toggleSubtask(
-                          subtask
-                        )
-                      }
-                      style={{
-                        ...buttonBase,
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 9px",
-                        borderRadius: "10px",
-                        background:
-                          current
-                            ? "#F7FAF6"
-                            : "#FFFFFF",
-                        border:
-                          current
-                            ? "1px solid #DDE8D8"
-                            : "1px solid #F0EEE9",
-                        color:
-                          subtask.completed
-                            ? "#A1A59F"
-                            : "#4A5048",
-                        textAlign: "left",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: "24px",
-                          flex: "0 0 auto",
-                          fontSize: "9px",
-                          fontWeight: 700,
-                          color:
-                            current
-                              ? "#597356"
-                              : "#A1A59F",
-                        }}
-                      >
-                        {
-                          String(
-                            index +
-                              1
-                          ).padStart(
-                            2,
-                            "0"
-                          )
-                        }
-                      </span>
-
-                      <span
-                        style={{
-                          width: "15px",
-                          height: "15px",
-                          flex: "0 0 auto",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          borderRadius: "999px",
-                          border:
-                            subtask.completed
-                              ? "1px solid #93AC8A"
-                              : "1px solid #BCC0BA",
-                          background:
-                            subtask.completed
-                              ? "#E9F1E7"
-                              : "transparent",
-                          color: "#597356",
-                          fontSize: "9px",
-                        }}
-                      >
-                        {
-                          subtask.completed
-                            ? "✓"
-                            : ""
-                        }
-                      </span>
-
-                      <span
-                        style={{
-                          minWidth: 0,
-                          flex: 1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          textDecoration:
-                            subtask.completed
-                              ? "line-through"
-                              : "none",
-                          fontSize: "10px",
-                        }}
-                      >
-                        {
-                          subtask.title
-                        }
-                      </span>
-                    </button>
-                  );
-                }
-              )
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleStepDragEnd}
+              >
+                <SortableContext
+                  items={subtasks.map(
+                    (item) => item.id
+                  )}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                    }}
+                  >
+                    {subtasks.map(
+                      (subtask, index) => (
+                        <SortableMiniStep
+                          key={subtask.id}
+                          subtask={subtask}
+                          index={index}
+                          current={
+                            currentSubtask?.id ===
+                            subtask.id
+                          }
+                          busy={busy}
+                          onToggle={(item) =>
+                            void toggleSubtask(item)
+                          }
+                        />
+                      )
+                    )}
+                  </div>
+                </SortableContext>
+              </DndContext>
             )}
           </div>
         ) : (
@@ -817,7 +961,7 @@ export default function MiniFocusWorkspace({
                     color: "#999D96",
                   }}
                 >
-                  No notes yet.
+                  {mini.noNotes}
                 </div>
               ) : (
                 notes
