@@ -2407,12 +2407,27 @@ export default function CalendarPlanner({
                                   const raw =
                                     event.target.value;
 
+                                  const nextReminder =
+                                    raw === "none"
+                                      ? null
+                                      : Number(raw);
+
+                                  /*
+                                   * 用户主动打开提醒时，顺便请求浏览器系统通知权限。
+                                   * 页面内 Toast 不依赖这个权限；拒绝后仍然会正常提醒。
+                                   */
+                                  if (
+                                    nextReminder !== null &&
+                                    typeof Notification !== "undefined" &&
+                                    Notification.permission === "default"
+                                  ) {
+                                    void Notification.requestPermission();
+                                  }
+
                                   void saveReminder(
                                     selectedSessionInfo.todo,
                                     selectedSessionInfo.session,
-                                    raw === "none"
-                                      ? null
-                                      : Number(raw)
+                                    nextReminder
                                   );
                                 }}
                                 disabled={
