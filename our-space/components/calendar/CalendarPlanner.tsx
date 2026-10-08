@@ -43,6 +43,10 @@ import {
 } from "@dnd-kit/core";
 
 import { createClient } from "@/lib/supabase/client";
+import DurationInput, {
+  durationValueToMinutes,
+  type DurationUnit,
+} from "@/components/DurationInput";
 import TodoSubtasks from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
 
@@ -1066,6 +1070,8 @@ export default function CalendarPlanner({
   /* Edit form */
   const [editTitle, setEditTitle] = useState("");
   const [editMinutes, setEditMinutes] = useState("");
+  const [editDurationUnit, setEditDurationUnit] =
+    useState<DurationUnit>("minute");
   const [editCategory, setEditCategory] = useState<Category | null>(null);
   const [editCustomTag, setEditCustomTag] = useState("");
 
@@ -1548,6 +1554,7 @@ export default function CalendarPlanner({
   function startEditing(todo: CalendarTodo) {
     setEditingTodoId(todo.id);
     setEditTitle(todo.title);
+    setEditDurationUnit("minute");
     setEditMinutes(
       todo.estimated_minutes ? String(todo.estimated_minutes) : ""
     );
@@ -1560,6 +1567,7 @@ export default function CalendarPlanner({
     setEditingTodoId(null);
     setEditTitle("");
     setEditMinutes("");
+    setEditDurationUnit("minute");
     setEditCategory(null);
     setEditCustomTag("");
   }
@@ -1572,13 +1580,17 @@ export default function CalendarPlanner({
       return;
     }
 
-    const minutes = editMinutes.trim() ? Number(editMinutes) : null;
+    const minutes =
+      durationValueToMinutes(
+        editMinutes,
+        editDurationUnit
+      );
 
     if (
       minutes !== null &&
-      (!Number.isFinite(minutes) || minutes <= 0)
+      Number.isNaN(minutes)
     ) {
-      setError("预计时间需要是大于 0 的分钟数。");
+      setError("预计时间需要是大于 0 的数字。");
       return;
     }
 
@@ -2192,20 +2204,22 @@ export default function CalendarPlanner({
                           />
                         )}
 
-                        <label className="block">
+                        <div>
                           <span className="mb-1 block text-xs text-ink-faint">
-                            预计工作分钟
+                            预计时间
                           </span>
-                          <input
-                            type="number"
-                            min="1"
+
+                          <DurationInput
                             value={editMinutes}
-                            onChange={(event) =>
-                              setEditMinutes(event.target.value)
+                            unit={editDurationUnit}
+                            onValueChange={setEditMinutes}
+                            onUnitChange={setEditDurationUnit}
+                            disabled={
+                              busyId ===
+                              selectedSessionInfo.todo.id
                             }
-                            className="input w-full"
                           />
-                        </label>
+                        </div>
 
                         <div className="flex justify-end gap-2">
                           <button
