@@ -1480,8 +1480,8 @@ export default function FocusTimer({
           }
           title={
             floatingWorkspaceOpen
-              ? "收起 Steps & Notes"
-              : "打开 Steps & Notes"
+              ? "收起步骤与笔记"
+              : "打开步骤与笔记"
           }
           style={{
             ...buttonBase,
@@ -1514,8 +1514,8 @@ export default function FocusTimer({
         >
           {
             floatingWorkspaceOpen
-              ? "Hide"
-              : "Steps + Notes"
+              ? "收起"
+              : "步骤与笔记"
           }
         </button>
 
@@ -2368,13 +2368,13 @@ export default function FocusTimer({
               }}
               className="text-xs text-ink-faint underline decoration-line underline-offset-4 transition hover:text-sage-700"
             >
-              打开 Mini Focus Companion
+              打开迷你专注窗口
             </button>
           )}
 
           {floatingOpen && (
             <p className="text-xs text-sage-700">
-              Mini Focus Companion 已开启
+              迷你专注窗口已开启
             </p>
           )}
 
@@ -2398,7 +2398,7 @@ export default function FocusTimer({
           }
           className="btn-ghost text-sm"
         >
-          ← 返回 Today
+          ← 返回今天
         </button>
       </div>
     </div>
