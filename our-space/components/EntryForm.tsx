@@ -111,6 +111,66 @@ const MAX_IMAGE_BYTES =
 const MAX_VIDEO_BYTES =
   100 * 1024 * 1024;
 
+function readVideoDuration(
+  file: File
+) {
+  return new Promise<number>(
+    (
+      resolve,
+      reject
+    ) => {
+      const url =
+        URL.createObjectURL(
+          file
+        );
+
+      const video =
+        document.createElement(
+          "video"
+        );
+
+      const cleanup =
+        () => {
+          URL.revokeObjectURL(
+            url
+          );
+        };
+
+      video.preload =
+        "metadata";
+
+      video.onloadedmetadata =
+        () => {
+          const duration =
+            video.duration;
+
+          cleanup();
+
+          resolve(
+            Number.isFinite(
+              duration
+            )
+              ? duration
+              : 0
+          );
+        };
+
+      video.onerror =
+        () => {
+          cleanup();
+
+          reject(
+            new Error(
+              "Unable to read video metadata"
+            )
+          );
+        };
+
+      video.src = url;
+    }
+  );
+}
+
 function fileExtension(
   file: File
 ) {
@@ -299,7 +359,7 @@ export default function EntryForm({
     });
   }
 
-  function addFiles(
+  async function addFiles(
     section: MediaSection,
     files: File[]
   ) {
@@ -380,6 +440,33 @@ export default function EntryForm({
         );
 
         continue;
+      }
+
+      if (
+        type === "video"
+      ) {
+        try {
+          const duration =
+            await readVideoDuration(
+              file
+            );
+
+          if (
+            duration > 60
+          ) {
+            reject(
+              t.videoTooLong
+            );
+
+            continue;
+          }
+        } catch {
+          reject(
+            t.unsupportedMedia
+          );
+
+          continue;
+        }
       }
 
       if (
@@ -483,34 +570,6 @@ export default function EntryForm({
 
     const {
       error:
-        storageError,
-    } =
-      await supabase
-        .storage
-        .from(
-          "daily-media"
-        )
-        .remove([
-          media.storage_path,
-        ]);
-
-    if (
-      storageError
-    ) {
-      setRemovingId(
-        null
-      );
-
-      reject(
-        t.uploadFailed +
-          storageError.message
-      );
-
-      return;
-    }
-
-    const {
-      error:
         deleteError,
     } =
       await supabase
@@ -537,6 +596,15 @@ export default function EntryForm({
 
       return;
     }
+
+    await supabase
+      .storage
+      .from(
+        "daily-media"
+      )
+      .remove([
+        media.storage_path,
+      ]);
 
     setExistingMedia(
       (current) =>
@@ -919,7 +987,7 @@ export default function EntryForm({
                 onChange={(
                   event
                 ) => {
-                  addFiles(
+                  void addFiles(
                     key,
                     Array.from(
                       event
@@ -975,7 +1043,7 @@ export default function EntryForm({
                     null
                   );
 
-                  addFiles(
+                  void addFiles(
                     key,
                     Array.from(
                       event
@@ -1052,7 +1120,7 @@ export default function EntryForm({
                           "video" && (
                           <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] text-white">
                             <Video className="h-3 w-3" />
-                            Video
+                            {t.videoLabel}
                           </span>
                         )}
                       </div>
@@ -1105,8 +1173,8 @@ export default function EntryForm({
                         <span className="absolute bottom-2 left-2 rounded-full bg-sage-700/85 px-2 py-1 text-[9px] text-white">
                           {item.mediaType ===
                           "video"
-                            ? "Video"
-                            : "Photo"}
+                            ? t.videoLabel
+                            : t.photoLabel}
                         </span>
                       </div>
                     )
