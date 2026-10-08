@@ -9,6 +9,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   useEffect,
   useRef,
@@ -50,6 +51,7 @@ export default function PreferencesSettings({
   userId,
   initialPreferences,
 }: Props) {
+  const router = useRouter();
   const { dictionary } = useI18n();
   const t = dictionary.settings;
   const common = dictionary.common;
@@ -179,6 +181,10 @@ export default function PreferencesSettings({
       announcePreferencesUpdate(
         saved
       );
+
+      if (key === "language") {
+        router.refresh();
+      }
 
       setSavedKey(key);
 
@@ -521,7 +527,7 @@ export default function PreferencesSettings({
             previewSound
           }
           previewLabel={common.preview}
-          previewLabel={common.preview}
+          savingLabel={common.saving}
           onChange={(soundId) => {
             setPreferences(
               (current) => ({
@@ -565,6 +571,8 @@ export default function PreferencesSettings({
           onPreview={
             previewSound
           }
+          previewLabel={common.preview}
+          savingLabel={common.saving}
           onChange={(soundId) => {
             setPreferences(
               (current) => ({
@@ -624,6 +632,7 @@ function SoundPreferenceSection({
   onPreview,
   onChange,
   previewLabel,
+  savingLabel,
 }: {
   title: string;
   description: string;
@@ -639,6 +648,7 @@ function SoundPreferenceSection({
     soundId: SoundId
   ) => void;
   previewLabel: string;
+  savingLabel: string;
 }) {
   return (
     <div className="mt-6 border-t border-line pt-5">
@@ -659,7 +669,7 @@ function SoundPreferenceSection({
 
         {saving && (
           <span className="ml-auto text-[10px] text-ink-faint">
-            保存中…
+            {savingLabel}
           </span>
         )}
 
