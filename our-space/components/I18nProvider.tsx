@@ -113,6 +113,11 @@ export default function I18nProvider({
     };
   }, [userId]);
 
+  useEffect(() => {
+    document.documentElement.lang =
+      language;
+  }, [language]);
+
   const value =
     useMemo(
       () => ({
