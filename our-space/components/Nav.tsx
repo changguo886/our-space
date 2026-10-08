@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useI18n } from "@/components/I18nProvider";
 import {
   NotebookPen,
   Users,
@@ -15,38 +16,40 @@ import {
 const ITEMS = [
   {
     href: "/today",
-    label: "今天",
+    labelKey: "today",
     Icon: NotebookPen,
   },
   {
     href: "/todo",
-    label: "Todo",
+    labelKey: "todo",
     Icon: ListTodo,
   },
   {
     href: "/calendar",
-    label: "日历",
+    labelKey: "calendar",
     Icon: CalendarRange,
   },
   {
     href: "/friends",
-    label: "朋友们",
+    labelKey: "friends",
     Icon: Users,
   },
   {
     href: "/history",
-    label: "历史记录",
+    labelKey: "history",
     Icon: CalendarDays,
   },
   {
     href: "/settings",
-    label: "设置",
+    labelKey: "settings",
     Icon: Settings,
   },
-];
+] as const;
 
 export default function Nav() {
   const path = usePathname();
+  const { dictionary } = useI18n();
+  const nav = dictionary.nav;
   const active = (href: string) => path === href || path.startsWith(href + "/");
 
   return (
@@ -57,7 +60,7 @@ export default function Nav() {
           <Leaf className="h-6 w-6 text-sage-500" strokeWidth={1.8} />
           <span className="font-semibold">Our Space</span>
         </Link>
-        {ITEMS.map(({ href, label, Icon }) => (
+        {ITEMS.map(({ href, labelKey, Icon }) => (
           <Link
             key={href}
             href={href}
@@ -66,7 +69,7 @@ export default function Nav() {
             }`}
           >
             <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
-            {label}
+            {nav[labelKey]}
           </Link>
         ))}
       </aside>
@@ -74,7 +77,7 @@ export default function Nav() {
       {/* 手机：底部导航 */}
       <nav className="pb-safe fixed inset-x-0 bottom-0 z-20 border-t border-line bg-paper/95 backdrop-blur md:hidden">
         <div className="mx-auto flex max-w-md">
-          {ITEMS.map(({ href, label, Icon }) => (
+          {ITEMS.map(({ href, labelKey, Icon }) => (
             <Link
               key={href}
               href={href}
@@ -83,7 +86,7 @@ export default function Nav() {
               }`}
             >
               <Icon className="h-5 w-5" strokeWidth={active(href) ? 2.2 : 1.8} />
-              {label}
+              {nav[labelKey]}
             </Link>
           ))}
         </div>
