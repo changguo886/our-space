@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import DurationInput, {
+  durationValueToMinutes,
+  type DurationUnit,
+} from "@/components/DurationInput";
 
 type Category =
   | "work"
@@ -62,6 +66,14 @@ export default function AddTodoForm({
     useState("");
 
   const [
+    durationUnit,
+    setDurationUnit,
+  ] =
+    useState<DurationUnit>(
+      "minute"
+    );
+
+  const [
     category,
     setCategory,
   ] =
@@ -109,19 +121,19 @@ export default function AddTodoForm({
     }
 
     const parsedMinutes =
-      minutes
-        ? Number(minutes)
-        : null;
+      durationValueToMinutes(
+        minutes,
+        durationUnit
+      );
 
     if (
       parsedMinutes !== null &&
-      (!Number.isFinite(
+      Number.isNaN(
         parsedMinutes
-      ) ||
-        parsedMinutes <= 0)
+      )
     ) {
       setError(
-        "预计时间需要是大于 0 的分钟数。"
+        "预计时间需要是大于 0 的数字。"
       );
       return;
     }
@@ -342,20 +354,21 @@ export default function AddTodoForm({
           预计时间
         </label>
 
-        <input
-          className="input"
-          type="number"
-          min="1"
-          step="1"
-          placeholder="例如 30 分钟"
+        <DurationInput
           value={minutes}
-          onChange={(e) =>
-            setMinutes(
-              e.target.value
-            )
+          unit={durationUnit}
+          onValueChange={
+            setMinutes
+          }
+          onUnitChange={
+            setDurationUnit
           }
           disabled={busy}
         />
+
+        <p className="mt-1.5 text-[11px] text-ink-faint">
+          只改变输入方式；保存到数据库时仍统一换算成分钟。
+        </p>
       </div>
 
       {/* 可见范围 */}
