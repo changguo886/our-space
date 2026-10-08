@@ -3,10 +3,18 @@ import {
 } from "@/lib/session";
 
 import {
-  formatLongDate,
   todayIn,
   tzOf,
 } from "@/lib/utils";
+
+import {
+  formatYmdLongDate,
+  getDictionary,
+} from "@/lib/i18n";
+
+import {
+  getUserPreferences,
+} from "@/lib/preferences";
 
 import AddTodoForm from "@/components/AddTodoForm";
 
@@ -49,6 +57,20 @@ export default async function TodoPage() {
     todayIn(
       tz
     );
+
+  const preferences =
+    await getUserPreferences(
+      supabase,
+      user.id
+    );
+
+  const dictionary =
+    getDictionary(
+      preferences.language
+    );
+
+  const t =
+    dictionary.todo;
 
 
   const {
@@ -177,19 +199,20 @@ export default async function TodoPage() {
 
       <header className="mx-auto max-w-2xl">
         <h1 className="text-2xl font-semibold">
-          Todo
+          {t.title}
         </h1>
 
         <p className="mt-1 text-sm text-ink-faint">
           {
-            formatLongDate(
-              today
+            formatYmdLongDate(
+              today,
+              preferences.language
             )
           }
         </p>
 
         <p className="mt-1 text-xs text-ink-faint">
-          当前 Space：
+          {t.currentSpace}
           {group.name}
         </p>
       </header>
@@ -216,11 +239,11 @@ export default async function TodoPage() {
       <section className="card mx-auto mt-6 max-w-2xl p-5">
         <div className="mb-5">
           <h2 className="font-medium">
-            添加任务
+            {t.addTask}
           </h2>
 
           <p className="mt-1 text-xs text-ink-faint">
-            创建后也可以再修改分类和排期。
+            {t.addTaskDescription}
           </p>
         </div>
 
@@ -261,11 +284,11 @@ export default async function TodoPage() {
         <section className="card mx-auto mt-6 max-w-2xl p-5">
           <div className="mb-5">
             <h2 className="font-medium">
-              之前没完成
+              {t.overdueTitle}
             </h2>
 
             <p className="mt-1 text-xs text-ink-faint">
-              不需要一次全部补完。想继续做的任务可以直接移到今天。
+              {t.overdueDescription}
             </p>
           </div>
 
@@ -291,7 +314,7 @@ export default async function TodoPage() {
         <section className="mx-auto mt-8 max-w-2xl">
           <div className="mb-4">
             <h2 className="text-sm font-medium text-ink-soft">
-              最近完成
+              {t.recentCompleted}
             </h2>
           </div>
 
@@ -306,7 +329,7 @@ export default async function TodoPage() {
 
 
           <p className="mt-4 text-center text-xs text-ink-faint">
-            更早的完成记录之后会放进历史日历。
+            {t.olderHistoryHint}
           </p>
         </section>
       )}
