@@ -18,3 +18,45 @@ export function getDictionary(
 ): Dictionary {
   return dictionaries[language];
 }
+
+
+export function formatYmdLongDate(
+  ymd: string,
+  language: AppLanguage
+) {
+  const [
+    year,
+    month,
+    day,
+  ] = ymd
+    .split("-")
+    .map(Number);
+
+  const date =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day
+      )
+    );
+
+  return new Intl.DateTimeFormat(
+    language,
+    language === "zh-CN"
+      ? {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          weekday: "long",
+          timeZone: "UTC",
+        }
+      : {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        }
+  ).format(date);
+}
