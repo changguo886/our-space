@@ -28,6 +28,100 @@ export default async function FriendsPage({
   const hasMore = rows.length > PAGE;
   const entries = rows.slice(0, PAGE);
 
+  const entryIds =
+    entries.map(
+      (entry) => entry.id
+    );
+
+  if (entryIds.length > 0) {
+    const {
+      data: mediaRows,
+      error: mediaError,
+    } = await supabase
+      .from("daily_entry_media")
+      .select(
+        "id, entry_id, media_type, storage_path, sort_order"
+      )
+      .in(
+        "entry_id",
+        entryIds
+      )
+      .order(
+        "sort_order",
+        {
+          ascending: true,
+        }
+      );
+
+    if (
+      !mediaError &&
+      mediaRows &&
+      mediaRows.length > 0
+    ) {
+      const paths =
+        mediaRows.map(
+          (item) =>
+            item.storage_path
+        );
+
+      const {
+        data: signedRows,
+      } = await supabase
+        .storage
+        .from("daily-media")
+        .createSignedUrls(
+          paths,
+          60 * 60
+        );
+
+      const signedByPath =
+        new Map(
+          (signedRows ?? [])
+            .filter(
+              (item) =>
+                item.signedUrl
+            )
+            .map(
+              (item) => [
+                item.path,
+                item.signedUrl,
+              ]
+            )
+        );
+
+      for (
+        const entry of entries
+      ) {
+        entry.media =
+          mediaRows
+            .filter(
+              (item) =>
+                item.entry_id ===
+                entry.id
+            )
+            .map(
+              (item) => ({
+                ...item,
+                media_type:
+                  item.media_type as
+                    | "image"
+                    | "video",
+                signed_url:
+                  signedByPath.get(
+                    item.storage_path
+                  ) ?? "",
+              })
+            )
+            .filter(
+              (item) =>
+                Boolean(
+                  item.signed_url
+                )
+            );
+      }
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl">
       <header>
