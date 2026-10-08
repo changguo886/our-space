@@ -5,6 +5,7 @@ import TimezoneSync from "@/components/TimezoneSync";
 import SpaceSelector from "@/components/SpaceSelector";
 import GlobalReminderProvider from "@/components/GlobalReminderProvider";
 import { getUserPreferences } from "@/lib/preferences";
+import I18nProvider from "@/components/I18nProvider";
 
 export default async function AppLayout({
   children,
@@ -25,28 +26,33 @@ export default async function AppLayout({
     );
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[1440px]">
-      <Nav />
+    <I18nProvider
+      initialLanguage={preferences.language}
+      userId={profile.id}
+    >
+      <div className="mx-auto flex min-h-dvh w-full max-w-[1440px]">
+        <Nav />
 
-      <GlobalReminderProvider
-        userId={profile.id}
-        initialPreferences={preferences}
-      />
-
-      <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-10 lg:px-10">
-        <SpaceSelector
-          spaces={groups}
-          activeSpaceId={group.id}
-        />
-
-        {children}
-      </main>
-
-      {!profile.timezone && (
-        <TimezoneSync
+        <GlobalReminderProvider
           userId={profile.id}
+          initialPreferences={preferences}
         />
-      )}
-    </div>
+
+        <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-10 lg:px-10">
+          <SpaceSelector
+            spaces={groups}
+            activeSpaceId={group.id}
+          />
+
+          {children}
+        </main>
+
+        {!profile.timezone && (
+          <TimezoneSync
+            userId={profile.id}
+          />
+        )}
+      </div>
+    </I18nProvider>
   );
 }
