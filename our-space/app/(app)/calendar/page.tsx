@@ -56,7 +56,8 @@ export default async function CalendarPage() {
   todo_sessions (
     id,
     scheduled_start,
-    scheduled_end
+    scheduled_end,
+    reminder_minutes_before
   )
 `)
     .eq(
