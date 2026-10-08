@@ -14,6 +14,11 @@ import {
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+  PREFERENCES_BROADCAST_CHANNEL,
+  PREFERENCES_UPDATED_EVENT,
+  type UserPreferences,
+} from "@/lib/preferences";
 import MiniFocusWorkspace from "@/components/MiniFocusWorkspace";
 
 import {
@@ -33,6 +38,7 @@ type FocusTimerProps = {
     started_at: string | null;
     elapsed_seconds: number;
   };
+  initialPreferences: UserPreferences;
 };
 
 type CompletionLevel =
@@ -99,8 +105,16 @@ const COMPLETION_LEVELS: {
 
 export default function FocusTimer({
   todo,
+  initialPreferences,
 }: FocusTimerProps) {
   const router = useRouter();
+
+  const [
+    preferences,
+    setPreferences,
+  ] = useState(
+    initialPreferences
+  );
 
   const [status, setStatus] =
     useState(todo.status);
@@ -209,6 +223,77 @@ export default function FocusTimer({
     setFeedbackError,
   ] =
     useState<string | null>(null);
+
+  /*
+   * Settings V2 preference sync.
+   *
+   * 同一标签页通过 CustomEvent，
+   * 其它标签页通过 BroadcastChannel。
+   */
+  useEffect(() => {
+    function handlePreferenceEvent(
+      event: Event
+    ) {
+      const custom =
+        event as CustomEvent<UserPreferences>;
+
+      if (
+        custom.detail?.user_id ===
+        initialPreferences.user_id
+      ) {
+        setPreferences(
+          custom.detail
+        );
+      }
+    }
+
+    window.addEventListener(
+      PREFERENCES_UPDATED_EVENT,
+      handlePreferenceEvent
+    );
+
+    let channel:
+      BroadcastChannel | null =
+        null;
+
+    if (
+      typeof BroadcastChannel !==
+      "undefined"
+    ) {
+      channel =
+        new BroadcastChannel(
+          PREFERENCES_BROADCAST_CHANNEL
+        );
+
+      channel.onmessage =
+        (event) => {
+          const next =
+            event.data as
+              | UserPreferences
+              | undefined;
+
+          if (
+            next?.user_id ===
+            initialPreferences.user_id
+          ) {
+            setPreferences(
+              next
+            );
+          }
+        };
+    }
+
+    return () => {
+      window.removeEventListener(
+        PREFERENCES_UPDATED_EVENT,
+        handlePreferenceEvent
+      );
+
+      channel?.close();
+    };
+  }, [
+    initialPreferences.user_id,
+  ]);
 
   /*
    * Running 时每秒刷新
@@ -624,28 +709,24 @@ export default function FocusTimer({
   }
 
   /*
-   * 播放结束提示音
+   * 播放结束提示音。
+   *
+   * 声音偏好统一来自 Settings V2 / user_preferences。
+   * 静音只影响声音，不影响计时完成状态。
    */
   function playCompleteSound() {
-    const enabled =
-      localStorage.getItem(
-        "focus_sound_enabled"
-      );
-
-    if (enabled === "false") {
+    if (
+      !preferences.sound_enabled
+    ) {
       return;
     }
 
-    const selectedSound =
-      localStorage.getItem(
-        "focus_sound"
-      ) ?? "chime-1";
-
     const audio = new Audio(
-      `/sounds/${selectedSound}.mp3`
+      `/sounds/${preferences.focus_complete_sound}.mp3`
     );
 
-    audio.volume = 0.5;
+    audio.volume =
+      preferences.sound_volume;
 
     audio.play().catch(() => {
       /*
