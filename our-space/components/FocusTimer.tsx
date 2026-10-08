@@ -2273,7 +2273,7 @@ export default function FocusTimer({
               disabled={busy}
               className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
             >
-              {focusText.complete}任务
+              {focusText.completeTask}
             </button>
           </div>
         </div>
