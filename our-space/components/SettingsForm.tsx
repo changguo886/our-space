@@ -6,9 +6,13 @@ import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import Avatar from "@/components/Avatar";
 import { AVATAR_EMOJIS, tzOf, type Profile } from "@/lib/utils";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function SettingsForm({ profile }: { profile: Profile }) {
   const router = useRouter();
+  const { dictionary } = useI18n();
+  const t = dictionary.settings;
+  const common = dictionary.common;
   const [name, setName] = useState(profile.display_name ?? "");
   const [avatar, setAvatar] = useState(profile.avatar_url ?? "");
   const [tz, setTz] = useState(tzOf(profile));
@@ -33,7 +37,7 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
       .update({ display_name: name.trim() || null, avatar_url: avatar || null, timezone: tz })
       .eq("id", profile.id);
     setBusy(false);
-    setMsg(error ? "保存失败，再试一次？" : "已保存");
+    setMsg(error ? t.profileSaveFailed : common.saved);
     if (!error) router.refresh();
   }
 
@@ -45,19 +49,19 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
       </div>
 
       <div>
-        <label className="label">名字</label>
+        <label className="label">{t.name}</label>
         <input className="input" maxLength={20} value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div>
-        <label className="label">头像</label>
+        <label className="label">{t.avatar}</label>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setAvatar("")}
             className={`h-10 rounded-full px-3 text-xs ${avatar === "" ? "bg-sage-100 ring-2 ring-sage-300" : "bg-black/[0.04]"}`}
           >
-            首字
+            {t.initials}
           </button>
           {AVATAR_EMOJIS.map((em) => (
             <button
@@ -75,7 +79,7 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
       </div>
 
       <div>
-        <label className="label">时区</label>
+        <label className="label">{t.timezone}</label>
         <select className="input" value={tz} onChange={(e) => setTz(e.target.value)}>
           {zones.map((z) => (
             <option key={z} value={z}>{z}</option>
@@ -86,16 +90,16 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
           className="mt-2 text-xs text-sage-700 underline-offset-2 hover:underline"
           onClick={() => setTz(Intl.DateTimeFormat().resolvedOptions().timeZone)}
         >
-          使用这台设备的时区
+          {t.useDeviceTimezone}
         </button>
-        <p className="mt-1 text-xs text-ink-faint">决定你的"今天"从什么时候开始。</p>
+        <p className="mt-1 text-xs text-ink-faint">{t.timezoneDescription}</p>
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="btn-primary" disabled={busy}>{busy ? "保存中…" : "保存"}</button>
+        <button className="btn-primary" disabled={busy}>{busy ? common.saving : common.save}</button>
         {msg && (
           <span className="inline-flex items-center gap-1 text-sm text-sage-700">
-            {msg === "已保存" && <Check className="h-4 w-4" />}
+            {msg === common.saved && <Check className="h-4 w-4" />}
             {msg}
           </span>
         )}
