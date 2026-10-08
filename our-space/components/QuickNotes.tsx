@@ -38,6 +38,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 
 /* =========================================================
    Types
@@ -90,14 +91,13 @@ type QuickNotesProps = {
 
 const COLOR_OPTIONS: {
   value: QuickNoteColor;
-  label: string;
   dotClass: string;
 }[] = [
-  { value: "cream", label: "Cream", dotClass: "bg-[#f6e8c8]" },
-  { value: "blush", label: "Blush", dotClass: "bg-[#efcfd3]" },
-  { value: "sage", label: "Sage", dotClass: "bg-[#cdddc9]" },
-  { value: "sky", label: "Sky", dotClass: "bg-[#cfe0ea]" },
-  { value: "lavender", label: "Lavender", dotClass: "bg-[#ddd4ea]" },
+  { value: "cream", dotClass: "bg-[#f6e8c8]" },
+  { value: "blush", dotClass: "bg-[#efcfd3]" },
+  { value: "sage", dotClass: "bg-[#cdddc9]" },
+  { value: "sky", dotClass: "bg-[#cfe0ea]" },
+  { value: "lavender", dotClass: "bg-[#ddd4ea]" },
 ];
 
 const NOTE_BACKGROUND: Record<QuickNoteColor, string> = {
@@ -185,6 +185,9 @@ export default function QuickNotes({
   subtasks: providedSubtasks,
   onClose,
 }: QuickNotesProps) {
+  const { dictionary } = useI18n();
+  const q = dictionary.quickNotes;
+
   const [notes, setNotes] = useState<QuickNote[]>([]);
   const [loadedSubtasks, setLoadedSubtasks] = useState<QuickNotesSubtask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -256,7 +259,7 @@ export default function QuickNotes({
 
         if (loadError) {
           setNotes([]);
-          setError("读取 Quick Notes 失败：" + loadError.message);
+          setError(q.loadFailed + loadError.message);
           return;
         }
 
@@ -265,7 +268,7 @@ export default function QuickNotes({
         if (cancelled) return;
         setNotes([]);
         setError(
-          "打开 Quick Notes 时网络请求失败：" +
+          q.networkFailed +
             describeUnknownError(unknownError)
         );
       } finally {
@@ -306,7 +309,7 @@ export default function QuickNotes({
 
         if (loadError) {
           setLoadedSubtasks([]);
-          setError("读取任务步骤失败：" + loadError.message);
+          setError(q.loadStepsFailed + loadError.message);
           return;
         }
 
@@ -314,7 +317,7 @@ export default function QuickNotes({
       } catch (unknownError) {
         if (cancelled) return;
         setLoadedSubtasks([]);
-        setError("读取任务步骤失败：" + describeUnknownError(unknownError));
+        setError(q.loadStepsFailed + describeUnknownError(unknownError));
       }
     }
 
@@ -441,11 +444,11 @@ export default function QuickNotes({
 
       if (saveError) {
         setNotes(previous);
-        setError("保存 Note 位置失败：" + saveError.message);
+        setError(q.savePositionFailed + saveError.message);
       }
     } catch (unknownError) {
       setNotes(previous);
-      setError("保存 Note 位置失败：" + describeUnknownError(unknownError));
+      setError(q.savePositionFailed + describeUnknownError(unknownError));
     }
   }
 
@@ -648,8 +651,8 @@ export default function QuickNotes({
 
       if (insertError || !data) {
         setError(
-          "新增 Quick Note 失败：" +
-            (insertError?.message ?? "没有返回数据")
+          q.addFailed +
+            (insertError?.message ?? q.missingData)
         );
         return;
       }
@@ -657,7 +660,7 @@ export default function QuickNotes({
       setNotes((current) => [...current, data as QuickNote]);
       closeComposer();
     } catch (unknownError) {
-      setError("新增 Quick Note 失败：" + describeUnknownError(unknownError));
+      setError(q.addFailed + describeUnknownError(unknownError));
     } finally {
       setBusy(false);
     }
@@ -684,11 +687,11 @@ export default function QuickNotes({
 
       if (deleteError) {
         setNotes(previous);
-        setError("删除 Quick Note 失败：" + deleteError.message);
+        setError(q.deleteFailed + deleteError.message);
       }
     } catch (unknownError) {
       setNotes(previous);
-      setError("删除 Quick Note 失败：" + describeUnknownError(unknownError));
+      setError(q.deleteFailed + describeUnknownError(unknownError));
     } finally {
       setDeletingId(null);
     }
@@ -745,8 +748,8 @@ export default function QuickNotes({
 
       if (updateError || !data) {
         setError(
-          "编辑 Quick Note 失败：" +
-            (updateError?.message ?? "没有返回数据")
+          q.editFailed +
+            (updateError?.message ?? q.missingData)
         );
         return;
       }
@@ -757,7 +760,7 @@ export default function QuickNotes({
 
       cancelEditing();
     } catch (unknownError) {
-      setError("编辑 Quick Note 失败：" + describeUnknownError(unknownError));
+      setError(q.editFailed + describeUnknownError(unknownError));
     } finally {
       setBusy(false);
     }
@@ -799,13 +802,13 @@ export default function QuickNotes({
 
       if (moveError) {
         setNotes(previous);
-        setError("移动 Quick Note 失败：" + moveError.message);
+        setError(q.moveFailed + moveError.message);
       } else {
         expandSection(destination);
       }
     } catch (unknownError) {
       setNotes(previous);
-      setError("移动 Quick Note 失败：" + describeUnknownError(unknownError));
+      setError(q.moveFailed + describeUnknownError(unknownError));
     }
   }
 
@@ -818,7 +821,7 @@ export default function QuickNotes({
       <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line/70 px-5 py-4">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
-            Quick Notes
+            {q.title}
           </p>
 
           {todoTitle && (
@@ -833,7 +836,7 @@ export default function QuickNotes({
             type="button"
             onClick={onClose}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ink-faint transition hover:bg-paper hover:text-ink"
-            aria-label="关闭 Quick Notes"
+            aria-label={q.close}
           >
             <X className="h-4 w-4" />
           </button>
@@ -846,7 +849,7 @@ export default function QuickNotes({
       >
         {loading ? (
           <p className="py-10 text-center text-xs text-ink-faint">
-            正在读取 Notes…
+            {q.loading}
           </p>
         ) : (
           <DndContext
@@ -864,12 +867,12 @@ export default function QuickNotes({
           >
             <div className="space-y-3">
               <NoteSection
-                title="Unsorted"
+                title={q.unsorted}
                 stepLabel={null}
                 subtaskId={null}
                 notes={unsortedNotes}
                 subtasks={sortedSubtasks}
-                dragging={Boolean(activeNoteId)}
+                {q.drag}ging={Boolean(activeNoteId)}
                 collapsed={collapsedSections.has(sectionKey(null))}
                 onToggleCollapsed={() => toggleSection(null)}
                 composerOpen={composerSubtaskId === null}
@@ -907,7 +910,7 @@ export default function QuickNotes({
                   subtaskId={subtask.id}
                   notes={notesForSubtask(subtask.id)}
                   subtasks={sortedSubtasks}
-                  dragging={Boolean(activeNoteId)}
+                  {q.drag}ging={Boolean(activeNoteId)}
                   collapsed={collapsedSections.has(sectionKey(subtask.id))}
                   onToggleCollapsed={() => toggleSection(subtask.id)}
                   composerOpen={composerSubtaskId === subtask.id}
@@ -1037,6 +1040,9 @@ function NoteSection({
   onDelete,
   onMove,
 }: NoteSectionProps) {
+  const { dictionary } = useI18n();
+  const q = dictionary.quickNotes;
+
   /* Header = 放到最前面。 */
   const {
     setNodeRef: setHeaderDropRef,
@@ -1072,14 +1078,14 @@ function NoteSection({
       <div
         ref={setHeaderDropRef}
         className={`flex min-h-11 items-center gap-2 px-2.5 py-2 transition ${
-          dragging && isHeaderOver ? "bg-sage-100/75" : "bg-white/45"
+          {q.drag}ging && isHeaderOver ? "bg-sage-100/75" : "bg-white/45"
         }`}
       >
         <button
           type="button"
           onClick={onToggleCollapsed}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-white hover:text-ink-soft"
-          aria-label={collapsed ? "展开 Notes section" : "折叠 Notes section"}
+          aria-label={collapsed ? q.expandSection : q.collapseSection}
         >
           {collapsed ? (
             <ChevronRight className="h-3.5 w-3.5" />
@@ -1100,7 +1106,7 @@ function NoteSection({
 
         {dragging && isHeaderOver && (
           <span className="rounded-full bg-white/75 px-2 py-1 text-[9px] font-medium text-sage-700">
-            Move to top
+            {q.moveToTop}
           </span>
         )}
 
@@ -1112,7 +1118,7 @@ function NoteSection({
           type="button"
           onClick={onOpenComposer}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-          aria-label={`Add note to ${title}`}
+          aria-label={q.addTo.replace("{title}", title)}
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -1172,9 +1178,9 @@ function NoteSection({
           <div
             ref={setEndDropRef}
             className={`mt-2 flex items-center justify-center rounded-xl border border-dashed transition-all ${
-              dragging ? "h-10" : "h-1 border-transparent"
+              {q.drag}ging ? "h-10" : "h-1 border-transparent"
             } ${
-              dragging && isEndOver
+              {q.drag}ging && isEndOver
                 ? "border-sage-400 bg-sage-50 text-sage-700"
                 : dragging
                   ? "border-line/80 bg-white/20 text-ink-faint"
@@ -1184,10 +1190,10 @@ function NoteSection({
             {dragging && (
               <span className="text-[9px] font-medium">
                 {isEndOver
-                  ? "Drop at end"
+                  ? q.dropAtEnd
                   : notes.length === 0
-                    ? "Drop note here"
-                    : "Move here"}
+                    ? q.dropHere
+                    : q.moveHere}
               </span>
             )}
           </div>
@@ -1204,7 +1210,7 @@ function NoteSection({
               : "border-line/80 text-ink-faint"
           }`}
         >
-          Drop into section
+          {q.dropIntoSection}
         </div>
       )}
     </section>
@@ -1238,12 +1244,16 @@ function NoteComposer({
   onSave: () => Promise<void>;
   onCancel: () => void;
 }) {
+  const { dictionary } = useI18n();
+  const q = dictionary.quickNotes;
+  const common = dictionary.common;
+
   return (
     <div className="mt-2 rounded-2xl border border-line/80 bg-white/85 p-3 shadow-sm">
       <input
         value={title}
         onChange={(event) => onTitle(event.target.value)}
-        placeholder="Title (optional)"
+        placeholder={q.titleOptional}
         className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
       />
 
@@ -1261,7 +1271,7 @@ function NoteComposer({
           }
         }}
         rows={3}
-        placeholder="Write a note..."
+        placeholder={q.writeNote}
         className="mt-2 w-full resize-none bg-transparent text-xs leading-5 text-ink-soft outline-none placeholder:text-ink-faint/75"
       />
 
@@ -1274,7 +1284,7 @@ function NoteComposer({
             onClick={onCancel}
             className="rounded-lg px-2 py-1 text-[10px] text-ink-faint transition hover:bg-paper hover:text-ink-soft"
           >
-            Cancel
+            {common.cancel}
           </button>
 
           <button
@@ -1284,7 +1294,7 @@ function NoteComposer({
             className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-sage-100 px-2.5 text-[10px] font-medium text-sage-700 transition hover:bg-sage-300/60 disabled:opacity-40"
           >
             <Save className="h-3 w-3" />
-            Save
+            {common.save}
           </button>
         </div>
       </div>
@@ -1339,6 +1349,10 @@ function NoteCard({
   onDelete: (note: QuickNote) => Promise<void>;
   onMove: (note: QuickNote, destination: string | null) => Promise<void>;
 }) {
+  const { dictionary } = useI18n();
+  const q = dictionary.quickNotes;
+  const common = dictionary.common;
+
   const {
     attributes,
     listeners,
@@ -1371,7 +1385,7 @@ function NoteCard({
         <input
           value={editTitle}
           onChange={(event) => onEditTitle(event.target.value)}
-          placeholder="Title (optional)"
+          placeholder={q.titleOptional}
           className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
         />
 
@@ -1391,7 +1405,7 @@ function NoteCard({
               onClick={onCancelEdit}
               className="rounded-lg px-2 py-1 text-[10px] text-ink-faint hover:bg-paper"
             >
-              Cancel
+              {common.cancel}
             </button>
 
             <button
@@ -1401,7 +1415,7 @@ function NoteCard({
               className="inline-flex items-center gap-1 rounded-lg bg-sage-100 px-2 py-1 text-[10px] font-medium text-sage-700 disabled:opacity-40"
             >
               <Save className="h-3 w-3" />
-              Save
+              {common.save}
             </button>
           </div>
         </div>
@@ -1428,14 +1442,14 @@ function NoteCard({
           {...attributes}
           {...listeners}
           className="flex h-5 min-w-8 cursor-grab items-center justify-center rounded-md text-ink-faint/45 transition hover:bg-white/80 hover:text-sage-700 active:cursor-grabbing"
-          aria-label="拖动 Note"
-          title="拖动排序或移动到其他 Step"
+          aria-label={q.dragNote}
+          title={q.dragNoteTitle}
         >
           <GripVertical className="h-3.5 w-3.5" />
         </button>
 
         <span className="ml-1 text-[8px] font-medium uppercase tracking-[0.14em] text-ink-faint/55">
-          drag
+          {q.drag}
         </span>
 
         <div className="ml-auto flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
@@ -1443,7 +1457,7 @@ function NoteCard({
             type="button"
             onClick={() => onStartEdit(note)}
             className="rounded-md p-1 text-ink-faint transition hover:bg-white/80 hover:text-ink-soft"
-            aria-label="Edit note"
+            aria-label={q.editNote}
           >
             <Pencil className="h-3 w-3" />
           </button>
@@ -1453,7 +1467,7 @@ function NoteCard({
             disabled={deleting}
             onClick={() => void onDelete(note)}
             className="rounded-md p-1 text-ink-faint transition hover:bg-white/80 hover:text-blush-500 disabled:opacity-40"
-            aria-label="Delete note"
+            aria-label={q.deleteNote}
           >
             <Trash2 className="h-3 w-3" />
           </button>
@@ -1483,13 +1497,13 @@ function NoteCard({
               void onMove(note, value === UNSORTED_KEY ? null : value);
             }}
             className="max-w-[180px] truncate rounded-lg border border-line/60 bg-white/55 px-2 py-1 text-[9px] text-ink-faint outline-none transition hover:bg-white"
-            aria-label="Move note"
+            aria-label={q.moveNote}
           >
-            <option value={UNSORTED_KEY}>Move to · Unsorted</option>
+            <option value={UNSORTED_KEY}>{q.moveToUnsorted}</option>
 
             {subtasks.map((subtask) => (
               <option key={subtask.id} value={subtask.id}>
-                Move to · {subtask.title}
+                {q.moveTo.replace("{title}", subtask.title)}
               </option>
             ))}
           </select>
@@ -1504,6 +1518,9 @@ function NoteCard({
 ========================================================= */
 
 function DragPreview({ note }: { note: QuickNote }) {
+  const { dictionary } = useI18n();
+  const q = dictionary.quickNotes;
+
   return (
     <div
       className={`w-[320px] max-w-[82vw] rotate-[1deg] overflow-hidden rounded-2xl border border-sage-300/80 shadow-[0_20px_50px_rgba(60,50,40,0.18)] ${
@@ -1513,7 +1530,7 @@ function DragPreview({ note }: { note: QuickNote }) {
       <div className="flex h-7 items-center border-b border-black/[0.035] bg-white/45 px-2 text-sage-700">
         <GripVertical className="h-3.5 w-3.5" />
         <span className="ml-1 text-[8px] font-semibold uppercase tracking-[0.14em]">
-          moving note
+          {q.movingNote}
         </span>
       </div>
 
@@ -1547,8 +1564,11 @@ function ColorPicker({
   value: QuickNoteColor;
   onChange: (value: QuickNoteColor) => void;
 }) {
+  const { dictionary } = useI18n();
+  const q = dictionary.quickNotes;
+
   return (
-    <div className="flex items-center gap-1.5" aria-label="Note color">
+    <div className="flex items-center gap-1.5" aria-label={q.noteColor}>
       {COLOR_OPTIONS.map((option) => (
         <button
           key={option.value}
@@ -1561,8 +1581,8 @@ function ColorPicker({
               ? "border-sage-700 ring-2 ring-sage-100"
               : "border-black/5 hover:scale-110"
           }`}
-          title={option.label}
-          aria-label={option.label}
+          title={q.colors[option.value]}
+          aria-label={q.colors[option.value]}
         />
       ))}
     </div>
