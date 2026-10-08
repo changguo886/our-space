@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { requireGroup } from "@/lib/session";
 import FocusTimer from "@/components/FocusTimer";
+import DesktopFocusControls from "@/components/DesktopFocusControls";
 import { getUserPreferences } from "@/lib/preferences";
 import { getDictionary } from "@/lib/i18n";
 
@@ -60,6 +61,10 @@ export default async function FocusPage({
     <FocusTimer
       todo={todo}
       initialPreferences={preferences}
+    />
+
+    <DesktopFocusControls
+      todoId={todo.id}
     />
 
     <p className="text-center text-xs text-ink-faint">
