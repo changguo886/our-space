@@ -5,6 +5,8 @@ import SettingsForm from "@/components/SettingsForm";
 import InviteCode from "@/components/InviteCode";
 import Avatar from "@/components/Avatar";
 import SpaceManager from "@/components/SpaceManager";
+import PreferencesSettings from "@/components/PreferencesSettings";
+import { getUserPreferences } from "@/lib/preferences";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,12 @@ export default async function SettingsPage() {
     group,
     groups,
   } = await requireGroup();
+
+  const preferences =
+    await getUserPreferences(
+      supabase,
+      profile.id
+    );
 
   const { data: members } = await supabase
     .from("group_members")
@@ -27,6 +35,11 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-xl space-y-6">
       <h1 className="text-2xl font-semibold">设置</h1>
+
+      <PreferencesSettings
+        userId={profile.id}
+        initialPreferences={preferences}
+      />
 
       <section className="card p-5">
         <h2 className="mb-4 font-medium">我的资料</h2>
