@@ -3,11 +3,18 @@ import Link from "next/link";
 import { requireGroup } from "@/lib/session";
 
 import {
-  formatLongDate,
   nameOf,
   todayIn,
   tzOf,
 } from "@/lib/utils";
+
+import {
+  formatYmdLongDate,
+  getDictionary,
+} from "@/lib/i18n";
+import {
+  getUserPreferences,
+} from "@/lib/preferences";
 
 import EntryForm from "@/components/EntryForm";
 import AddTodoForm from "@/components/AddTodoForm";
@@ -36,6 +43,23 @@ export default async function TodayPage() {
 
   const today =
     todayIn(tz);
+
+  const preferences =
+    await getUserPreferences(
+      supabase,
+      user.id
+    );
+
+  const dictionary =
+    getDictionary(
+      preferences.language
+    );
+
+  const todoText =
+    dictionary.todo;
+
+  const todayText =
+    dictionary.today;
 
 
   const {
@@ -143,25 +167,23 @@ export default async function TodayPage() {
       <header className="mx-auto flex max-w-2xl items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">
-            Hi,{" "}
-            {
-              nameOf(
-                profile
-              )
-            }{" "}
-            ☀️
+            {todayText.greeting.replace(
+              "{name}",
+              nameOf(profile)
+            )}
           </h1>
 
           <p className="mt-1 text-sm text-ink-faint">
             {
-              formatLongDate(
-                today
+              formatYmdLongDate(
+                today,
+                preferences.language
               )
             }
           </p>
 
           <p className="mt-1 text-xs text-ink-faint">
-            当前 Space：
+            {todoText.currentSpace}
             {group.name}
           </p>
         </div>
@@ -171,7 +193,7 @@ export default async function TodayPage() {
           method="post"
         >
           <button className="btn-ghost text-xs">
-            退出
+            {todayText.signOut}
           </button>
         </form>
       </header>
@@ -184,8 +206,8 @@ export default async function TodayPage() {
         todayCompleted={
           todayCompleted as Todo[]
         }
-        title="Todo"
-        description="给今天安排一点事情。"
+        title={todoText.title}
+        description={todoText.todayPlanDescription}
         showProgress={false}
       />
 
@@ -193,11 +215,11 @@ export default async function TodayPage() {
       <section className="card mx-auto mt-6 max-w-2xl p-5">
         <div className="mb-5">
           <h2 className="font-medium">
-            添加任务
+            {todoText.addTask}
           </h2>
 
           <p className="mt-1 text-xs text-ink-faint">
-            创建后也可以再修改分类和排期。
+            {todoText.addTaskDescription}
           </p>
         </div>
 
@@ -259,14 +281,15 @@ export default async function TodayPage() {
             className="card mx-auto mt-6 flex max-w-2xl items-center justify-between px-5 py-4 text-sm text-ink-soft transition hover:bg-white"
           >
             <span>
-              朋友们给了你{" "}
-              {
-                reactionCount
-              }{" "}
-              个回应
-              {commentCount >
-                0 &&
-                `、${commentCount} 条留言`}{" "}
+              {todayText.reactions.replace(
+                "{reactions}",
+                String(reactionCount)
+              )}
+              {commentCount > 0 &&
+                todayText.comments.replace(
+                  "{comments}",
+                  String(commentCount)
+                )}{" "}
               💌
             </span>
 
@@ -276,7 +299,7 @@ export default async function TodayPage() {
 
 
       <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-ink-faint">
-        写多写少都可以，空着也没关系。
+        {todayText.footer}
       </p>
     </div>
   );
