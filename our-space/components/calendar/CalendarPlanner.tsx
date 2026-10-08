@@ -61,6 +61,7 @@ type TodoSession = {
   id: string;
   scheduled_start: string;
   scheduled_end: string;
+  reminder_minutes_before: number | null;
 };
 
 type CalendarTodo = {
@@ -128,6 +129,19 @@ const TIMELINE_TOP_PADDING = 20;
 
 const TIMELINE_BOTTOM_SPACE = 28;
 const DEFAULT_SESSION_MINUTES = 30;
+
+const REMINDER_OPTIONS: {
+  value: number | null;
+  label: string;
+}[] = [
+  { value: null, label: "不提醒" },
+  { value: 0, label: "开始时" },
+  { value: 5, label: "提前 5 分钟" },
+  { value: 10, label: "提前 10 分钟" },
+  { value: 15, label: "提前 15 分钟" },
+  { value: 30, label: "提前 30 分钟" },
+  { value: 60, label: "提前 1 小时" },
+];
 
 /* =========================================================
    Categories
@@ -1320,6 +1334,7 @@ export default function CalendarPlanner({
       id: temporaryId,
       scheduled_start: startIso,
       scheduled_end: endIso,
+      reminder_minutes_before: null,
     };
 
     setTodos((current) =>
@@ -1338,7 +1353,7 @@ export default function CalendarPlanner({
         scheduled_start: startIso,
         scheduled_end: endIso,
       })
-      .select("id, scheduled_start, scheduled_end")
+      .select("id, scheduled_start, scheduled_end, reminder_minutes_before")
       .single();
 
     setBusyId(null);
@@ -1359,6 +1374,8 @@ export default function CalendarPlanner({
       id: data.id,
       scheduled_start: data.scheduled_start,
       scheduled_end: data.scheduled_end,
+      reminder_minutes_before:
+        data.reminder_minutes_before ?? null,
     };
 
     setTodos((current) =>
@@ -1524,6 +1541,68 @@ export default function CalendarPlanner({
         })
       );
       setError("修改时间长度失败：" + resizeError.message);
+    }
+  }
+
+  async function saveReminder(
+    todo: CalendarTodo,
+    session: TodoSession,
+    reminderMinutesBefore: number | null
+  ) {
+    if (
+      busyId ||
+      session.id.startsWith("temp-")
+    ) {
+      return;
+    }
+
+    const previous =
+      session.reminder_minutes_before;
+
+    setTodos((current) =>
+      updateSessionLocally(
+        current,
+        todo.id,
+        session.id,
+        {
+          reminder_minutes_before:
+            reminderMinutesBefore,
+        }
+      )
+    );
+
+    setBusyId(session.id);
+    setError(null);
+
+    const supabase = createClient();
+    const { error: reminderError } =
+      await supabase
+        .from("todo_sessions")
+        .update({
+          reminder_minutes_before:
+            reminderMinutesBefore,
+        })
+        .eq("id", session.id);
+
+    setBusyId(null);
+
+    if (reminderError) {
+      setTodos((current) =>
+        updateSessionLocally(
+          current,
+          todo.id,
+          session.id,
+          {
+            reminder_minutes_before:
+              previous,
+          }
+        )
+      );
+
+      setError(
+        "保存提醒失败：" +
+          reminderError.message
+      );
     }
   }
 
@@ -2293,18 +2372,78 @@ export default function CalendarPlanner({
                           </div>
                         )}
 
-                        {/* 提醒 placeholder: V3 layout reserves the place,
-                            actual reminder data/global listener is next phase. */}
-                        <div className="rounded-2xl border border-dashed border-line bg-white/35 p-3">
+                        <div className="rounded-2xl border border-line/70 bg-white/60 p-3">
                           <div className="flex items-start gap-2.5">
-                            <Bell className="mt-0.5 h-4 w-4 text-ink-faint" />
-                            <div>
-                              <p className="text-xs font-medium text-ink-soft">
-                                Reminder
-                              </p>
-                              <p className="mt-1 text-[10px] leading-4 text-ink-faint">
-                                下一阶段接入 Session reminder。这里先保留入口，不写临时逻辑。
-                              </p>
+                            <Bell className="mt-0.5 h-4 w-4 text-sage-700" />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-medium text-ink-soft">
+                                    提醒
+                                  </p>
+                                  <p className="mt-1 text-[10px] leading-4 text-ink-faint">
+                                    提醒会跟随这个时间段一起移动。
+                                  </p>
+                                </div>
+
+                                {busyId ===
+                                  selectedSessionInfo.session.id && (
+                                  <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-faint" />
+                                )}
+                              </div>
+
+                              <select
+                                value={
+                                  selectedSessionInfo.session
+                                    .reminder_minutes_before === null
+                                    ? "none"
+                                    : String(
+                                        selectedSessionInfo.session
+                                          .reminder_minutes_before
+                                      )
+                                }
+                                onChange={(event) => {
+                                  const raw =
+                                    event.target.value;
+
+                                  void saveReminder(
+                                    selectedSessionInfo.todo,
+                                    selectedSessionInfo.session,
+                                    raw === "none"
+                                      ? null
+                                      : Number(raw)
+                                  );
+                                }}
+                                disabled={
+                                  busyId ===
+                                    selectedSessionInfo.session.id ||
+                                  selectedSessionInfo.session.id.startsWith(
+                                    "temp-"
+                                  )
+                                }
+                                className="input mt-3 w-full text-xs"
+                                aria-label="设置提醒时间"
+                              >
+                                {REMINDER_OPTIONS.map(
+                                  (option) => (
+                                    <option
+                                      key={
+                                        option.value === null
+                                          ? "none"
+                                          : option.value
+                                      }
+                                      value={
+                                        option.value === null
+                                          ? "none"
+                                          : String(option.value)
+                                      }
+                                    >
+                                      {option.label}
+                                    </option>
+                                  )
+                                )}
+                              </select>
                             </div>
                           </div>
                         </div>
