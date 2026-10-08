@@ -9,7 +9,6 @@ import CommentSection, { type CommentRow } from "@/components/CommentSection";
 import {
   ENTRY_SELECT,
   EntryBody,
-  EntryMediaGrid,
   type EntryRow,
 } from "@/components/EntryCard";
 
@@ -41,7 +40,7 @@ export default async function EntryPage({ params }: { params: Promise<{ id: stri
   } = await supabase
     .from("daily_entry_media")
     .select(
-      "id, entry_id, media_type, storage_path, sort_order"
+      "id, entry_id, media_type, section, storage_path, sort_order"
     )
     .eq("entry_id", id)
     .order(
@@ -93,6 +92,11 @@ export default async function EntryPage({ params }: { params: Promise<{ id: stri
               item.media_type as
                 | "image"
                 | "video",
+            section:
+              item.section as
+                | "today_tasks"
+                | "today_note"
+                | "tomorrow_plan",
             signed_url:
               signedByPath.get(
                 item.storage_path
@@ -131,9 +135,16 @@ export default async function EntryPage({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="mt-5">
-          <EntryBody entry={entry} tint={isOwn ? "bg-mist-50" : "bg-blush-50"} />
-          <EntryMediaGrid
-            media={entry.media ?? []}
+          <EntryBody
+            entry={entry}
+            tint={
+              isOwn
+                ? "bg-mist-50"
+                : "bg-blush-50"
+            }
+            media={
+              entry.media ?? []
+            }
           />
         </div>
 
