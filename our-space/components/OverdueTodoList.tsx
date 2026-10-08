@@ -21,6 +21,10 @@ import {
   createClient,
 } from "@/lib/supabase/client";
 
+import {
+  useI18n,
+} from "@/components/I18nProvider";
+
 
 type OverdueTodoListProps = {
   todos: Todo[];
@@ -60,6 +64,12 @@ export default function OverdueTodoList({
   todos,
   todayDate,
 }: OverdueTodoListProps) {
+  const { dictionary } =
+    useI18n();
+
+  const t =
+    dictionary.todo;
+
   const router =
     useRouter();
 
@@ -160,7 +170,7 @@ export default function OverdueTodoList({
         updateError
       ) {
         setError(
-          "移动任务失败：" +
+          t.moveFailed +
             updateError.message
         );
 
@@ -210,7 +220,7 @@ export default function OverdueTodoList({
             );
 
       setError(
-        "移动任务失败：" +
+        t.moveFailed +
           message
       );
     } finally {
@@ -241,11 +251,11 @@ export default function OverdueTodoList({
     return (
       <div className="rounded-2xl bg-sage-50 px-4 py-5 text-center">
         <p className="text-sm font-medium text-sage-700">
-          都处理好了
+          {t.overdueDone}
         </p>
 
         <p className="mt-1 text-xs text-ink-faint">
-          想继续做的任务已经移到今天。
+          {t.overdueDoneDescription}
         </p>
       </div>
     );
@@ -313,11 +323,11 @@ export default function OverdueTodoList({
                     <>
                       <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
 
-                      移动中…
+                      {t.moving}
                     </>
                   ) : (
                     <>
-                      移到今天
+                      {t.moveToToday}
 
                       <ArrowRight className="h-3.5 w-3.5" />
                     </>
