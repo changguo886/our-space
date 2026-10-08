@@ -131,16 +131,6 @@ const TIMELINE_TOP_PADDING = 20;
 const TIMELINE_BOTTOM_SPACE = 28;
 const DEFAULT_SESSION_MINUTES = 30;
 
-const REMINDER_OPTIONS: (number | null)[] = [
-  null,
-  0,
-  5,
-  10,
-  15,
-  30,
-  60,
-];
-
 /* =========================================================
    Categories
 ========================================================= */
@@ -2581,7 +2571,7 @@ export default function CalendarPlanner({
                                     {cal.reminder}
                                   </p>
                                   <p className="mt-1 text-[10px] leading-4 text-ink-faint">
-                                    {cal.reminder}会跟随这个时间段一起移动。
+                                    {cal.reminderHint}
                                   </p>
                                 </div>
 
