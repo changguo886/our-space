@@ -65,6 +65,58 @@ export const DEFAULT_PREFERENCES: EditablePreferences = {
 
 
 /* =========================================================
+   Client sync
+========================================================= */
+
+export const PREFERENCES_UPDATED_EVENT =
+  "ourspace:preferences-updated";
+
+export const PREFERENCES_BROADCAST_CHANNEL =
+  "ourspace-preferences";
+
+/**
+ * 同步当前浏览器标签页，并通知其它已打开的 Our Space 标签页。
+ *
+ * 这是一个浏览器辅助函数：
+ * - Settings 保存成功后调用
+ * - Focus / Reminder 监听
+ * - 数据库仍然是最终真值
+ */
+export function announcePreferencesUpdate(
+  preferences: UserPreferences
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<UserPreferences>(
+      PREFERENCES_UPDATED_EVENT,
+      {
+        detail: preferences,
+      }
+    )
+  );
+
+  if (
+    typeof BroadcastChannel !==
+    "undefined"
+  ) {
+    const channel =
+      new BroadcastChannel(
+        PREFERENCES_BROADCAST_CHANNEL
+      );
+
+    channel.postMessage(
+      preferences
+    );
+
+    channel.close();
+  }
+}
+
+
+/* =========================================================
    Validation helpers
 ========================================================= */
 
