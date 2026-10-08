@@ -131,7 +131,7 @@ export const zhCN = {
   },
 
   today: {
-    greeting: "Hi, {name} ☀️",
+    greeting: "你好，{name} ☀️",
     signOut: "退出",
     reactions: "朋友们给了你 {reactions} 个回应",
     comments: "、{comments} 条留言",
