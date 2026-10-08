@@ -38,6 +38,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 
 
 /* =========================================================
@@ -117,6 +118,11 @@ function SortableSubtaskRow({
   onDelete,
   onOpenNotes,
 }: SortableSubtaskRowProps) {
+  const { dictionary } = useI18n();
+  const t = dictionary.todo.subtasks;
+  const todoText = dictionary.todo;
+  const common = dictionary.common;
+
   const {
     attributes,
     listeners,
@@ -164,8 +170,8 @@ function SortableSubtaskRow({
           subtask.id.startsWith("temp-")
         }
         className="flex h-7 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg text-[11px] font-medium tabular-nums text-ink-faint transition hover:bg-sage-50 hover:text-sage-700 active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
-        aria-label={`拖动第 ${index + 1} 个步骤调整顺序`}
-        title="拖动调整顺序"
+        aria-label={t.dragStep.replace("{index}", String(index + 1))}
+        title={t.reorder}
       >
         {stepNumber}
       </button>
@@ -179,8 +185,8 @@ function SortableSubtaskRow({
         className="shrink-0 text-sage-700 disabled:opacity-50"
         aria-label={
           subtask.completed
-            ? "恢复步骤"
-            : "完成步骤"
+            ? t.restore
+            : t.complete
         }
       >
         {subtask.completed ? (
@@ -210,7 +216,7 @@ function SortableSubtaskRow({
             }
           }}
           className="input h-8 min-w-0 flex-1 px-2 text-sm"
-          aria-label="编辑步骤名称"
+          aria-label={t.editName}
           autoFocus
         />
       ) : (
@@ -244,8 +250,8 @@ function SortableSubtaskRow({
               !editTitle.trim()
             }
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sage-700 transition hover:bg-sage-50 disabled:opacity-40"
-            aria-label="保存步骤"
-            title="保存"
+            aria-label={t.saveStep}
+            title={common.save}
           >
             <Save className="h-3.5 w-3.5" />
           </button>
@@ -255,8 +261,8 @@ function SortableSubtaskRow({
             onClick={onCancelEdit}
             disabled={busy}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-paper hover:text-ink-soft disabled:opacity-40"
-            aria-label="取消编辑"
-            title="取消"
+            aria-label={t.cancelEdit}
+            title={common.cancel}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -273,8 +279,8 @@ function SortableSubtaskRow({
               subtask.id.startsWith("temp-")
             }
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-faint opacity-70 transition hover:bg-sage-50 hover:text-sage-700 group-hover:opacity-100 disabled:opacity-30"
-            aria-label="编辑步骤"
-            title="编辑步骤"
+            aria-label={t.editStep}
+            title={t.editStep}
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -289,8 +295,8 @@ function SortableSubtaskRow({
               onOpenNotes?.(subtask.id)
             }
             className="flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-            aria-label="打开这个步骤的快速笔记"
-            title="快速笔记"
+            aria-label={t.openStepNotes}
+            title={todoText.quickNotes}
           >
             <MessageSquareText className="h-3.5 w-3.5" />
           </button>
@@ -302,8 +308,8 @@ function SortableSubtaskRow({
             }
             disabled={busy}
             className="opacity-0 transition group-hover:opacity-100 disabled:opacity-40"
-            aria-label="删除步骤"
-            title="删除步骤"
+            aria-label={t.deleteStep}
+            title={t.deleteStep}
           >
             <Trash2 className="h-3.5 w-3.5 text-ink-faint hover:text-blush-500" />
           </button>
@@ -323,6 +329,10 @@ export default function TodoSubtasks({
   onOpenNotes,
   onSubtasksChange,
 }: TodoSubtasksProps) {
+  const { dictionary } = useI18n();
+  const t = dictionary.todo.subtasks;
+  const todoText = dictionary.todo;
+
   const [
     subtasks,
     setSubtasks,
@@ -477,7 +487,7 @@ export default function TodoSubtasks({
 
       if (loadError) {
         setError(
-          "读取任务清单失败：" +
+          t.loadFailed +
             loadError.message
         );
 
@@ -489,7 +499,7 @@ export default function TodoSubtasks({
       );
     } catch (unknownError) {
       setError(
-        "读取任务清单失败。"
+        t.loadFailedShort
       );
     } finally {
       setLoading(false);
@@ -587,10 +597,10 @@ export default function TodoSubtasks({
         );
 
         setError(
-          "新增步骤失败：" +
+          t.addFailed +
             (
               insertError?.message ??
-              "没有返回数据"
+              t.missingData
             )
         );
 
@@ -622,7 +632,7 @@ export default function TodoSubtasks({
       );
 
       setError(
-        "新增步骤失败。"
+        t.addFailedShort
       );
     } finally {
       setAdding(false);
@@ -761,7 +771,7 @@ export default function TodoSubtasks({
         );
 
         setError(
-          "修改步骤失败：" +
+          t.editFailed +
             updateError.message
         );
 
@@ -786,7 +796,7 @@ export default function TodoSubtasks({
       );
 
       setError(
-        "修改步骤失败。"
+        t.editFailedShort
       );
     } finally {
       setBusyId(null);
@@ -867,7 +877,7 @@ export default function TodoSubtasks({
         );
 
         setError(
-          "更新步骤失败：" +
+          t.updateFailed +
             updateError.message
         );
       }
@@ -884,7 +894,7 @@ export default function TodoSubtasks({
       );
 
       setError(
-        "更新步骤失败。"
+        t.updateFailedShort
       );
     } finally {
       setBusyId(null);
@@ -948,7 +958,7 @@ export default function TodoSubtasks({
         setSubtasks(previous);
 
         setError(
-          "删除步骤失败：" +
+          t.deleteFailed +
             deleteError.message
         );
       }
@@ -956,7 +966,7 @@ export default function TodoSubtasks({
       setSubtasks(previous);
 
       setError(
-        "删除步骤失败。"
+        t.deleteFailedShort
       );
     } finally {
       setBusyId(null);
@@ -1065,7 +1075,7 @@ export default function TodoSubtasks({
         setSubtasks(previous);
 
         setError(
-          "保存步骤顺序失败：" +
+          t.saveOrderFailed +
             updateError.message
         );
       }
@@ -1073,7 +1083,7 @@ export default function TodoSubtasks({
       setSubtasks(previous);
 
       setError(
-        "保存步骤顺序失败。"
+        t.saveOrderFailedShort
       );
     } finally {
       setReordering(false);
@@ -1104,13 +1114,15 @@ export default function TodoSubtasks({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium text-ink">
-            任务清单
+            {t.title}
           </h3>
 
           <p className="mt-1 text-xs text-ink-faint">
             {subtasks.length === 0
-              ? "把大任务拆成几个更容易开始的小步骤。"
-              : `${completedCount}/${subtasks.length} 已完成`}
+              ? t.empty
+              : t.completedCount
+                  .replace("{done}", String(completedCount))
+                  .replace("{total}", String(subtasks.length))}
           </p>
         </div>
 
@@ -1131,7 +1143,7 @@ export default function TodoSubtasks({
       <div className="mt-4">
         {loading && (
           <p className="text-xs text-ink-faint">
-            正在读取清单…
+            {t.loading}
           </p>
         )}
 
@@ -1236,7 +1248,7 @@ export default function TodoSubtasks({
               setNewTitle("");
             }
           }}
-          placeholder="添加一个小步骤，按 Enter 保存…"
+          placeholder={t.addPlaceholder}
           className="input min-w-0 flex-1"
           disabled={
             Boolean(editingId)
@@ -1255,7 +1267,7 @@ export default function TodoSubtasks({
             void addSubtask()
           }
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage-100 text-sage-700 transition hover:bg-sage-300/60 disabled:opacity-40"
-          aria-label="添加步骤"
+          aria-label={t.add}
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -1273,11 +1285,11 @@ export default function TodoSubtasks({
         >
           <span className="flex items-center gap-2 text-xs font-medium text-ink-soft">
             <MessageSquareText className="h-4 w-4 text-sage-700" />
-            Quick Notes
+            {todoText.quickNotes}
           </span>
 
           <span className="text-[10px] text-ink-faint">
-            打开面板
+            {todoText.openPanel}
           </span>
         </button>
       </div>
@@ -1285,7 +1297,7 @@ export default function TodoSubtasks({
 
       {reordering && (
         <p className="mt-2 text-[10px] text-ink-faint">
-          正在保存新的步骤顺序…
+          {t.saveOrder}
         </p>
       )}
 
@@ -1301,11 +1313,11 @@ export default function TodoSubtasks({
         type="button"
         disabled
         className="mt-4 w-full rounded-xl border border-dashed border-line px-3 py-2 text-xs text-ink-faint"
-        title="AI 拆分将在任务创建 / 规划阶段接入"
+        title={t.aiTitle}
       >
-        ✨ AI 帮我拆分
+        ✨ {t.aiSplit}
         <span className="ml-1 opacity-60">
-          稍后加入
+          {t.aiLater}
         </span>
       </button>
     </section>
