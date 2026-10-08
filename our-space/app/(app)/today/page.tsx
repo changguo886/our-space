@@ -94,6 +94,94 @@ export default async function TodayPage() {
     .maybeSingle();
 
 
+  let entryMedia:
+    {
+      id: string;
+      media_type:
+        | "image"
+        | "video";
+      storage_path: string;
+      signed_url: string;
+      sort_order: number;
+    }[] = [];
+
+  if (entry?.id) {
+    const {
+      data: mediaRows,
+      error: mediaError,
+    } = await supabase
+      .from("daily_entry_media")
+      .select(
+        "id, media_type, storage_path, sort_order"
+      )
+      .eq(
+        "entry_id",
+        entry.id
+      )
+      .order(
+        "sort_order",
+        {
+          ascending: true,
+        }
+      );
+
+    if (
+      !mediaError &&
+      mediaRows &&
+      mediaRows.length > 0
+    ) {
+      const {
+        data: signedRows,
+      } = await supabase
+        .storage
+        .from("daily-media")
+        .createSignedUrls(
+          mediaRows.map(
+            (item) =>
+              item.storage_path
+          ),
+          60 * 60
+        );
+
+      const signedByPath =
+        new Map(
+          (signedRows ?? [])
+            .filter(
+              (item) =>
+                item.signedUrl
+            )
+            .map(
+              (item) => [
+                item.path,
+                item.signedUrl,
+              ]
+            )
+        );
+
+      entryMedia =
+        mediaRows
+          .map(
+            (item) => ({
+              ...item,
+              media_type:
+                item.media_type as
+                  | "image"
+                  | "video",
+              signed_url:
+                signedByPath.get(
+                  item.storage_path
+                ) ?? "",
+            })
+          )
+          .filter(
+            (item) =>
+              Boolean(
+                item.signed_url
+              )
+          );
+    }
+  }
+
   const {
     data: todos,
   } = await supabase
@@ -267,6 +355,9 @@ export default async function TodayPage() {
                 ?.tomorrow_plan ??
               "",
           }}
+          initialMedia={
+            entryMedia
+          }
         />
       </section>
 
