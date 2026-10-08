@@ -29,11 +29,15 @@ type Fields = {
   tomorrow_plan: string;
 };
 
+type MediaSection =
+  keyof Fields;
+
 export type ExistingEntryMedia = {
   id: string;
   media_type:
     | "image"
     | "video";
+  section: MediaSection;
   storage_path: string;
   signed_url: string;
   sort_order: number;
@@ -45,11 +49,12 @@ type PendingMedia = {
   mediaType:
     | "image"
     | "video";
+  section: MediaSection;
   previewUrl: string;
 };
 
 const QUESTIONS: {
-  key: keyof Fields;
+  key: MediaSection;
   labelKey:
     | "todayTasks"
     | "todayNote"
@@ -219,10 +224,12 @@ export default function EntryForm({
     >(null);
 
   const [
-    dragging,
-    setDragging,
+    draggingSection,
+    setDraggingSection,
   ] =
-    useState(false);
+    useState<
+      MediaSection | null
+    >(null);
 
   const [
     msg,
@@ -235,30 +242,21 @@ export default function EntryForm({
       null
     );
 
-  const fileInputRef =
-    useRef<HTMLInputElement | null>(
-      null
-    );
+  const inputRefs =
+    useRef<
+      Partial<
+        Record<
+          MediaSection,
+          HTMLInputElement | null
+        >
+      >
+    >({});
 
   useEffect(() => {
     setExistingMedia(
       initialMedia
     );
   }, [initialMedia]);
-
-  useEffect(
-    () => () => {
-      for (
-        const item of
-          pendingMedia
-      ) {
-        URL.revokeObjectURL(
-          item.previewUrl
-        );
-      }
-    },
-    [pendingMedia]
-  );
 
   const allMediaCount =
     existingMedia.length +
@@ -302,6 +300,7 @@ export default function EntryForm({
   }
 
   function addFiles(
+    section: MediaSection,
     files: File[]
   ) {
     if (files.length === 0) {
@@ -411,6 +410,7 @@ export default function EntryForm({
         file,
         mediaType:
           type,
+        section,
         previewUrl:
           URL.createObjectURL(
             file
@@ -563,16 +563,49 @@ export default function EntryForm({
     const supabase =
       createClient();
 
-    let sortOrder =
-      existingMedia.length ===
-      0
-        ? 1000
-        : Math.max(
-            ...existingMedia.map(
+    const sectionOrders:
+      Record<
+        MediaSection,
+        number
+      > = {
+        today_tasks:
+          1000,
+        today_note:
+          1000,
+        tomorrow_plan:
+          1000,
+      };
+
+    for (
+      const section of
+        Object.keys(
+          sectionOrders
+        ) as
+          MediaSection[]
+    ) {
+      const sameSection =
+        existingMedia.filter(
+          (item) =>
+            item.section ===
+            section
+        );
+
+      if (
+        sameSection.length >
+        0
+      ) {
+        sectionOrders[
+          section
+        ] =
+          Math.max(
+            ...sameSection.map(
               (item) =>
                 item.sort_order
             )
-          ) + 1000;
+          ) +
+          1000;
+      }
+    }
 
     for (
       const item of
@@ -631,6 +664,8 @@ export default function EntryForm({
               userId,
             media_type:
               item.mediaType,
+            section:
+              item.section,
             storage_path:
               path,
             mime_type:
@@ -638,7 +673,9 @@ export default function EntryForm({
             size_bytes:
               item.file.size,
             sort_order:
-              sortOrder,
+              sectionOrders[
+                item.section
+              ],
           });
 
       if (
@@ -658,7 +695,9 @@ export default function EntryForm({
         );
       }
 
-      sortOrder += 1000;
+      sectionOrders[
+        item.section
+      ] += 1000;
     }
   }
 
@@ -799,279 +838,294 @@ export default function EntryForm({
           placeholderKey,
           Icon,
           rows,
-        }) => (
-          <div
-            key={key}
-            className="card p-5"
-          >
-            <label
-              htmlFor={key}
-              className="label"
+        }) => {
+          const sectionExisting =
+            existingMedia.filter(
+              (item) =>
+                item.section ===
+                key
+            );
+
+          const sectionPending =
+            pendingMedia.filter(
+              (item) =>
+                item.section ===
+                key
+            );
+
+          return (
+            <div
+              key={key}
+              className="card p-5"
             >
-              <Icon
-                className="h-4 w-4 text-ink-soft"
-                strokeWidth={
-                  1.8
+              <label
+                htmlFor={key}
+                className="label"
+              >
+                <Icon
+                  className="h-4 w-4 text-ink-soft"
+                  strokeWidth={
+                    1.8
+                  }
+                />
+
+                {t[labelKey]}
+              </label>
+
+              <textarea
+                id={key}
+                rows={rows}
+                maxLength={
+                  4000
                 }
+                className="input resize-none border-transparent bg-cream/60"
+                placeholder={
+                  t[
+                    placeholderKey
+                  ]
+                }
+                value={
+                  values[key]
+                }
+                onChange={(
+                  event
+                ) => {
+                  setValues({
+                    ...values,
+                    [key]:
+                      event
+                        .target
+                        .value,
+                  });
+
+                  setMsg(
+                    null
+                  );
+                }}
               />
 
-              {t[labelKey]}
-            </label>
+              <input
+                ref={(
+                  node
+                ) => {
+                  inputRefs.current[
+                    key
+                  ] = node;
+                }}
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
+                className="hidden"
+                onChange={(
+                  event
+                ) => {
+                  addFiles(
+                    key,
+                    Array.from(
+                      event
+                        .target
+                        .files ??
+                        []
+                    )
+                  );
 
-            <textarea
-              id={key}
-              rows={rows}
-              maxLength={
-                4000
-              }
-              className="input resize-none border-transparent bg-cream/60"
-              placeholder={
-                t[
-                  placeholderKey
-                ]
-              }
-              value={
-                values[key]
-              }
-              onChange={(
-                event
-              ) => {
-                setValues({
-                  ...values,
-                  [key]:
-                    event
-                      .target
-                      .value,
-                });
+                  event.target.value =
+                    "";
+                }}
+              />
 
-                setMsg(
-                  null
-                );
-              }}
-            />
-          </div>
-        )
+              <button
+                type="button"
+                onClick={() =>
+                  inputRefs
+                    .current[
+                      key
+                    ]
+                    ?.click()
+                }
+                onDragEnter={(
+                  event
+                ) => {
+                  event.preventDefault();
+                  setDraggingSection(
+                    key
+                  );
+                }}
+                onDragOver={(
+                  event
+                ) => {
+                  event.preventDefault();
+                  setDraggingSection(
+                    key
+                  );
+                }}
+                onDragLeave={(
+                  event
+                ) => {
+                  event.preventDefault();
+                  setDraggingSection(
+                    null
+                  );
+                }}
+                onDrop={(
+                  event
+                ) => {
+                  event.preventDefault();
+                  setDraggingSection(
+                    null
+                  );
+
+                  addFiles(
+                    key,
+                    Array.from(
+                      event
+                        .dataTransfer
+                        .files
+                    )
+                  );
+                }}
+                className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed px-3 py-3 text-xs transition ${
+                  draggingSection ===
+                  key
+                    ? "border-sage-400 bg-sage-50 text-sage-700"
+                    : "border-line bg-cream/30 text-ink-faint hover:border-sage-200 hover:bg-sage-50/50"
+                }`}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {t.mediaDrop}
+              </button>
+
+              {(
+                sectionExisting.length >
+                  0 ||
+                sectionPending.length >
+                  0
+              ) && (
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {sectionExisting.map(
+                    (item) => (
+                      <div
+                        key={
+                          item.id
+                        }
+                        className="relative aspect-square overflow-hidden rounded-xl border border-line bg-black/[0.03]"
+                      >
+                        {item.media_type ===
+                        "video" ? (
+                          <video
+                            src={
+                              item.signed_url
+                            }
+                            preload="metadata"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={
+                              item.signed_url
+                            }
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+
+                        <button
+                          type="button"
+                          disabled={
+                            removingId ===
+                            item.id
+                          }
+                          onClick={() => {
+                            void removeExisting(
+                              item
+                            );
+                          }}
+                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/75 disabled:opacity-40"
+                          aria-label={
+                            t.removeMedia
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+
+                        {item.media_type ===
+                          "video" && (
+                          <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] text-white">
+                            <Video className="h-3 w-3" />
+                            Video
+                          </span>
+                        )}
+                      </div>
+                    )
+                  )}
+
+                  {sectionPending.map(
+                    (item) => (
+                      <div
+                        key={
+                          item.id
+                        }
+                        className="relative aspect-square overflow-hidden rounded-xl border border-sage-200 bg-sage-50"
+                      >
+                        {item.mediaType ===
+                        "video" ? (
+                          <video
+                            src={
+                              item.previewUrl
+                            }
+                            preload="metadata"
+                            muted
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={
+                              item.previewUrl
+                            }
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removePending(
+                              item.id
+                            )
+                          }
+                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/75"
+                          aria-label={
+                            t.removeMedia
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+
+                        <span className="absolute bottom-2 left-2 rounded-full bg-sage-700/85 px-2 py-1 text-[9px] text-white">
+                          {item.mediaType ===
+                          "video"
+                            ? "Video"
+                            : "Photo"}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        }
       )}
 
-      <div className="card p-5">
+      <div className="rounded-2xl border border-line bg-paper/55 px-4 py-3">
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage-50 text-sage-700">
-            <ImagePlus className="h-4 w-4" />
-          </div>
+          <ImagePlus className="mt-0.5 h-4 w-4 text-sage-700" />
 
-          <div>
-            <h3 className="text-sm font-medium text-ink">
-              {t.mediaTitle}
-            </h3>
-
-            <p className="mt-1 text-xs leading-5 text-ink-faint">
-              {t.mediaHint}
-            </p>
-          </div>
+          <p className="text-xs leading-5 text-ink-faint">
+            {t.mediaHint}
+          </p>
         </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
-          className="hidden"
-          onChange={(
-            event
-          ) => {
-            addFiles(
-              Array.from(
-                event.target
-                  .files ??
-                  []
-              )
-            );
-
-            event.target.value =
-              "";
-          }}
-        />
-
-        <button
-          type="button"
-          onClick={() =>
-            fileInputRef
-              .current
-              ?.click()
-          }
-          onDragEnter={(
-            event
-          ) => {
-            event.preventDefault();
-            setDragging(
-              true
-            );
-          }}
-          onDragOver={(
-            event
-          ) => {
-            event.preventDefault();
-            setDragging(
-              true
-            );
-          }}
-          onDragLeave={(
-            event
-          ) => {
-            event.preventDefault();
-            setDragging(
-              false
-            );
-          }}
-          onDrop={(
-            event
-          ) => {
-            event.preventDefault();
-            setDragging(
-              false
-            );
-
-            addFiles(
-              Array.from(
-                event
-                  .dataTransfer
-                  .files
-              )
-            );
-          }}
-          className={`mt-4 flex w-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-7 text-center transition ${
-            dragging
-              ? "border-sage-400 bg-sage-50"
-              : "border-line bg-cream/35 hover:border-sage-200 hover:bg-sage-50/50"
-          }`}
-        >
-          <Upload className="h-5 w-5 text-sage-700" />
-
-          <span className="mt-2 text-xs font-medium text-ink-soft">
-            {t.mediaDrop}
-          </span>
-        </button>
-
-        {(
-          existingMedia.length >
-            0 ||
-          pendingMedia.length >
-            0
-        ) && (
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {existingMedia.map(
-              (item) => (
-                <div
-                  key={
-                    item.id
-                  }
-                  className="group relative aspect-square overflow-hidden rounded-xl border border-line bg-black/[0.03]"
-                >
-                  {item.media_type ===
-                  "video" ? (
-                    <video
-                      src={
-                        item.signed_url
-                      }
-                      preload="metadata"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <img
-                      src={
-                        item.signed_url
-                      }
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={
-                      removingId ===
-                      item.id
-                    }
-                    onClick={() => {
-                      void removeExisting(
-                        item
-                      );
-                    }}
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-90 transition hover:bg-black/75 disabled:opacity-40"
-                    aria-label={
-                      t.removeMedia
-                    }
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-
-                  {item.media_type ===
-                    "video" && (
-                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] text-white">
-                      <Video className="h-3 w-3" />
-                      Video
-                    </span>
-                  )}
-                </div>
-              )
-            )}
-
-            {pendingMedia.map(
-              (item) => (
-                <div
-                  key={
-                    item.id
-                  }
-                  className="group relative aspect-square overflow-hidden rounded-xl border border-sage-200 bg-sage-50"
-                >
-                  {item.mediaType ===
-                  "video" ? (
-                    <video
-                      src={
-                        item.previewUrl
-                      }
-                      preload="metadata"
-                      muted
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <img
-                      src={
-                        item.previewUrl
-                      }
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removePending(
-                        item.id
-                      )
-                    }
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/75"
-                    aria-label={
-                      t.removeMedia
-                    }
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-
-                  <span className="absolute bottom-2 left-2 rounded-full bg-sage-700/85 px-2 py-1 text-[9px] text-white">
-                    {busy
-                      ? t.uploading
-                      : item.mediaType ===
-                          "video"
-                        ? "Video"
-                        : "Photo"}
-                  </span>
-                </div>
-              )
-            )}
-          </div>
-        )}
       </div>
 
       <button
