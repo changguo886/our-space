@@ -15,6 +15,11 @@ import {
 } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  PREFERENCES_BROADCAST_CHANNEL,
+  PREFERENCES_UPDATED_EVENT,
+  type UserPreferences,
+} from "@/lib/preferences";
 
 type ReminderSession = {
   id: string;
@@ -42,6 +47,7 @@ type ActiveReminder = {
 
 type Props = {
   userId: string;
+  initialPreferences: UserPreferences;
 };
 
 const POLL_MS = 30_000;
@@ -80,8 +86,16 @@ function reminderKey(
 
 export default function GlobalReminderProvider({
   userId,
+  initialPreferences,
 }: Props) {
   const router = useRouter();
+
+  const [
+    preferences,
+    setPreferences,
+  ] = useState(
+    initialPreferences
+  );
 
   const [
     activeReminder,
@@ -98,6 +112,69 @@ export default function GlobalReminderProvider({
     useRef<number | null>(
       null
     );
+
+  useEffect(() => {
+    function handlePreferenceEvent(
+      event: Event
+    ) {
+      const custom =
+        event as CustomEvent<UserPreferences>;
+
+      if (
+        custom.detail?.user_id ===
+        userId
+      ) {
+        setPreferences(
+          custom.detail
+        );
+      }
+    }
+
+    window.addEventListener(
+      PREFERENCES_UPDATED_EVENT,
+      handlePreferenceEvent
+    );
+
+    let channel:
+      BroadcastChannel | null =
+        null;
+
+    if (
+      typeof BroadcastChannel !==
+      "undefined"
+    ) {
+      channel =
+        new BroadcastChannel(
+          PREFERENCES_BROADCAST_CHANNEL
+        );
+
+      channel.onmessage =
+        (event) => {
+          const next =
+            event.data as
+              | UserPreferences
+              | undefined;
+
+          if (
+            next?.user_id ===
+            userId
+          ) {
+            setPreferences(
+              next
+            );
+          }
+        };
+    }
+
+    return () => {
+      window.removeEventListener(
+        PREFERENCES_UPDATED_EVENT,
+        handlePreferenceEvent
+      );
+
+      channel?.close();
+    };
+  }, [userId]);
 
   const dismiss =
     useCallback(() => {
@@ -162,22 +239,30 @@ export default function GlobalReminderProvider({
         setActiveReminder(next);
 
         /*
-         * Reminder uses a fixed, short sound.
-         * It intentionally does not reuse the user's Focus completion choice.
+         * Settings V2:
+         * Reminder 使用自己独立的提醒音，但和 Focus
+         * 共用声音总开关及音量。
+         *
+         * 静音不会阻止 Toast / Browser Notification。
          */
-        try {
-          const audio =
-            new Audio(
-              "/sounds/chime-2.mp3"
-            );
+        if (
+          preferences.sound_enabled
+        ) {
+          try {
+            const audio =
+              new Audio(
+                `/sounds/${preferences.reminder_sound}.mp3`
+              );
 
-          audio.volume = 0.45;
+            audio.volume =
+              preferences.sound_volume;
 
-          void audio
-            .play()
-            .catch(() => {});
-        } catch {
-          // Audio failure does not block the visual reminder.
+            void audio
+              .play()
+              .catch(() => {});
+          } catch {
+            // Audio failure does not block the visual reminder.
+          }
         }
 
         if (
