@@ -18,8 +18,10 @@ export type EntryMediaView = {
 
 export function EntryMediaGrid({
   media,
+  controls = true,
 }: {
   media: EntryMediaView[];
+  controls?: boolean;
 }) {
   if (media.length === 0) {
     return null;
@@ -36,7 +38,7 @@ export function EntryMediaGrid({
           src={
             media[0].signed_url
           }
-          controls
+          controls={controls}
           preload="metadata"
           className="max-h-[520px] w-full bg-black object-contain"
         />
@@ -72,7 +74,7 @@ export function EntryMediaGrid({
                 src={
                   item.signed_url
                 }
-                controls
+                controls={controls}
                 preload="metadata"
                 className="h-full w-full bg-black object-contain"
               />
@@ -97,10 +99,12 @@ export function EntryBody({
   entry,
   tint,
   media = [],
+  mediaControls = true,
 }: {
   entry: Body;
   tint: string;
   media?: EntryMediaView[];
+  mediaControls?: boolean;
 }) {
   const sections = [
     {
@@ -181,6 +185,9 @@ export function EntryBody({
               <EntryMediaGrid
                 media={
                   sectionMedia
+                }
+                controls={
+                  mediaControls
                 }
               />
             </div>
