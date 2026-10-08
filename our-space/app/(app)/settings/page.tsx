@@ -7,6 +7,7 @@ import Avatar from "@/components/Avatar";
 import SpaceManager from "@/components/SpaceManager";
 import PreferencesSettings from "@/components/PreferencesSettings";
 import { getUserPreferences } from "@/lib/preferences";
+import { getDictionary } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,14 @@ export default async function SettingsPage() {
       profile.id
     );
 
+  const dictionary =
+    getDictionary(
+      preferences.language
+    );
+
+  const t =
+    dictionary.settings;
+
   const { data: members } = await supabase
     .from("group_members")
     .select(
@@ -34,7 +43,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
-      <h1 className="text-2xl font-semibold">设置</h1>
+      <h1 className="text-2xl font-semibold">{t.title}</h1>
 
       <PreferencesSettings
         userId={profile.id}
@@ -42,7 +51,7 @@ export default async function SettingsPage() {
       />
 
       <section className="card p-5">
-        <h2 className="mb-4 font-medium">我的资料</h2>
+        <h2 className="mb-4 font-medium">{t.profileTitle}</h2>
         <SettingsForm profile={profile} />
       </section>
 
@@ -55,7 +64,7 @@ export default async function SettingsPage() {
 
       <section className="card p-5">
         <p className="text-xs text-ink-faint">
-          当前 Space
+          {t.currentSpace}
         </p>
 
         <h2 className="mt-1 font-medium">
@@ -63,15 +72,14 @@ export default async function SettingsPage() {
         </h2>
 
         <p className="mt-2 text-xs leading-relaxed text-ink-faint">
-          当前空间最多 10 人。把邀请码发给朋友，
-          TA 登录后输入邀请码即可加入这个 Space。
+          {t.currentSpaceDescription}
         </p>
 
         <InviteCode code={group.invite_code} />
 
         <div className="mt-6">
           <h3 className="text-sm font-medium">
-            Space 成员
+            {t.spaceMembers}
           </h3>
 
           <ul className="mt-4 space-y-3">
@@ -89,7 +97,7 @@ export default async function SettingsPage() {
 
                   {m.user_id === profile.id && (
                     <span className="text-xs text-ink-faint">
-                      （我）
+                      {t.me}
                     </span>
                   )}
                 </li>
@@ -105,7 +113,7 @@ export default async function SettingsPage() {
         className="text-center"
       >
         <button className="btn-ghost">
-          退出登录
+          {t.signOut}
         </button>
       </form>
     </div>
