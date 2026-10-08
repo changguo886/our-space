@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/components/I18nProvider";
 
 type Tab =
   | "steps"
@@ -165,7 +166,7 @@ export default function MiniFocusWorkspace({
           subtasksResult.error
         ) {
           setError(
-            "读取步骤失败：" +
+            mini.loadStepsFailed +
               subtasksResult.error
                 .message
           );
@@ -180,7 +181,7 @@ export default function MiniFocusWorkspace({
           notesResult.error
         ) {
           setError(
-            "读取笔记失败：" +
+            mini.loadNotesFailed +
               notesResult.error
                 .message
           );
@@ -302,7 +303,7 @@ export default function MiniFocusWorkspace({
         );
 
         setError(
-          "更新步骤失败：" +
+          mini.updateStepFailed +
             updateError.message
         );
       }
@@ -314,7 +315,7 @@ export default function MiniFocusWorkspace({
       );
 
       setError(
-        "更新步骤失败：" +
+        mini.updateStepFailed +
           (
             unknownError instanceof
               Error
@@ -401,11 +402,11 @@ export default function MiniFocusWorkspace({
         !data
       ) {
         setError(
-          "新增笔记失败：" +
+          mini.addNoteFailed +
             (
               insertError
                 ?.message ??
-              "没有返回数据"
+              mini.missingData
             )
         );
 
@@ -424,7 +425,7 @@ export default function MiniFocusWorkspace({
       unknownError
     ) {
       setError(
-        "新增笔记失败：" +
+        mini.addNoteFailed +
           (
             unknownError instanceof
               Error
@@ -462,8 +463,8 @@ export default function MiniFocusWorkspace({
       >
         {(
           [
-            ["steps", "步骤"],
-            ["notes", "笔记"],
+            ["steps", mini.steps],
+            ["notes", mini.notes],
           ] as const
         ).map(
           ([value, label]) => (
@@ -517,7 +518,7 @@ export default function MiniFocusWorkspace({
               color: "#999D96",
             }}
           >
-            正在加载专注内容…
+            {mini.loading}
           </div>
         ) : tab ===
           "steps" ? (
@@ -545,7 +546,7 @@ export default function MiniFocusWorkspace({
                     letterSpacing: "0.08em",
                   }}
                 >
-                  当前步骤
+                  {mini.currentStep}
                 </div>
 
                 <div
@@ -573,7 +574,7 @@ export default function MiniFocusWorkspace({
                   color: "#999D96",
                 }}
               >
-                还没有步骤。
+                {mini.noSteps}
               </div>
             ) : (
               subtasks.map(
@@ -723,8 +724,8 @@ export default function MiniFocusWorkspace({
                 rows={2}
                 placeholder={
                   currentSubtask
-                    ? "记录当前步骤"
-                    : "快速笔记"
+                    ? mini.noteForCurrentStep
+                    : mini.quickNote
                 }
                 style={{
                   boxSizing: "border-box",
@@ -763,7 +764,7 @@ export default function MiniFocusWorkspace({
                     currentSubtask
                       ? "→ " +
                         currentSubtask.title
-                      : "→ 未分类"
+                      : "→ " + mini.unsorted
                   }
                 </span>
 
@@ -793,7 +794,7 @@ export default function MiniFocusWorkspace({
                         : 1,
                   }}
                 >
-                  Add
+                  {mini.add}
                 </button>
               </div>
             </div>
