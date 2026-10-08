@@ -309,6 +309,12 @@ function sessionDurationMinutes(session: TodoSession) {
   return Math.max(0, Math.round((end - start) / 60000));
 }
 
+/*
+ * 历史累计排期。
+ *
+ * 这里保留所有 Session，供历史 / 统计使用。
+ * 不要拿它判断一个未完成 Todo 现在是否“已经排满”。
+ */
 function scheduledMinutes(todo: CalendarTodo) {
   return (todo.todo_sessions ?? []).reduce(
     (total, session) => total + sessionDurationMinutes(session),
@@ -316,24 +322,79 @@ function scheduledMinutes(todo: CalendarTodo) {
   );
 }
 
-function remainingMinutes(todo: CalendarTodo) {
+/*
+ * 当前仍然有效的排期：
+ * - 正在进行中的 Session
+ * - 未来 Session
+ *
+ * 已经结束的旧 Session 属于历史计划，不继续占用今天/未来的计划额度。
+ */
+function activeScheduledMinutes(
+  todo: CalendarTodo,
+  nowMs: number
+) {
+  return (todo.todo_sessions ?? []).reduce(
+    (total, session) => {
+      const endMs = new Date(
+        session.scheduled_end
+      ).getTime();
+
+      if (endMs < nowMs) {
+        return total;
+      }
+
+      return total + sessionDurationMinutes(session);
+    },
+    0
+  );
+}
+
+function expiredSessionCount(
+  todo: CalendarTodo,
+  nowMs: number
+) {
+  return (todo.todo_sessions ?? []).filter(
+    (session) =>
+      new Date(session.scheduled_end).getTime() < nowMs
+  ).length;
+}
+
+function remainingPlannableMinutes(
+  todo: CalendarTodo,
+  nowMs: number
+) {
   if (!todo.estimated_minutes) {
     return null;
   }
 
-  return Math.max(0, todo.estimated_minutes - scheduledMinutes(todo));
+  return Math.max(
+    0,
+    todo.estimated_minutes -
+      activeScheduledMinutes(todo, nowMs)
+  );
 }
 
-function scheduledRatio(todo: CalendarTodo) {
+function activeScheduledRatio(
+  todo: CalendarTodo,
+  nowMs: number
+) {
   if (!todo.estimated_minutes || todo.estimated_minutes <= 0) {
     return 0;
   }
 
-  return Math.min(1, scheduledMinutes(todo) / todo.estimated_minutes);
+  return Math.min(
+    1,
+    activeScheduledMinutes(todo, nowMs) /
+      todo.estimated_minutes
+  );
 }
 
-function defaultSessionMinutes(todo: CalendarTodo) {
-  const remaining = remainingMinutes(todo);
+function defaultSessionMinutes(
+  todo: CalendarTodo,
+  nowMs: number
+) {
+  const remaining =
+    remainingPlannableMinutes(todo, nowMs);
 
   if (remaining === null || remaining === 0) {
     return DEFAULT_SESSION_MINUTES;
@@ -342,12 +403,19 @@ function defaultSessionMinutes(todo: CalendarTodo) {
   return Math.min(DEFAULT_SESSION_MINUTES, remaining);
 }
 
-function overplannedMinutes(todo: CalendarTodo) {
+function activeOverplannedMinutes(
+  todo: CalendarTodo,
+  nowMs: number
+) {
   if (!todo.estimated_minutes) {
     return 0;
   }
 
-  return Math.max(0, scheduledMinutes(todo) - todo.estimated_minutes);
+  return Math.max(
+    0,
+    activeScheduledMinutes(todo, nowMs) -
+      todo.estimated_minutes
+  );
 }
 
 function overlaps(
@@ -582,16 +650,27 @@ function readSlotId(id: string) {
    Task Pool card
 ========================================================= */
 
-function PoolTask({ todo }: { todo: CalendarTodo }) {
+function PoolTask({
+  todo,
+  nowMs,
+}: {
+  todo: CalendarTodo;
+  nowMs: number;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `todo:${todo.id}`,
   });
 
   const category = categoryOf(todo);
-  const scheduled = scheduledMinutes(todo);
-  const remaining = remainingMinutes(todo);
-  const overplanned = overplannedMinutes(todo);
-  const progress = scheduledRatio(todo) * 100;
+  const scheduled = activeScheduledMinutes(todo, nowMs);
+  const remaining =
+    remainingPlannableMinutes(todo, nowMs);
+  const overplanned =
+    activeOverplannedMinutes(todo, nowMs);
+  const progress =
+    activeScheduledRatio(todo, nowMs) * 100;
+  const expiredCount =
+    expiredSessionCount(todo, nowMs);
 
   return (
     <div
@@ -638,13 +717,19 @@ function PoolTask({ todo }: { todo: CalendarTodo }) {
         </div>
 
         <p className="mt-1 text-[11px] text-ink-faint">
-          已安排 {formatMinutes(scheduled)}
+          有效已安排 {formatMinutes(scheduled)}
           {overplanned > 0 ? (
             <> · 多安排 {formatMinutes(overplanned)}</>
           ) : (
             remaining !== null && <> · 剩余 {formatMinutes(remaining)}</>
           )}
         </p>
+
+        {expiredCount > 0 && (
+          <p className="mt-1 text-[10px] text-amber-700">
+            {expiredCount} 个过期排期已保留为历史，不占用当前计划额度
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1124,10 +1209,11 @@ export default function CalendarPlanner({
           return false;
         }
 
-        const remaining = remainingMinutes(todo);
+        const remaining =
+          remainingPlannableMinutes(todo, now);
         return remaining === null || remaining > 0;
       }),
-    [todos]
+    [todos, now]
   );
 
   const fullyPlannedTodos = useMemo(
@@ -1137,10 +1223,11 @@ export default function CalendarPlanner({
           return false;
         }
 
-        const remaining = remainingMinutes(todo);
+        const remaining =
+          remainingPlannableMinutes(todo, now);
         return remaining !== null && remaining === 0;
       }),
-    [todos]
+    [todos, now]
   );
 
   const scheduledSessions = useMemo(() => {
@@ -1228,11 +1315,11 @@ export default function CalendarPlanner({
     }
 
     if (activeTodo) {
-      return defaultSessionMinutes(activeTodo);
+      return defaultSessionMinutes(activeTodo, now);
     }
 
     return DEFAULT_SESSION_MINUTES;
-  }, [activeSessionInfo, activeTodo]);
+  }, [activeSessionInfo, activeTodo, now]);
 
   const currentTimeInfo = useMemo(() => {
     const current = new Date(now);
@@ -1471,7 +1558,7 @@ export default function CalendarPlanner({
         return;
       }
 
-      const duration = defaultSessionMinutes(todo);
+      const duration = defaultSessionMinutes(todo, now);
       const end = new Date(start.getTime() + duration * 60000);
 
       await createSession(todo, start.toISOString(), end.toISOString());
@@ -1980,7 +2067,7 @@ export default function CalendarPlanner({
               )}
 
               {poolTodos.map((todo) => (
-                <PoolTask key={todo.id} todo={todo} />
+                <PoolTask key={todo.id} todo={todo} nowMs={now} />
               ))}
             </div>
 
@@ -1992,7 +2079,11 @@ export default function CalendarPlanner({
 
                 <div className="mt-3 space-y-2">
                   {fullyPlannedTodos.map((todo) => (
-                    <PoolTask key={`planned-${todo.id}`} todo={todo} />
+                    <PoolTask
+                      key={`planned-${todo.id}`}
+                      todo={todo}
+                      nowMs={now}
+                    />
                   ))}
                 </div>
 
@@ -2350,7 +2441,7 @@ export default function CalendarPlanner({
                           </div>
 
                           <div className="rounded-2xl border border-line/70 bg-white/60 p-3">
-                            <p className="text-[10px] text-ink-faint">总已安排</p>
+                            <p className="text-[10px] text-ink-faint">历史累计安排</p>
                             <p className="mt-1 text-lg font-medium text-ink">
                               {formatMinutes(
                                 scheduledMinutes(selectedSessionInfo.todo)
@@ -2359,14 +2450,20 @@ export default function CalendarPlanner({
                           </div>
                         </div>
 
-                        {remainingMinutes(selectedSessionInfo.todo) !== null && (
+                        {remainingPlannableMinutes(
+                          selectedSessionInfo.todo,
+                          now
+                        ) !== null && (
                           <div className="rounded-2xl bg-sage-50 px-4 py-3">
                             <p className="text-[10px] text-sage-700/70">
-                              预计剩余
+                              当前待安排
                             </p>
                             <p className="mt-1 text-sm font-medium text-sage-700">
                               {formatMinutes(
-                                remainingMinutes(selectedSessionInfo.todo) ?? 0
+                                remainingPlannableMinutes(
+                                  selectedSessionInfo.todo,
+                                  now
+                                ) ?? 0
                               )}
                             </p>
                           </div>
