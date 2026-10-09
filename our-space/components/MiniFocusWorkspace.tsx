@@ -187,6 +187,9 @@ function SortableMiniStep({
 export default function MiniFocusWorkspace({
   todoId,
 }: Props) {
+  const { dictionary } = useI18n();
+  const mini = dictionary.focus.mini;
+
   const [
     tab,
     setTab,
