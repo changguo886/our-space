@@ -37,14 +37,29 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
       "Europe/Berlin",
       "Australia/Sydney",
       "Pacific/Auckland",
-    ] as const;
+    ];
 
-    return commonZones.includes(
-      tz as (typeof commonZones)[number]
-    )
-      ? [...commonZones]
+    return commonZones.includes(tz)
+      ? commonZones
       : [tz, ...commonZones];
   }, [tz]);
+
+  function timezoneLabel(
+    zone: string
+  ) {
+    const labels =
+      t.timezoneOptions;
+
+    if (
+      zone in labels
+    ) {
+      return labels[
+        zone as keyof typeof labels
+      ];
+    }
+
+    return `${t.timezoneCurrent}: ${zone}`;
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -112,13 +127,7 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
               key={z}
               value={z}
             >
-              {(
-                t.timezoneOptions as Record<
-                  string,
-                  string
-                >
-              )[z] ??
-                `${t.timezoneCurrent}: ${z}`}
+              {timezoneLabel(z)}
             </option>
           ))}
         </select>
