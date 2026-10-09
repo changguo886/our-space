@@ -1403,6 +1403,10 @@ export default function FocusTimer({
         flexDirection:
           "column",
 
+        // Keep the timer controls visible; only the workspace scrolls.
+        minHeight: 0,
+        overflow: "hidden",
+
         background:
           "#FFFDFA",
 
@@ -1714,8 +1718,14 @@ export default function FocusTimer({
             minHeight:
               0,
 
+            minWidth:
+              0,
+
             flex:
               1,
+
+            overflow:
+              "hidden",
 
             display:
               "flex",
