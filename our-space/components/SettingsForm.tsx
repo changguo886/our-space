@@ -20,12 +20,30 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
   const [msg, setMsg] = useState<string | null>(null);
 
   const zones = useMemo(() => {
-    try {
-      const list = (Intl as unknown as { supportedValuesOf(k: string): string[] }).supportedValuesOf("timeZone");
-      return list.includes(tz) ? list : [tz, ...list];
-    } catch {
-      return [tz];
-    }
+    const commonZones = [
+      "Asia/Shanghai",
+      "Asia/Hong_Kong",
+      "Asia/Taipei",
+      "Asia/Tokyo",
+      "Asia/Seoul",
+      "Asia/Singapore",
+      "America/New_York",
+      "America/Chicago",
+      "America/Denver",
+      "America/Los_Angeles",
+      "America/Toronto",
+      "Europe/London",
+      "Europe/Paris",
+      "Europe/Berlin",
+      "Australia/Sydney",
+      "Pacific/Auckland",
+    ] as const;
+
+    return commonZones.includes(
+      tz as (typeof commonZones)[number]
+    )
+      ? [...commonZones]
+      : [tz, ...commonZones];
   }, [tz]);
 
   async function save(e: React.FormEvent) {
@@ -80,9 +98,28 @@ export default function SettingsForm({ profile }: { profile: Profile }) {
 
       <div>
         <label className="label">{t.timezone}</label>
-        <select className="input" value={tz} onChange={(e) => setTz(e.target.value)}>
+        <select
+          className="input"
+          value={tz}
+          onChange={(e) =>
+            setTz(
+              e.target.value
+            )
+          }
+        >
           {zones.map((z) => (
-            <option key={z} value={z}>{z}</option>
+            <option
+              key={z}
+              value={z}
+            >
+              {(
+                t.timezoneOptions as Record<
+                  string,
+                  string
+                >
+              )[z] ??
+                `${t.timezoneCurrent}: ${z}`}
+            </option>
           ))}
         </select>
         <button
