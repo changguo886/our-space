@@ -195,8 +195,11 @@ function SortableMiniStep({
 export default function MiniFocusWorkspace({
   todoId,
 }: Props) {
-  const { dictionary } = useI18n();
+  const { dictionary, language } = useI18n();
   const mini = dictionary.focus.mini;
+  const labels = language === "zh-CN"
+    ? { expand: "展开全文", collapse: "收起", edit: "编辑", save: "保存", cancel: "取消", saveFailed: "更新笔记失败：" }
+    : { expand: "Read more", collapse: "Show less", edit: "Edit", save: "Save", cancel: "Cancel", saveFailed: "Could not update note: " };
 
   const [
     tab,
@@ -256,6 +259,56 @@ export default function MiniFocusWorkspace({
         ""
       )
     );
+
+  const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
+
+  function startEdit(note: MiniNote) {
+    setEditingNoteId(note.id);
+    setEditingContent(note.content);
+    setExpandedNoteIds((current) => new Set(current).add(note.id));
+    setError(null);
+  }
+
+  async function saveEditedNote(note: MiniNote) {
+    const content = editingContent.trim();
+    if (busy || !content || content === note.content) {
+      if (!busy && content === note.content) setEditingNoteId(null);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const { data, error: updateError } = await createClient()
+        .from("quick_notes")
+        .update({ content })
+        .eq("id", note.id)
+        .eq("todo_id", todoId)
+        .select("id, content, updated_at")
+        .single();
+
+      if (updateError || !data) {
+        throw new Error(updateError?.message ?? "No data returned");
+      }
+
+      setNotes((current) => current.map((item) =>
+        item.id === note.id
+          ? { ...item, content: data.content, updated_at: data.updated_at }
+          : item
+      ));
+      setEditingNoteId(null);
+    } catch (unknownError) {
+      setError(labels.saveFailed + (
+        unknownError instanceof Error ? unknownError.message : String(unknownError)
+      ));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Preserve the selected tab and unfinished note across PiP
   // collapse / expand and normal component remounts.
@@ -1020,61 +1073,146 @@ export default function MiniFocusWorkspace({
                 </div>
               ) : (
                 notes
-                  .slice(
-                    0,
-                    6
-                  )
-                  .map(
-                    (
-                      note
-                    ) => (
+                  .slice(0, 6)
+                  .map((note) => {
+                    const expanded = expandedNoteIds.has(note.id);
+                    const editing = editingNoteId === note.id;
+                    const hasMore = note.content.length > 110 || note.content.includes("\n");
+
+                    return (
                       <div
-                        key={
-                          note.id
-                        }
+                        key={note.id}
                         style={{
                           padding: "8px 9px",
                           borderRadius: "10px",
                           border: "1px solid #F0EEE9",
                           background: "#FFFDF8",
+                          minWidth: 0,
                         }}
                       >
                         {note.title && (
-                          <div
-                            style={{
-                              marginBottom: "3px",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              fontSize: "9px",
-                              fontWeight: 700,
-                              color: "#4A5048",
-                            }}
-                          >
-                            {
-                              note.title
-                            }
+                          <div style={{
+                            marginBottom: "5px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontSize: "9px",
+                            fontWeight: 700,
+                            color: "#4A5048",
+                          }}>
+                            {note.title}
                           </div>
                         )}
 
-                        <div
-                          style={{
-                            display: "-webkit-box",
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: "vertical",
+                        {editing ? (
+                          <textarea
+                            aria-label={labels.edit}
+                            value={editingContent}
+                            onChange={(event) => setEditingContent(event.target.value)}
+                            rows={5}
+                            style={{
+                              boxSizing: "border-box",
+                              display: "block",
+                              width: "100%",
+                              maxHeight: "190px",
+                              minHeight: "95px",
+                              overflowY: "auto",
+                              resize: "vertical",
+                              border: "1px solid #DDE8D8",
+                              borderRadius: "7px",
+                              padding: "7px",
+                              background: "#FFFFFF",
+                              fontSize: "10px",
+                              fontFamily: "inherit",
+                              lineHeight: 1.5,
+                              color: "#4A5048",
+                            }}
+                          />
+                        ) : (
+                          <div style={{
+                            display: expanded ? "block" : "-webkit-box",
+                            WebkitLineClamp: expanded ? undefined : 3,
+                            WebkitBoxOrient: expanded ? undefined : "vertical",
                             overflow: "hidden",
-                            fontSize: "9px",
-                            lineHeight: 1.45,
+                            overflowWrap: "anywhere",
+                            whiteSpace: "pre-wrap",
+                            fontSize: "10px",
+                            lineHeight: 1.5,
                             color: "#73786F",
-                          }}
-                        >
-                          {
-                            note.content
-                          }
+                          }}>
+                            {note.content}
+                          </div>
+                        )}
+
+                        <div style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: "10px",
+                          marginTop: "7px",
+                          flexWrap: "wrap",
+                        }}>
+                          {editing ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => {
+                                  setEditingNoteId(null);
+                                  setEditingContent("");
+                                  setError(null);
+                                }}
+                                style={{ ...buttonBase, background: "transparent", color: "#858980", fontSize: "10px" }}
+                              >
+                                {labels.cancel}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy || !editingContent.trim()}
+                                onClick={() => void saveEditedNote(note)}
+                                style={{
+                                  ...buttonBase,
+                                  background: "#E9F1E7",
+                                  borderRadius: "6px",
+                                  padding: "4px 10px",
+                                  color: "#597356",
+                                  fontWeight: 600,
+                                  opacity: busy || !editingContent.trim() ? 0.5 : 1,
+                                  fontSize: "10px",
+                                }}
+                              >
+                                {labels.save}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {hasMore && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedNoteIds((current) => {
+                                    const next = new Set(current);
+                                    if (next.has(note.id)) next.delete(note.id);
+                                    else next.add(note.id);
+                                    return next;
+                                  })}
+                                  style={{ ...buttonBase, background: "transparent", color: "#597356", fontSize: "10px" }}
+                                >
+                                  {expanded ? labels.collapse : labels.expand}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                disabled={busy || editingNoteId !== null}
+                                onClick={() => startEdit(note)}
+                                style={{ ...buttonBase, background: "transparent", color: "#597356", fontSize: "10px" }}
+                              >
+                                {labels.edit}
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-                    )
-                  )
+                    );
+                  })
               )}
             </div>
           </div>
