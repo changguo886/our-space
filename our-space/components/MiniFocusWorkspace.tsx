@@ -53,6 +53,14 @@ type Props = {
   todoId: string;
 };
 
+function readSessionValue(key: string, fallback: string) {
+  try {
+    return window.sessionStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 const buttonBase: React.CSSProperties = {
   border: "none",
   cursor: "pointer",
@@ -194,9 +202,13 @@ export default function MiniFocusWorkspace({
     tab,
     setTab,
   ] =
-    useState<Tab>(
-      "steps"
-    );
+    useState<Tab>(() => {
+      const saved = readSessionValue(
+        `ourspace:mini-focus:tab:${todoId}`,
+        "steps"
+      );
+      return saved === "notes" ? "notes" : "steps";
+    });
 
   const [
     subtasks,
@@ -238,9 +250,38 @@ export default function MiniFocusWorkspace({
     draft,
     setDraft,
   ] =
-    useState("");
+    useState(() =>
+      readSessionValue(
+        `ourspace:mini-focus:draft:${todoId}`,
+        ""
+      )
+    );
 
-  const sensors = useSensors(
+  // Preserve the selected tab and unfinished note across PiP
+  // collapse / expand and normal component remounts.
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(
+        `ourspace:mini-focus:tab:${todoId}`,
+        tab
+      );
+    } catch {
+      // Storage may be unavailable in restrictive browser contexts.
+    }
+  }, [todoId, tab]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(
+        `ourspace:mini-focus:draft:${todoId}`,
+        draft
+      );
+    } catch {
+      // Keep the in-memory draft when storage is unavailable.
+    }
+  }, [todoId, draft]);
+
+    const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 5,
@@ -650,6 +691,13 @@ export default function MiniFocusWorkspace({
       );
 
       setDraft("");
+      try {
+        window.sessionStorage.removeItem(
+          `ourspace:mini-focus:draft:${todoId}`
+        );
+      } catch {
+        // Saving the note succeeded even if storage cleanup fails.
+      }
     } catch (
       unknownError
     ) {
@@ -673,6 +721,7 @@ export default function MiniFocusWorkspace({
     <div
       style={{
         minHeight: 0,
+        minWidth: 0,
         flex: 1,
         display: "flex",
         flexDirection: "column",
@@ -685,6 +734,7 @@ export default function MiniFocusWorkspace({
       <div
         style={{
           display: "flex",
+          flexShrink: 0,
           alignItems: "center",
           borderBottom: "1px solid #ECEAE5",
           background: "#FAF8F4",
@@ -703,10 +753,10 @@ export default function MiniFocusWorkspace({
               }
               type="button"
               onClick={() =>
-                setTab(
-                  value
-                )
+                setTab(value)
               }
+              aria-selected={tab === value}
+              role="tab"
               style={{
                 ...buttonBase,
                 flex: 1,
@@ -733,8 +783,10 @@ export default function MiniFocusWorkspace({
       <div
         style={{
           minHeight: 0,
+          minWidth: 0,
           flex: 1,
           overflowY: "auto",
+          overscrollBehavior: "contain",
           padding: "10px",
         }}
       >
