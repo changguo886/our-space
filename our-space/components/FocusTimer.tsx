@@ -20,7 +20,7 @@ import {
   type UserPreferences,
 } from "@/lib/preferences";
 import MiniFocusWorkspace from "@/components/MiniFocusWorkspace";
-import { useI18n } from "@/components/I18nProvider";
+import I18nProvider, { useI18n } from "@/components/I18nProvider";
 
 import {
   Check,
@@ -1142,7 +1142,11 @@ export default function FocusTimer({
       };
 
    root.render(
-  floatingCompact ? (
+    <I18nProvider
+      initialLanguage={preferences.language}
+      userId={preferences.user_id}
+    >
+      {floatingCompact ? (
     /*
      * ==========================
      * Side Compact Mode
@@ -1934,8 +1938,9 @@ export default function FocusTimer({
         )}
       </div>
     </div>
-  )
-);
+  )}
+    </I18nProvider>
+  );
 
   }, [
     floatingOpen,
