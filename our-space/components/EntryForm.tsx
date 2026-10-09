@@ -1002,15 +1002,7 @@ export default function EntryForm({
                 }}
               />
 
-              <button
-                type="button"
-                onClick={() =>
-                  inputRefs
-                    .current[
-                      key
-                    ]
-                    ?.click()
-                }
+              <div
                 onDragEnter={(
                   event
                 ) => {
@@ -1052,16 +1044,47 @@ export default function EntryForm({
                     )
                   );
                 }}
-                className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed px-3 py-3 text-xs transition ${
+                className={`mt-3 rounded-2xl border border-dashed p-3 transition ${
                   draggingSection ===
                   key
-                    ? "border-sage-400 bg-sage-50 text-sage-700"
-                    : "border-line bg-cream/30 text-ink-faint hover:border-sage-200 hover:bg-sage-50/50"
+                    ? "border-sage-400 bg-sage-50"
+                    : "border-line bg-cream/30"
                 }`}
               >
-                <Upload className="h-3.5 w-3.5" />
-                {t.mediaDrop}
-              </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    inputRefs
+                      .current[
+                        key
+                      ]
+                      ?.click()
+                  }
+                  className="flex w-full items-center justify-between gap-3 rounded-xl bg-white px-3 py-3 text-left shadow-sm transition hover:bg-sage-50"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage-50 text-sage-700">
+                      <ImagePlus className="h-4 w-4" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink">
+                        {t.chooseMedia}
+                      </p>
+
+                      <p className="mt-0.5 text-[11px] text-ink-faint">
+                        {t.chooseMediaHint}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Upload className="h-4 w-4 shrink-0 text-ink-faint" />
+                </button>
+
+                <p className="mt-2 text-center text-[11px] text-ink-faint">
+                  {t.mediaDrop}
+                </p>
+              </div>
 
               {(
                 sectionExisting.length >
