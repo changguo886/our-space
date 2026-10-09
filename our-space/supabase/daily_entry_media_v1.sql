@@ -47,7 +47,7 @@ create or replace function public.enforce_daily_entry_media_limit()
 returns trigger
 language plpgsql
 set search_path = public
-as $
+as $$
 declare
   image_count integer;
   video_count integer;
@@ -81,7 +81,7 @@ begin
 
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists daily_entry_media_limit on public.daily_entry_media;
 create trigger daily_entry_media_limit
