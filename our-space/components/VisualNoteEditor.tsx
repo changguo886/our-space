@@ -20,8 +20,10 @@ const NOTE_COLORS = [
 ] as const;
 
 function appendInline(target: HTMLElement, text: string) {
-  const parts = text.split(/(\{\{(?:color|emphasis):(?:default|sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
+  const parts = text.split(/(\{\{underline\|[^}\n]+\}\}|\{\{(?:color|emphasis):(?:default|sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   parts.forEach((part) => {
+    const underline = /^\{\{underline\|([^}\n]+)\}\}$/.exec(part);
+    if (underline) { const el = document.createElement("u"); el.textContent = underline[1]; target.appendChild(el); return; }
     const token = /^\{\{(color|emphasis):(sage|amber|rose|sky|lavender)\|([^}\n]+)\}\}$/.exec(part);
     if (token) {
       const span = document.createElement("span");
