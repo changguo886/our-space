@@ -10,12 +10,14 @@ type Props = {
 // Small, intentionally limited Markdown subset for Quick Notes.
 // Render as React text nodes rather than injecting HTML.
 function inline(text: string): ReactNode[] {
-  const parts = text.split(/(\{\{(?:color|emphasis):(?:sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
+  const parts = text.split(/(\{\{underline\|[^}\n]+\}\}|\{\{(?:color|emphasis):(?:default|sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   return parts.map((part, index) => {
+    const underline = /^\{\{underline\|([^}\n]+)\}\}$/.exec(part);
+    if (underline) return createElement("u", { key: index }, underline[1]);
     const token = /^\{\{(color|emphasis):(sage|amber|rose|sky|lavender)\|([^}\n]+)\}\}$/.exec(part);
     if (token) {
       const palette: Record<string, string> = {
-        sage:"#62845B",amber:"#AC7936",rose:"#B46D7D",sky:"#557FA4",lavender:"#8070A5"
+        default:"#4A5048",sage:"#62845B",amber:"#AC7936",rose:"#B46D7D",sky:"#557FA4",lavender:"#8070A5"
       };
       return createElement("span", {
         key:index,
