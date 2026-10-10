@@ -981,6 +981,53 @@ export default function QuickNotes({
           </p>
         )}
       </div>
+
+      {expandedNoteId && (() => {
+        const note = notes.find(item => item.id === expandedNoteId);
+        if (!note) return null;
+        const changed = editTitle !== (note.title ?? "") || editContent !== note.content || editColor !== note.color;
+        const close = () => {
+          if (busy) return;
+          if (changed && !window.confirm("Discard unsaved changes? / 放弃未保存的修改？")) return;
+          cancelEditing();
+        };
+        return createPortal(
+          <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/35 p-3 backdrop-blur-[2px] sm:p-8">
+            <section role="dialog" aria-modal="true" aria-label="Expanded Quick Note / 展开笔记"
+              className="flex max-h-[90vh] w-full max-w-[880px] flex-col overflow-hidden rounded-[24px] border border-white/70 bg-[#FFFEFB] shadow-2xl">
+              <header className="flex shrink-0 items-center justify-between border-b border-line/70 px-5 py-4 sm:px-7">
+                <div>
+                  <p className="text-[10px] font-semibold tracking-[0.13em] text-ink-faint">QUICK NOTE · EXPANDED</p>
+                  <p className="mt-1 text-sm text-ink-soft">{sortedSubtasks.find(s => s.id === note.subtask_id)?.title ?? q.unsorted}</p>
+                </div>
+                <button type="button" disabled={busy} onClick={close} className="rounded-lg p-2 text-ink-faint hover:bg-paper" aria-label={q.close}><X className="h-5 w-5" /></button>
+              </header>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-7">
+                <input value={editTitle} onChange={event => setEditTitle(event.target.value)}
+                  placeholder={q.titleOptional}
+                  className="w-full bg-transparent text-xl font-semibold text-ink outline-none placeholder:text-ink-faint sm:text-2xl" />
+                <div className="mt-4 rounded-2xl border border-line/70 bg-white/70 p-3 sm:p-5">
+                  <VisualNoteEditor value={editContent} onChange={setEditContent} />
+                </div>
+                <div className="mt-5 flex items-center justify-between gap-3">
+                  <ColorPicker value={editColor} onChange={setEditColor} />
+                  <span className="text-xs text-ink-faint">{changed ? "Unsaved changes / 未保存" : "Saved / 已保存"}</span>
+                </div>
+              </div>
+              <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-line/70 px-5 py-4 sm:px-7">
+                <button type="button" disabled={busy} onClick={close} className="rounded-xl px-4 py-2 text-sm text-ink-faint hover:bg-paper">{dictionary.common.cancel}</button>
+                <button type="button" disabled={busy || !editContent.trim()} onClick={() => void saveEdit(note)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-sage-100 px-5 py-2 text-sm font-medium text-sage-700 hover:bg-sage-200 disabled:opacity-40">
+                  <Save className="h-4 w-4" />{busy ? "Saving… / 保存中…" : dictionary.common.save}
+                </button>
+              </footer>
+              {error && <p role="alert" className="px-7 pb-3 text-xs text-blush-500">{error}</p>}
+            </section>
+          </div>,
+          document.body
+        );
+      })()}
     </aside>
   );
 }
