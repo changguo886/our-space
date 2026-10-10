@@ -26,6 +26,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
+import QuickNoteMarkdown, { MarkdownToolbar } from "@/components/QuickNoteMarkdown";
 
 type Tab =
   | "steps"
@@ -993,6 +994,7 @@ export default function MiniFocusWorkspace({
                 }}
               />
 
+              <MarkdownToolbar value={draft} onChange={setDraft} textarea={null} />
               <div
                 style={{
                   marginTop: "6px",
@@ -1128,6 +1130,7 @@ export default function MiniFocusWorkspace({
                               color: "#4A5048",
                             }}
                           />
+                          <MarkdownToolbar value={editingContent} onChange={setEditingContent} textarea={null} />
                         ) : (
                           <div style={{
                             display: expanded ? "block" : "-webkit-box",
@@ -1140,7 +1143,7 @@ export default function MiniFocusWorkspace({
                             lineHeight: 1.5,
                             color: "#73786F",
                           }}>
-                            {note.content}
+                            <QuickNoteMarkdown content={note.content} compact />
                           </div>
                         )}
 
