@@ -5,6 +5,7 @@ import {
   ChevronRight,
   FileText,
   GripVertical,
+  Maximize2,
   Pencil,
   Plus,
   Save,
@@ -36,6 +37,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { createPortal } from "react-dom";
 
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
@@ -210,6 +212,7 @@ export default function QuickNotes({
   const [editContent, setEditContent] = useState("");
   const [editColor, setEditColor] = useState<QuickNoteColor>("cream");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
 
   /* 当前拖动中的 Note，用于 overlay 和 drop UI。 */
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
@@ -715,10 +718,16 @@ export default function QuickNotes({
   }
 
   function cancelEditing() {
+    setExpandedNoteId(null);
     setEditingId(null);
     setEditTitle("");
     setEditContent("");
     setEditColor("cream");
+  }
+
+  function expandNote(note: QuickNote) {
+    startEditing(note);
+    setExpandedNoteId(note.id);
   }
 
   async function saveEdit(note: QuickNote) {
@@ -900,6 +909,7 @@ export default function QuickNotes({
                 onDraftColor={setDraftColor}
                 onAddNote={addNote}
                 onStartEdit={startEditing}
+                onExpand={expandNote}
                 onCancelEdit={cancelEditing}
                 onEditTitle={setEditTitle}
                 onEditContent={setEditContent}
@@ -938,6 +948,7 @@ export default function QuickNotes({
                   onDraftColor={setDraftColor}
                   onAddNote={addNote}
                   onStartEdit={startEditing}
+                onExpand={expandNote}
                   onCancelEdit={cancelEditing}
                   onEditTitle={setEditTitle}
                   onEditContent={setEditContent}
@@ -1007,6 +1018,7 @@ type NoteSectionProps = {
   onDraftColor: (value: QuickNoteColor) => void;
   onAddNote: () => Promise<void>;
   onStartEdit: (note: QuickNote) => void;
+  onExpand: (note: QuickNote) => void;
   onCancelEdit: () => void;
   onEditTitle: (value: string) => void;
   onEditContent: (value: string) => void;
@@ -1043,6 +1055,7 @@ function NoteSection({
   onDraftColor,
   onAddNote,
   onStartEdit,
+  onExpand,
   onCancelEdit,
   onEditTitle,
   onEditContent,
@@ -1170,6 +1183,7 @@ function NoteSection({
                   busy={busy}
                   deleting={deletingId === note.id}
                   onStartEdit={onStartEdit}
+                  onExpand={onExpand}
                   onCancelEdit={onCancelEdit}
                   onEditTitle={onEditTitle}
                   onEditContent={onEditContent}
@@ -1318,6 +1332,7 @@ function NoteCard({
   busy,
   deleting,
   onStartEdit,
+  onExpand,
   onCancelEdit,
   onEditTitle,
   onEditContent,
@@ -1336,6 +1351,7 @@ function NoteCard({
   busy: boolean;
   deleting: boolean;
   onStartEdit: (note: QuickNote) => void;
+  onExpand: (note: QuickNote) => void;
   onCancelEdit: () => void;
   onEditTitle: (value: string) => void;
   onEditContent: (value: string) => void;
@@ -1442,7 +1458,12 @@ function NoteCard({
           {q.drag}
         </span>
 
-        <div className="ml-auto flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+        <div className="ml-auto flex items-center gap-0.5">
+          <button type="button" onClick={() => onExpand(note)}
+            title="Expand note / 展开笔记" aria-label="Expand note / 展开笔记"
+            className="rounded-md p-1 text-ink-faint hover:bg-white/80 hover:text-sage-700">
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             onClick={() => onStartEdit(note)}
