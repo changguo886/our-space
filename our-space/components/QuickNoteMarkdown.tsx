@@ -19,7 +19,7 @@ function inline(text: string): ReactNode[] {
       };
       return createElement("span", {
         key:index,
-        style: { color:palette[token[2]], textDecoration: token[1] === "emphasis" ? "underline" : "none", textUnderlineOffset: "3px" },
+        style: token[1] === "emphasis" ? { backgroundColor: palette[token[2]] + "50", borderRadius: 3 } : { color: palette[token[2]] },
       }, token[3]);
     }
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
