@@ -10,12 +10,22 @@ type Props = {
 };
 
 function appendInline(target: HTMLElement, text: string) {
-  const parts = text.split(/(\*\*[^*\n]+\*\*)/g);
+  const parts = text.split(/(\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   parts.forEach((part) => {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       const strong = document.createElement("strong");
       strong.textContent = part.slice(2, -2);
       target.appendChild(strong);
+    } else if (/^\\[[^\\]\\n]+\\]\\(https?:\\/\\/[^\\s)]+\\)$/.test(part)) {
+      const matched = /^\\[([^\\]\\n]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)$/.exec(part);
+      if (matched) {
+        const anchor = document.createElement("a");
+        anchor.textContent = matched[1];
+        anchor.href = matched[2];
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        target.appendChild(anchor);
+      }
     } else {
       target.appendChild(document.createTextNode(part));
     }
