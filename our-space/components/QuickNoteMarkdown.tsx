@@ -10,17 +10,27 @@ type Props = {
 // Small, intentionally limited Markdown subset for Quick Notes.
 // Render as React text nodes rather than injecting HTML.
 function inline(text: string): ReactNode[] {
-  const parts = text.split(/(==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
+  const parts = text.split(/(\{\{(?:color|emphasis):(?:sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   return parts.map((part, index) => {
+    const token = /^\{\{(color|emphasis):(sage|amber|rose|sky|lavender)\|([^}\n]+)\}\}$/.exec(part);
+    if (token) {
+      const palette: Record<string, string> = {
+        sage:"#62845B",amber:"#AC7936",rose:"#B46D7D",sky:"#557FA4",lavender:"#8070A5"
+      };
+      return createElement("span", {
+        key:index,
+        style: { color:palette[token[2]], textDecoration: token[1] === "emphasis" ? "underline" : "none", textUnderlineOffset: "3px" },
+      }, token[3]);
+    }
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return createElement("strong", { key: index }, part.slice(2, -2));
     }
     if (part.startsWith("==") && part.endsWith("==")) {
       const inner = part.slice(2, -2);
-      const matchColor = /^(#[0-9a-fA-F]{6})\\|/.exec(inner);
+      const matchColor = /^(#[0-9a-fA-F]{6})\|/.exec(inner);
       return createElement("mark", {
         key: index,
-        style: { backgroundColor: matchColor?.[1] ?? "#F4D46D", borderRadius: 3, color: "inherit" },
+        style: { backgroundColor: "transparent", color: matchColor?.[1] ?? "#AC7936", textDecoration: "underline", textUnderlineOffset: "3px" },
       }, inner.slice(matchColor ? 8 : 0));
     }
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
@@ -51,7 +61,7 @@ export default function QuickNoteMarkdown({ content, compact = false }: Props) {
               <span aria-label={checked ? "Completed" : "Not completed"} style={{ flexShrink: 0 }}>
                 {checked ? "☑" : "☐"}
               </span>
-              <span style={{ textDecoration: checked ? "line-through" : "none", textDecorationStyle: "dashed", opacity: checked ? 0.5 : 1 }}>
+              <span style={{ textDecoration: checked ? "line-through" : "none", textDecorationStyle: "solid", textDecorationColor: "#ADB6AA", opacity: checked ? 0.5 : 1 }}>
                 {inline(checkbox[2])}
               </span>
             </div>
