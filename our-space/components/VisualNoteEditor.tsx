@@ -6,6 +6,7 @@ type Props = {
   value: string;
   onChange: (markdown: string) => void;
   compact?: boolean;
+  spacious?: boolean;
   placeholder?: string;
 };
 
@@ -174,7 +175,7 @@ function serialize(editor: HTMLElement) {
   return output.join("\n").replace(/\n+$/, "");
 }
 
-export default function VisualNoteEditor({ value, onChange, compact = false, placeholder }: Props) {
+export default function VisualNoteEditor({ value, onChange, compact = false, spacious = false, placeholder }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const lastEmitted = useRef<string | null>(null);
   const selectedRange = useRef<Range | null>(null);
@@ -295,7 +296,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
   };
 
   return (
-    <div>
+    <div className={spacious ? "mx-auto w-full max-w-[740px]" : "w-full"}>
       <div role="toolbar" aria-label="编辑工具" className="flex flex-wrap items-center gap-1 border-b border-[#E8EBE5] pb-3 mb-3">
         {[
           { label: "B", title: "加粗", action: () => command("bold"), selected: active.bold },
@@ -417,13 +418,13 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
         }}
         data-placeholder={placeholder ?? "Write a note"}
         style={{
-          minHeight: compact ? 122 : 144,
-          maxHeight: compact ? 240 : 340,
+          minHeight: spacious ? 420 : compact ? 122 : 144,
+          maxHeight: spacious ? 640 : compact ? 240 : 340,
           overflowY: "auto",
-          background: "#fff",
-          border: "1px solid #e0e6dc",
+          background: "transparent",
+          border: spacious ? "none" : "1px solid #e0e6dc",
           borderRadius: 10,
-          padding: 12,
+          padding: spacious ? "18px 4px 50px" : 12,
           color: "#4a5048",
           fontSize,
           lineHeight: 1.7,
