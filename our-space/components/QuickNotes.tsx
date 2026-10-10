@@ -892,7 +892,7 @@ export default function QuickNotes({
                 collapsed={collapsedSections.has(sectionKey(null))}
                 onToggleCollapsed={() => toggleSection(null)}
                 composerOpen={composerSubtaskId === null}
-                editingId={editingId}
+                editingId={expandedNoteId ? null : editingId}
                 draftTitle={draftTitle}
                 draftContent={draftContent}
                 draftColor={draftColor}
@@ -931,7 +931,7 @@ export default function QuickNotes({
                   collapsed={collapsedSections.has(sectionKey(subtask.id))}
                   onToggleCollapsed={() => toggleSection(subtask.id)}
                   composerOpen={composerSubtaskId === subtask.id}
-                  editingId={editingId}
+                  editingId={expandedNoteId ? null : editingId}
                   draftTitle={draftTitle}
                   draftContent={draftContent}
                   draftColor={draftColor}
