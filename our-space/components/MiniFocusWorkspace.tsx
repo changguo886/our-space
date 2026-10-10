@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -249,6 +250,9 @@ export default function MiniFocusWorkspace({
     useState<
       string | null
     >(null);
+
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
 
   const [
     draft,
@@ -963,6 +967,7 @@ export default function MiniFocusWorkspace({
               }}
             >
               <textarea
+                ref={composerRef}
                 value={
                   draft
                 }
@@ -974,7 +979,7 @@ export default function MiniFocusWorkspace({
                       .value
                   )
                 }
-                rows={2}
+                rows={6}
                 placeholder={
                   currentSubtask
                     ? mini.noteForCurrentStep
@@ -983,18 +988,24 @@ export default function MiniFocusWorkspace({
                 style={{
                   boxSizing: "border-box",
                   width: "100%",
-                  resize: "none",
-                  border: "none",
+                  display: "block",
+                  minHeight: "118px",
+                  maxHeight: "210px",
+                  padding: "10px",
+                  resize: "vertical",
+                  overflowY: "auto",
+                  border: "1px solid #E2E5DC",
+                  borderRadius: "9px",
                   outline: "none",
-                  background: "transparent",
+                  background: "#FFFFFF",
                   color: "#4A5048",
                   fontFamily: "inherit",
-                  fontSize: "10px",
-                  lineHeight: 1.45,
+                  fontSize: "12px",
+                  lineHeight: 1.6,
                 }}
               />
 
-              <MarkdownToolbar value={draft} onChange={setDraft} textarea={null} />
+              <MarkdownToolbar value={draft} onChange={setDraft} textarea={composerRef.current} />
               <div
                 style={{
                   marginTop: "6px",
@@ -1109,6 +1120,7 @@ export default function MiniFocusWorkspace({
                         {editing ? (
                           <>
                           <textarea
+                            ref={editRef}
                             aria-label={labels.edit}
                             value={editingContent}
                             onChange={(event) => setEditingContent(event.target.value)}
@@ -1117,8 +1129,8 @@ export default function MiniFocusWorkspace({
                               boxSizing: "border-box",
                               display: "block",
                               width: "100%",
-                              maxHeight: "190px",
-                              minHeight: "95px",
+                              maxHeight: "240px",
+                              minHeight: "125px",
                               overflowY: "auto",
                               resize: "vertical",
                               border: "1px solid #DDE8D8",
@@ -1131,21 +1143,17 @@ export default function MiniFocusWorkspace({
                               color: "#4A5048",
                             }}
                           />
-                          <MarkdownToolbar value={editingContent} onChange={setEditingContent} textarea={null} />
+                          <MarkdownToolbar value={editingContent} onChange={setEditingContent} textarea={editRef.current} />
                           </>
                         ) : (
-                          <div style={{
-                            display: expanded ? "block" : "-webkit-box",
-                            WebkitLineClamp: expanded ? undefined : 3,
-                            WebkitBoxOrient: expanded ? undefined : "vertical",
-                            overflow: "hidden",
-                            overflowWrap: "anywhere",
-                            whiteSpace: "pre-wrap",
-                            fontSize: "10px",
-                            lineHeight: 1.5,
-                            color: "#73786F",
-                          }}>
-                            <QuickNoteMarkdown content={note.content} compact />
+                          <div style={{ overflowWrap: "anywhere", fontSize: "11px", color: "#73786F" }}>
+                            {expanded ? (
+                              <QuickNoteMarkdown content={note.content} compact />
+                            ) : (
+                              <div style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap", lineHeight: 1.6, overflowWrap: "anywhere" }}>
+                                {note.content}
+                              </div>
+                            )}
                           </div>
                         )}
 
