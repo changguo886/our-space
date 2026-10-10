@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   value: string;
@@ -47,6 +47,8 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
       const type = number ? "ol" : "ul";
       if (listType !== type || !list) {
         list = document.createElement(type) as HTMLOListElement | HTMLUListElement;
+        list.style.listStyleType = type === "ol" ? "decimal" : "disc";
+        list.style.paddingLeft = "22px";
         editor.appendChild(list);
       }
       listType = type;
@@ -72,6 +74,8 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
       const span = document.createElement("span");
       span.dataset.taskText = "true";
       span.style.flex = "1";
+      span.style.textDecoration = check.checked ? "line-through" : "none";
+      span.style.textDecorationStyle = "dashed";
       appendInline(span, task[2]);
       row.append(check, span);
       editor.appendChild(row);
@@ -129,6 +133,7 @@ function serialize(editor: HTMLElement) {
 export default function VisualNoteEditor({ value, onChange, compact = false, placeholder }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const lastEmitted = useRef<string | null>(null);
+  const [active, setActive] = useState({ bold: false, ordered: false, bullet: false, checklist: false });
   const emit = () => {
     if (!ref.current) return;
     const next = serialize(ref.current);
@@ -142,12 +147,41 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
     lastEmitted.current = value;
   }, [value]);
 
-  const command = (name: string) => {
-    ref.current?.focus();
-    document.execCommand(name, false);
-    emit();
+  const updateActive = () => {
+    const editor = ref.current;
+    let node = window.getSelection()?.anchorNode ?? null;
+    let bold = false, ordered = false, bullet = false, checklist = false;
+    if (!editor || !node || !editor.contains(node)) return;
+    while (node && node !== editor) {
+      if (node instanceof HTMLElement) {
+        if (node.tagName === "B" || node.tagName === "STRONG") bold = true;
+        if (node.tagName === "OL") ordered = true;
+        if (node.tagName === "UL") bullet = true;
+        if (node.dataset.task === "true") checklist = true;
+      }
+      node = node.parentNode;
+    }
+    setActive({ bold, ordered, bullet, checklist });
   };
 
+  const command = (name: string) => {
+    const editor = ref.current;
+    if (!editor) return;
+    editor.focus();
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !editor.contains(sel.anchorNode)) {
+      const range = document.createRange();
+      range.selectNodeContents(editor); range.collapse(false);
+      sel?.removeAllRanges(); sel?.addRange(range);
+    }
+    document.execCommand(name, false);
+    editor.querySelectorAll("ol,ul").forEach((list) => {
+      const el = list as HTMLElement;
+      el.style.listStyleType = list.tagName === "OL" ? "decimal" : "disc";
+      el.style.paddingLeft = "22px";
+    });
+    emit(); updateActive();
+  };
   const insertTask = () => {
     const editor = ref.current;
     if (!editor) return;
@@ -174,20 +208,22 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
     selection?.addRange(range);
     editor.focus();
     emit();
+    updateActive();
   };
 
   return (
     <div>
       <div role="toolbar" aria-label="Text formatting" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
         {[
-          { label: "B", title: "Bold / 加粗", action: () => command("bold") },
-          { label: "1.", title: "Numbered list / 编号", action: () => command("insertOrderedList") },
-          { label: "•", title: "Bullet list / 列表", action: () => command("insertUnorderedList") },
-          { label: "☐", title: "Checklist / 待办清单", action: insertTask },
+          { label: "B", title: "Bold / 加粗", action: () => command("bold"), selected: active.bold },
+          { label: "1.", title: "Numbered list / 编号", action: () => command("insertOrderedList"), selected: active.ordered },
+          { label: "•", title: "Bullet list / 列表", action: () => command("insertUnorderedList"), selected: active.bullet },
+          { label: "☐", title: "Checklist / 待办清单", action: insertTask, selected: active.checklist },
         ].map((item) => (
           <button key={item.title} type="button" title={item.title} aria-label={item.title}
             onMouseDown={(event) => event.preventDefault()} onClick={item.action}
-            style={{ padding: "4px 9px", border: "1px solid #dfe5dc", borderRadius: 7, background: "#fff", color: "#597356", fontSize: 12, fontWeight: 600 }}>
+            aria-pressed={item.selected}
+          style={{ padding: "4px 9px", border: item.selected ? "1px solid #789b72" : "1px solid #dfe5dc", borderRadius: 7, background: item.selected ? "#e1eddd" : "#fff", color: "#597356", fontSize: 12, fontWeight: 600 }}>
             {item.label}
           </button>
         ))}
@@ -199,10 +235,18 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
         aria-multiline="true"
         contentEditable
         suppressContentEditableWarning
-        onInput={emit}
+        onInput={() => { emit(); updateActive(); }}
+        onKeyUp={updateActive}
+        onMouseUp={updateActive}
+        onFocus={updateActive}
+        onBlur={emit}
         onChange={undefined}
         onClick={(event) => {
-          if (event.target instanceof HTMLInputElement && event.target.type === "checkbox") emit();
+          if (event.target instanceof HTMLInputElement && event.target.type === "checkbox") {
+            const label = event.target.parentElement?.querySelector("[data-task-text]") as HTMLElement | null;
+            if (label) { label.style.textDecoration = event.target.checked ? "line-through" : "none"; label.style.textDecorationStyle = "dashed"; }
+            emit();
+          }
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
