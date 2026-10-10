@@ -11,6 +11,7 @@ type Props = {
 };
 
 const NOTE_COLORS = [
+  { id: "default", label: "默认", hex: "#4A5048" },
   { id: "sage", label: "绿", hex: "#62845B" },
   { id: "amber", label: "橙", hex: "#AC7936" },
   { id: "rose", label: "粉", hex: "#B46D7D" },
@@ -19,7 +20,7 @@ const NOTE_COLORS = [
 ] as const;
 
 function appendInline(target: HTMLElement, text: string) {
-  const parts = text.split(/(\{\{(?:color|emphasis):(?:sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
+  const parts = text.split(/(\{\{(?:color|emphasis):(?:default|sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   parts.forEach((part) => {
     const token = /^\{\{(color|emphasis):(sage|amber|rose|sky|lavender)\|([^}\n]+)\}\}$/.exec(part);
     if (token) {
@@ -32,6 +33,7 @@ function appendInline(target: HTMLElement, text: string) {
       } else {
         span.style.color = NOTE_COLORS.find(item => item.id === token[2])?.hex ?? "#62845B";
       }
+      if (token[1] === "color" && token[2] === "default") span.style.color = "#4A5048";
       span.textContent = token[3];
       target.appendChild(span);
     } else if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
@@ -131,6 +133,7 @@ function inlineMarkdown(node: Node): string {
   const children = Array.from(node.childNodes).map(inlineMarkdown).join("");
   if (node.tagName === "STRONG" || node.tagName === "B") return `**${children}**`;
   if (node.tagName === "EM" || node.tagName === "I") return `*${children}*`;
+  if (node.tagName === "U") return `{{underline|${children}}}`;
   if (node.dataset.noteStyle && node.dataset.noteColor) return `{{${node.dataset.noteStyle}:${node.dataset.noteColor}|${children}}}`;
   if (node.tagName === "FONT" && node.getAttribute("color")) return children;
   if (node.tagName === "MARK") {
@@ -179,6 +182,8 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
   const ref = useRef<HTMLDivElement>(null);
   const lastEmitted = useRef<string | null>(null);
   const selectedRange = useRef<Range | null>(null);
+  const history = useRef<string[]>([]);
+  const historyIndex = useRef(-1);
   const [active, setActive] = useState({ bold: false, italic: false, ordered: false, bullet: false, checklist: false });
   const [highlightColor, setHighlightColor] = useState("amber");
   const [textColor, setTextColor] = useState("sage");
@@ -187,6 +192,10 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
     if (!ref.current) return;
     const next = serialize(ref.current);
     lastEmitted.current = next;
+    if (history.current[historyIndex.current] !== next) {
+      history.current = history.current.slice(0, historyIndex.current + 1).concat(next).slice(-100);
+      historyIndex.current = history.current.length - 1;
+    }
     onChange(next);
   };
 
@@ -194,6 +203,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
     if (!ref.current || value === lastEmitted.current) return;
     buildMarkup(ref.current, value);
     lastEmitted.current = value;
+    if (historyIndex.current < 0) { history.current = [value]; historyIndex.current = 0; }
   }, [value]);
 
   const updateActive = () => {
@@ -267,33 +277,85 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
     updateActive();
   };
 
-    const insertTask = () => {
+    const travelHistory = (direction: -1 | 1) => {
+    const next = historyIndex.current + direction;
+    if (next < 0 || next >= history.current.length || !ref.current) return;
+    historyIndex.current = next;
+    const value = history.current[next];
+    buildMarkup(ref.current, value);
+    lastEmitted.current = value;
+    onChange(value);
+    ref.current.focus();
+    updateActive();
+  };
+
+  const insertTask = () => {
     const editor = ref.current;
     if (!editor) return;
-    const row = document.createElement("div");
-    row.dataset.task = "true";
-    row.style.display = "flex";
-    row.style.alignItems = "flex-start";
-    row.style.gap = "8px";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.contentEditable = "false";
-    box.style.marginTop = "5px";
-    const label = document.createElement("span");
-    label.dataset.taskText = "true";
-    label.style.flex = "1";
-    label.appendChild(document.createElement("br"));
-    row.append(box, label);
-    editor.appendChild(row);
-    const range = document.createRange();
-    range.selectNodeContents(label);
-    range.collapse(true);
     const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    editor.focus();
-    emit();
-    updateActive();
+    let node: Node | null = selection?.anchorNode ?? null;
+    if (!node || !editor.contains(node)) node = editor.lastChild;
+    let row: HTMLElement | null = null;
+    while (node && node !== editor) {
+      if (node instanceof HTMLElement && (node.dataset.task === "true" || ["DIV","P","LI"].includes(node.tagName))) {
+        row = node;
+        break;
+      }
+      node = node.parentNode;
+    }
+    const makeTask = (content: Node[] = []) => {
+      const task = document.createElement("div");
+      task.dataset.task = "true";
+      task.style.display = "flex";
+      task.style.gap = "8px";
+      const box = document.createElement("input");
+      box.type = "checkbox"; box.contentEditable = "false";
+      const label = document.createElement("span");
+      label.dataset.taskText = "true"; label.style.flex = "1";
+      content.forEach(child => label.appendChild(child));
+      if (!label.childNodes.length) label.appendChild(document.createElement("br"));
+      task.append(box, label);
+      return { task, label };
+    };
+    let target: HTMLElement;
+    if (row?.dataset.task === "true") {
+      target = document.createElement("div");
+      const existing = row.querySelector("[data-task-text]");
+      if (existing) while (existing.firstChild) target.appendChild(existing.firstChild);
+      if (!target.childNodes.length) target.appendChild(document.createElement("br"));
+      row.replaceWith(target);
+    } else if (row?.tagName === "LI" && row.parentElement) {
+      const list = row.parentElement;
+      const before = Array.from(list.children).slice(0, Array.from(list.children).indexOf(row));
+      const after = Array.from(list.children).slice(Array.from(list.children).indexOf(row) + 1);
+      const content = Array.from(row.childNodes);
+      const result = makeTask(content);
+      if (before.length) {
+        const first = list.cloneNode(false) as HTMLElement;
+        before.forEach(item => first.appendChild(item));
+        list.before(first);
+      }
+      list.before(result.task);
+      if (after.length) {
+        const tail = list.cloneNode(false) as HTMLElement;
+        after.forEach(item => tail.appendChild(item));
+        list.before(tail);
+      }
+      list.remove();
+      target = result.label;
+    } else if (row) {
+      const result = makeTask(Array.from(row.childNodes));
+      row.replaceWith(result.task);
+      target = result.label;
+    } else {
+      const result = makeTask();
+      editor.appendChild(result.task);
+      target = result.label;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(target); range.collapse(false);
+    selection?.removeAllRanges(); selection?.addRange(range);
+    editor.focus(); emit(); updateActive();
   };
 
   return (
@@ -302,6 +364,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
         {[
           { label: "B", title: "加粗", action: () => command("bold"), selected: active.bold },
           { label: "I", title: "斜体", action: () => command("italic"), selected: active.italic },
+          { label: "U", title: "下划线", action: () => command("underline"), selected: false },
           { label: "1.", title: "编号列表", action: () => command("insertOrderedList"), selected: active.ordered },
           { label: "•", title: "项目列表", action: () => command("insertUnorderedList"), selected: active.bullet },
           { label: "☐", title: "待办清单", action: insertTask, selected: active.checklist },
@@ -314,6 +377,8 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
           </button>
         ))}
         <span className="mx-1 h-4 w-px bg-[#E1E6DE]" aria-hidden="true" />
+        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => travelHistory(-1)} title="撤销" aria-label="撤销" className="rounded-lg px-2 py-1.5 text-sm text-[#67746A] hover:bg-[#EFF2EB]">↶</button>
+        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => travelHistory(1)} title="重做" aria-label="重做" className="rounded-lg px-2 py-1.5 text-sm text-[#67746A] hover:bg-[#EFF2EB]">↷</button>
         <div className="relative group">
           <button type="button" aria-label="文字颜色" title="文字颜色"
             className="rounded-lg px-2 py-1.5 text-sm text-[#59685D] hover:bg-[#EFF2EB]">
