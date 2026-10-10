@@ -16,8 +16,8 @@ function appendInline(target: HTMLElement, text: string) {
       const strong = document.createElement("strong");
       strong.textContent = part.slice(2, -2);
       target.appendChild(strong);
-    } else if (/^\\[[^\\]\\n]+\\]\\(https?:\\/\\/[^\\s)]+\\)$/.test(part)) {
-      const matched = /^\\[([^\\]\\n]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)$/.exec(part);
+    } else if (/^\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)$/.test(part)) {
+      const matched = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
       if (matched) {
         const anchor = document.createElement("a");
         anchor.textContent = matched[1];
