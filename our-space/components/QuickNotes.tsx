@@ -39,7 +39,8 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import QuickNoteMarkdown, { MarkdownToolbar } from "@/components/QuickNoteMarkdown";
+import QuickNoteMarkdown from "@/components/QuickNoteMarkdown";
+import VisualNoteEditor from "@/components/VisualNoteEditor";
 
 /* =========================================================
    Types
@@ -1258,25 +1259,7 @@ function NoteComposer({
         className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
       />
 
-      <textarea
-        ref={textareaRef}
-        value={content}
-        onChange={(event) => onContent(event.target.value)}
-        onKeyDown={(event) => {
-          const saveShortcut =
-            (event.ctrlKey || event.metaKey) && event.key === "Enter";
-
-          if (saveShortcut) {
-            event.preventDefault();
-            void onSave();
-          }
-        }}
-        rows={3}
-        placeholder={q.writeNote}
-        className="mt-2 w-full resize-none bg-transparent text-xs leading-5 text-ink-soft outline-none placeholder:text-ink-faint/75"
-      />
-
-      <MarkdownToolbar value={content} onChange={onContent} textarea={textareaRef.current} />
+      <VisualNoteEditor value={content} onChange={onContent} placeholder={q.writeNote} />
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <ColorPicker value={color} onChange={onColor} />
@@ -1392,13 +1375,7 @@ function NoteCard({
           className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
         />
 
-        <textarea
-          value={editContent}
-          onChange={(event) => onEditContent(event.target.value)}
-          rows={4}
-          className="mt-2 w-full resize-none bg-transparent text-xs leading-5 text-ink-soft outline-none"
-        />
-        <MarkdownToolbar value={editContent} onChange={onEditContent} textarea={null} />
+        <VisualNoteEditor value={editContent} onChange={onEditContent} />
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <ColorPicker value={editColor} onChange={onEditColor} />
