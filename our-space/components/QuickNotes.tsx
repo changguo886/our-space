@@ -663,7 +663,7 @@ export default function QuickNotes({
 
       setNotes((current) => [...current, data as QuickNote]);
       closeComposer();
-      setSaveFeedback("✓ " + (q.saved ?? "Saved"));
+      setSaveFeedback("✓ Saved / 已保存");
     } catch (unknownError) {
       setError(q.addFailed + describeUnknownError(unknownError));
     } finally {
@@ -958,6 +958,10 @@ export default function QuickNotes({
               {activeNote ? <DragPreview note={activeNote} /> : null}
             </DragOverlay>
           </DndContext>
+        )}
+
+        {saveFeedback && !error && (
+          <p role="status" className="mt-3 text-xs text-sage-700">{saveFeedback}</p>
         )}
 
         {error && (
