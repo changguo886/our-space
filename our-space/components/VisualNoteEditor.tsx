@@ -9,10 +9,31 @@ type Props = {
   placeholder?: string;
 };
 
+const NOTE_COLORS = [
+  { id: "sage", label: "绿", hex: "#62845B" },
+  { id: "amber", label: "橙", hex: "#AC7936" },
+  { id: "rose", label: "粉", hex: "#B46D7D" },
+  { id: "sky", label: "蓝", hex: "#557FA4" },
+  { id: "lavender", label: "紫", hex: "#8070A5" },
+] as const;
+
 function appendInline(target: HTMLElement, text: string) {
-  const parts = text.split(/(==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
+  const parts = text.split(/(\{\{(?:color|emphasis):(?:sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   parts.forEach((part) => {
-    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+    const token = /^\{\{(color|emphasis):(sage|amber|rose|sky|lavender)\|([^}\n]+)\}\}$/.exec(part);
+    if (token) {
+      const span = document.createElement("span");
+      span.dataset.noteStyle = token[1];
+      span.dataset.noteColor = token[2];
+      span.style.color = NOTE_COLORS.find(item => item.id === token[2])?.hex ?? "#62845B";
+      if (token[1] === "emphasis") {
+        span.style.textDecoration = "underline";
+        span.style.textDecorationColor = "currentColor";
+        span.style.textUnderlineOffset = "3px";
+      }
+      span.textContent = token[3];
+      target.appendChild(span);
+    } else if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       const strong = document.createElement("strong");
       strong.textContent = part.slice(2, -2);
       target.appendChild(strong);
@@ -20,8 +41,10 @@ function appendInline(target: HTMLElement, text: string) {
       const match = /^(?:#[0-9a-fA-F]{6}\|)?(.*)$/.exec(part.slice(2, -2));
       const color = /^#[0-9a-fA-F]{6}\|/.exec(part.slice(2, -2));
       const mark = document.createElement("mark");
-      mark.style.backgroundColor = color ? color[0].slice(0, -1) : "#F4D46D";
-      mark.style.borderRadius = "3px";
+      mark.style.backgroundColor = "transparent";
+      mark.style.color = color ? color[0].slice(0, -1) : "#AC7936";
+      mark.style.textDecoration = "underline";
+      mark.style.textUnderlineOffset = "3px";
       mark.textContent = match?.[1] ?? part.slice(2, -2);
       target.appendChild(mark);
     } else if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
@@ -85,7 +108,9 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
       span.dataset.taskText = "true";
       span.style.flex = "1";
       span.style.textDecoration = check.checked ? "line-through" : "none";
-      span.style.textDecorationStyle = "dashed";
+      span.style.textDecorationStyle = "solid";
+      span.style.textDecorationColor = "#ADB6AA";
+      span.style.color = check.checked ? "#9CA69B" : "inherit";
       appendInline(span, task[2]);
       row.append(check, span);
       editor.appendChild(row);
@@ -105,6 +130,8 @@ function inlineMarkdown(node: Node): string {
   const children = Array.from(node.childNodes).map(inlineMarkdown).join("");
   if (node.tagName === "STRONG" || node.tagName === "B") return `**${children}**`;
   if (node.tagName === "EM" || node.tagName === "I") return `*${children}*`;
+  if (node.dataset.noteStyle && node.dataset.noteColor) return `{{${node.dataset.noteStyle}:${node.dataset.noteColor}|${children}}}`;
+  if (node.tagName === "FONT" && node.getAttribute("color")) return children;
   if (node.tagName === "MARK") {
     const color = node.style.backgroundColor;
     const match = color.match(/\d+/g);
@@ -151,7 +178,8 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
   const ref = useRef<HTMLDivElement>(null);
   const lastEmitted = useRef<string | null>(null);
   const [active, setActive] = useState({ bold: false, italic: false, ordered: false, bullet: false, checklist: false });
-  const [highlightColor, setHighlightColor] = useState("#F4D46D");
+  const [highlightColor, setHighlightColor] = useState("amber");
+  const [textColor, setTextColor] = useState("sage");
   const [fontSize, setFontSize] = useState(compact ? 12 : 14);
   const emit = () => {
     if (!ref.current) return;
@@ -202,7 +230,36 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
     });
     emit(); updateActive();
   };
-  const insertTask = () => {
+  const applyInlineColor = (kind: "color" | "emphasis", id: string) => {
+    const editor = ref.current;
+    const selection = window.getSelection();
+    if (!editor || !selection?.rangeCount || selection.isCollapsed ||
+        !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return;
+    const range = selection.getRangeAt(0);
+    const text = range.toString();
+    if (!text.trim() || text.includes("\\n")) return;
+    const span = document.createElement("span");
+    span.dataset.noteStyle = kind;
+    span.dataset.noteColor = id;
+    span.style.color = NOTE_COLORS.find(item => item.id === id)?.hex ?? "#62845B";
+    if (kind === "emphasis") {
+      span.style.textDecoration = "underline";
+      span.style.textUnderlineOffset = "3px";
+    }
+    try {
+      range.surroundContents(span);
+    } catch {
+      return;
+    }
+    selection.removeAllRanges();
+    const next = document.createRange();
+    next.selectNodeContents(span);
+    selection.addRange(next);
+    emit();
+    updateActive();
+  };
+
+    const insertTask = () => {
     const editor = ref.current;
     if (!editor) return;
     const row = document.createElement("div");
@@ -248,35 +305,35 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
             {item.label}
           </button>
         ))}
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#597356" }}>
-          <span>Highlight</span>
-          <select aria-label="Highlight color" value={highlightColor} onChange={e=>setHighlightColor(e.target.value)}
-            style={{ border: "1px solid #dfe5dc", borderRadius: 6, padding: 4 }}>
-            <option value="#F4D46D">Yellow</option>
-            <option value="#A9D7B1">Mint</option>
-            <option value="#F3A9A5">Pink</option>
-            <option value="#A7CBEE">Blue</option>
-            <option value="#C8B7E8">Lavender</option>
+        <label style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11 }}>
+          <span>强调</span>
+          <select aria-label="文字强调颜色" value={highlightColor} onChange={event => setHighlightColor(event.target.value)}
+            style={{ padding: 4, border: "1px solid #dfe5dc", borderRadius: 6 }}>
+            {NOTE_COLORS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label>
-        <button type="button" title="Highlight selected text" onMouseDown={e=>e.preventDefault()}
-          onClick={()=>{
-            const sel=window.getSelection();
-            if (!sel || !sel.rangeCount || sel.isCollapsed || !ref.current?.contains(sel.anchorNode)) return;
-            document.execCommand("hiliteColor", false, highlightColor);
-            ref.current.querySelectorAll("span[style*='background'],font[style*='background']").forEach(node=>{
-              const mark=document.createElement("mark");
-              mark.style.backgroundColor=highlightColor;
-              while(node.firstChild)mark.appendChild(node.firstChild);
-              node.replaceWith(mark);
-            });
-            emit(); updateActive();
-          }}
-          style={{ border:"1px solid #dfe5dc", borderRadius: 6, padding:"4px 8px", color:"#597356",background:"#fff" }}>H</button>
-        <select aria-label="Editor font size" value={fontSize} onChange={e=>setFontSize(Number(e.target.value))}
-          style={{border:"1px solid #dfe5dc", borderRadius:6,padding:4,fontSize:11}}>
-          <option value={12}>Small</option><option value={14}>Normal</option><option value={17}>Large</option>
-        </select>
+        <button type="button" title="强调选中文字" onMouseDown={event => event.preventDefault()}
+          onClick={() => applyInlineColor("emphasis", highlightColor)}
+          style={{ padding: "4px 8px", border: "1px solid #dfe5dc", borderRadius: 6, color: "#62845B", background: "#fff" }}>强调</button>
+        <label style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11 }}>
+          <span>字体颜色</span>
+          <select aria-label="字体颜色" value={textColor} onChange={event => setTextColor(event.target.value)}
+            style={{ padding: 4, border: "1px solid #dfe5dc", borderRadius: 6 }}>
+            {NOTE_COLORS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </label>
+        <button type="button" title="给选中文字设置颜色" onMouseDown={event => event.preventDefault()}
+          onClick={() => applyInlineColor("color", textColor)}
+          style={{ padding: "4px 8px", border: "1px solid #dfe5dc", borderRadius: 6, background: "#fff", color: "#62845B" }}>A</button>
+        <span role="group" aria-label="字号">
+          {[{ label: "小", size: 12 }, { label: "中", size: 14 }, { label: "大", size: 17 }].map(item =>
+            <button key={item.label} type="button" title={item.label} aria-pressed={fontSize === item.size}
+              onClick={() => setFontSize(item.size)}
+              style={{ padding: "3px 6px", fontSize: item.size, border: fontSize === item.size ? "1px solid #789b72" : "1px solid #dfe5dc", background: fontSize === item.size ? "#e1eddd" : "#fff", borderRadius: 6 }}>
+              {item.label}
+            </button>
+          )}
+        </span>
       </div>
       <div
         ref={ref}
@@ -294,7 +351,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
         onClick={(event) => {
           if (event.target instanceof HTMLInputElement && event.target.type === "checkbox") {
             const label = event.target.parentElement?.querySelector("[data-task-text]") as HTMLElement | null;
-            if (label) { label.style.textDecoration = event.target.checked ? "line-through" : "none"; label.style.textDecorationStyle = "dashed"; }
+            if (label) { label.style.textDecoration = event.target.checked ? "line-through" : "none"; label.style.textDecorationStyle = "solid"; label.style.textDecorationColor = "#ADB6AA"; label.style.color = event.target.checked ? "#9CA69B" : "inherit"; }
             emit();
           }
         }}
