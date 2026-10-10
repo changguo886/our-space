@@ -10,10 +10,21 @@ type Props = {
 // Small, intentionally limited Markdown subset for Quick Notes.
 // Render as React text nodes rather than injecting HTML.
 function inline(text: string): ReactNode[] {
-  const parts = text.split(/(\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
+  const parts = text.split(/(==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return createElement("strong", { key: index }, part.slice(2, -2));
+    }
+    if (part.startsWith("==") && part.endsWith("==")) {
+      const inner = part.slice(2, -2);
+      const matchColor = /^(#[0-9a-fA-F]{6})\\|/.exec(inner);
+      return createElement("mark", {
+        key: index,
+        style: { backgroundColor: matchColor?.[1] ?? "#F4D46D", borderRadius: 3, color: "inherit" },
+      }, inner.slice(matchColor ? 8 : 0));
+    }
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+      return createElement("em", { key: index }, part.slice(1, -1));
     }
     const match = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
     if (match) {
@@ -40,7 +51,7 @@ export default function QuickNoteMarkdown({ content, compact = false }: Props) {
               <span aria-label={checked ? "Completed" : "Not completed"} style={{ flexShrink: 0 }}>
                 {checked ? "☑" : "☐"}
               </span>
-              <span style={{ textDecoration: checked ? "line-through" : "none", opacity: checked ? 0.65 : 1 }}>
+              <span style={{ textDecoration: checked ? "line-through" : "none", textDecorationStyle: "dashed", opacity: checked ? 0.5 : 1 }}>
                 {inline(checkbox[2])}
               </span>
             </div>
