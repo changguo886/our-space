@@ -195,6 +195,7 @@ export default function QuickNotes({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   /* undefined=关闭, null=Unsorted, string=某个 Step */
   const [composerSubtaskId, setComposerSubtaskId] =
@@ -625,6 +626,7 @@ export default function QuickNotes({
 
     setBusy(true);
     setError(null);
+    setSaveFeedback(null);
 
     try {
       const supabase = createClient();
@@ -661,6 +663,7 @@ export default function QuickNotes({
 
       setNotes((current) => [...current, data as QuickNote]);
       closeComposer();
+      setSaveFeedback("✓ " + (q.saved ?? "Saved"));
     } catch (unknownError) {
       setError(q.addFailed + describeUnknownError(unknownError));
     } finally {
@@ -724,6 +727,7 @@ export default function QuickNotes({
 
     setBusy(true);
     setError(null);
+    setSaveFeedback(null);
 
     try {
       const supabase = createClient();
@@ -761,6 +765,7 @@ export default function QuickNotes({
       );
 
       cancelEditing();
+      setSaveFeedback("✓ Saved / 已保存");
     } catch (unknownError) {
       setError(q.editFailed + describeUnknownError(unknownError));
     } finally {
