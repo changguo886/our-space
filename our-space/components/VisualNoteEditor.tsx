@@ -10,12 +10,22 @@ type Props = {
 };
 
 function appendInline(target: HTMLElement, text: string) {
-  const parts = text.split(/(\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
+  const parts = text.split(/(==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   parts.forEach((part) => {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       const strong = document.createElement("strong");
       strong.textContent = part.slice(2, -2);
       target.appendChild(strong);
+    } else if (part.startsWith("==") && part.endsWith("==")) {
+      const match = /^(?:#[0-9a-fA-F]{6}\|)?(.*)$/.exec(part.slice(2, -2));
+      const color = /^#[0-9a-fA-F]{6}\|/.exec(part.slice(2, -2));
+      const mark = document.createElement("mark");
+      mark.style.backgroundColor = color ? color[0].slice(0, -1) : "#F4D46D";
+      mark.style.borderRadius = "3px";
+      mark.textContent = match?.[1] ?? part.slice(2, -2);
+      target.appendChild(mark);
+    } else if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+      const em = document.createElement("em"); em.textContent = part.slice(1, -1); target.appendChild(em);
     } else if (/^\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)$/.test(part)) {
       const matched = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
       if (matched) {
@@ -94,6 +104,13 @@ function inlineMarkdown(node: Node): string {
   if (!(node instanceof HTMLElement)) return "";
   const children = Array.from(node.childNodes).map(inlineMarkdown).join("");
   if (node.tagName === "STRONG" || node.tagName === "B") return `**${children}**`;
+  if (node.tagName === "EM" || node.tagName === "I") return `*${children}*`;
+  if (node.tagName === "MARK") {
+    const color = node.style.backgroundColor;
+    const match = color.match(/\d+/g);
+    const hex = match && match.length >= 3 ? "#" + match.slice(0, 3).map(n => Number(n).toString(16).padStart(2,"0")).join("") : "#F4D46D";
+    return `==${hex}|${children}==`;
+  }
   if (node.tagName === "BR") return "";
   if (node.tagName === "A") {
     const href = node.getAttribute("href") ?? "";
@@ -133,7 +150,9 @@ function serialize(editor: HTMLElement) {
 export default function VisualNoteEditor({ value, onChange, compact = false, placeholder }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const lastEmitted = useRef<string | null>(null);
-  const [active, setActive] = useState({ bold: false, ordered: false, bullet: false, checklist: false });
+  const [active, setActive] = useState({ bold: false, italic: false, ordered: false, bullet: false, checklist: false });
+  const [highlightColor, setHighlightColor] = useState("#F4D46D");
+  const [fontSize, setFontSize] = useState(compact ? 12 : 14);
   const emit = () => {
     if (!ref.current) return;
     const next = serialize(ref.current);
@@ -150,18 +169,19 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
   const updateActive = () => {
     const editor = ref.current;
     let node = window.getSelection()?.anchorNode ?? null;
-    let bold = false, ordered = false, bullet = false, checklist = false;
+    let bold = false, italic = false, ordered = false, bullet = false, checklist = false;
     if (!editor || !node || !editor.contains(node)) return;
     while (node && node !== editor) {
       if (node instanceof HTMLElement) {
         if (node.tagName === "B" || node.tagName === "STRONG") bold = true;
+        if (node.tagName === "EM" || node.tagName === "I") italic = true;
         if (node.tagName === "OL") ordered = true;
         if (node.tagName === "UL") bullet = true;
         if (node.dataset.task === "true") checklist = true;
       }
       node = node.parentNode;
     }
-    setActive({ bold, ordered, bullet, checklist });
+    setActive({ bold, italic, ordered, bullet, checklist });
   };
 
   const command = (name: string) => {
@@ -216,6 +236,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
       <div role="toolbar" aria-label="Text formatting" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
         {[
           { label: "B", title: "Bold / 加粗", action: () => command("bold"), selected: active.bold },
+          { label: "I", title: "Italic / 斜体", action: () => command("italic"), selected: active.italic },
           { label: "1.", title: "Numbered list / 编号", action: () => command("insertOrderedList"), selected: active.ordered },
           { label: "•", title: "Bullet list / 列表", action: () => command("insertUnorderedList"), selected: active.bullet },
           { label: "☐", title: "Checklist / 待办清单", action: insertTask, selected: active.checklist },
@@ -227,6 +248,35 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
             {item.label}
           </button>
         ))}
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#597356" }}>
+          <span>Highlight</span>
+          <select aria-label="Highlight color" value={highlightColor} onChange={e=>setHighlightColor(e.target.value)}
+            style={{ border: "1px solid #dfe5dc", borderRadius: 6, padding: 4 }}>
+            <option value="#F4D46D">Yellow</option>
+            <option value="#A9D7B1">Mint</option>
+            <option value="#F3A9A5">Pink</option>
+            <option value="#A7CBEE">Blue</option>
+            <option value="#C8B7E8">Lavender</option>
+          </select>
+        </label>
+        <button type="button" title="Highlight selected text" onMouseDown={e=>e.preventDefault()}
+          onClick={()=>{
+            const sel=window.getSelection();
+            if (!sel || !sel.rangeCount || sel.isCollapsed || !ref.current?.contains(sel.anchorNode)) return;
+            document.execCommand("hiliteColor", false, highlightColor);
+            ref.current.querySelectorAll("span[style*='background'],font[style*='background']").forEach(node=>{
+              const mark=document.createElement("mark");
+              mark.style.backgroundColor=highlightColor;
+              while(node.firstChild)mark.appendChild(node.firstChild);
+              node.replaceWith(mark);
+            });
+            emit(); updateActive();
+          }}
+          style={{ border:"1px solid #dfe5dc", borderRadius: 6, padding:"4px 8px", color:"#597356",background:"#fff" }}>H</button>
+        <select aria-label="Editor font size" value={fontSize} onChange={e=>setFontSize(Number(e.target.value))}
+          style={{border:"1px solid #dfe5dc", borderRadius:6,padding:4,fontSize:11}}>
+          <option value={12}>Small</option><option value={14}>Normal</option><option value={17}>Large</option>
+        </select>
       </div>
       <div
         ref={ref}
@@ -297,7 +347,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
           borderRadius: 10,
           padding: 12,
           color: "#4a5048",
-          fontSize: compact ? 12 : 13,
+          fontSize,
           lineHeight: 1.7,
           outline: "none",
           whiteSpace: "pre-wrap",
