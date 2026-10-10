@@ -473,10 +473,10 @@ export default function FocusTimer({
     try {
       pipWindow.resizeTo(
         next
-          ? 380
+          ? 420
           : 320,
         next
-          ? 520
+          ? 590
           : 220
       );
     } catch {
@@ -512,10 +512,10 @@ export default function FocusTimer({
       } else {
         pipWindow.resizeTo(
           floatingWorkspaceOpen
-            ? 380
+            ? 420
             : 320,
           floatingWorkspaceOpen
-            ? 520
+            ? 590
             : 220
         );
       }
