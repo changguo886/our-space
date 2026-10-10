@@ -177,6 +177,7 @@ function serialize(editor: HTMLElement) {
 export default function VisualNoteEditor({ value, onChange, compact = false, placeholder }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const lastEmitted = useRef<string | null>(null);
+  const selectedRange = useRef<Range | null>(null);
   const [active, setActive] = useState({ bold: false, italic: false, ordered: false, bullet: false, checklist: false });
   const [highlightColor, setHighlightColor] = useState("amber");
   const [textColor, setTextColor] = useState("sage");
@@ -199,6 +200,8 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
     let node = window.getSelection()?.anchorNode ?? null;
     let bold = false, italic = false, ordered = false, bullet = false, checklist = false;
     if (!editor || !node || !editor.contains(node)) return;
+    const selection = window.getSelection();
+    if (selection?.rangeCount && !selection.isCollapsed) selectedRange.current = selection.getRangeAt(0).cloneRange();
     while (node && node !== editor) {
       if (node instanceof HTMLElement) {
         if (node.tagName === "B" || node.tagName === "STRONG") bold = true;
@@ -233,11 +236,13 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
   const applyInlineColor = (kind: "color" | "emphasis", id: string) => {
     const editor = ref.current;
     const selection = window.getSelection();
-    if (!editor || !selection?.rangeCount || selection.isCollapsed ||
-        !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return;
-    const range = selection.getRangeAt(0);
+    if (!editor || !selection) return;
+    const range = selection.rangeCount && !selection.isCollapsed && editor.contains(selection.anchorNode)
+      ? selection.getRangeAt(0)
+      : selectedRange.current;
+    if (!range || !editor.contains(range.commonAncestorContainer)) return;
     const text = range.toString();
-    if (!text.trim() || text.includes("\\n")) return;
+    if (!text.trim() || text.includes("\n")) return;
     const span = document.createElement("span");
     span.dataset.noteStyle = kind;
     span.dataset.noteColor = id;
@@ -255,6 +260,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
     const next = document.createRange();
     next.selectNodeContents(span);
     selection.addRange(next);
+    selectedRange.current = next.cloneRange();
     emit();
     updateActive();
   };
