@@ -26,11 +26,11 @@ function appendInline(target: HTMLElement, text: string) {
       const span = document.createElement("span");
       span.dataset.noteStyle = token[1];
       span.dataset.noteColor = token[2];
-      span.style.color = NOTE_COLORS.find(item => item.id === token[2])?.hex ?? "#62845B";
       if (token[1] === "emphasis") {
-        span.style.textDecoration = "underline";
-        span.style.textDecorationColor = "currentColor";
-        span.style.textUnderlineOffset = "3px";
+        span.style.backgroundColor = (NOTE_COLORS.find(item => item.id === token[2])?.hex ?? "#AC7936") + "50";
+        span.style.borderRadius = "3px";
+      } else {
+        span.style.color = NOTE_COLORS.find(item => item.id === token[2])?.hex ?? "#62845B";
       }
       span.textContent = token[3];
       target.appendChild(span);
@@ -247,10 +247,11 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
     const span = document.createElement("span");
     span.dataset.noteStyle = kind;
     span.dataset.noteColor = id;
-    span.style.color = NOTE_COLORS.find(item => item.id === id)?.hex ?? "#62845B";
     if (kind === "emphasis") {
-      span.style.textDecoration = "underline";
-      span.style.textUnderlineOffset = "3px";
+      span.style.backgroundColor = (NOTE_COLORS.find(item => item.id === id)?.hex ?? "#AC7936") + "50";
+      span.style.borderRadius = "3px";
+    } else {
+      span.style.color = NOTE_COLORS.find(item => item.id === id)?.hex ?? "#62845B";
     }
     try {
       range.surroundContents(span);
