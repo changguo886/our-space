@@ -296,50 +296,65 @@ export default function VisualNoteEditor({ value, onChange, compact = false, pla
 
   return (
     <div>
-      <div role="toolbar" aria-label="Text formatting" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
+      <div role="toolbar" aria-label="编辑工具" className="flex flex-wrap items-center gap-1 border-b border-[#E8EBE5] pb-3 mb-3">
         {[
-          { label: "B", title: "Bold / 加粗", action: () => command("bold"), selected: active.bold },
-          { label: "I", title: "Italic / 斜体", action: () => command("italic"), selected: active.italic },
-          { label: "1.", title: "Numbered list / 编号", action: () => command("insertOrderedList"), selected: active.ordered },
-          { label: "•", title: "Bullet list / 列表", action: () => command("insertUnorderedList"), selected: active.bullet },
-          { label: "☐", title: "Checklist / 待办清单", action: insertTask, selected: active.checklist },
+          { label: "B", title: "加粗", action: () => command("bold"), selected: active.bold },
+          { label: "I", title: "斜体", action: () => command("italic"), selected: active.italic },
+          { label: "1.", title: "编号列表", action: () => command("insertOrderedList"), selected: active.ordered },
+          { label: "•", title: "项目列表", action: () => command("insertUnorderedList"), selected: active.bullet },
+          { label: "☐", title: "待办清单", action: insertTask, selected: active.checklist },
         ].map((item) => (
           <button key={item.title} type="button" title={item.title} aria-label={item.title}
-            onMouseDown={(event) => event.preventDefault()} onClick={item.action}
+            onMouseDown={event => event.preventDefault()} onClick={item.action}
             aria-pressed={item.selected}
-          style={{ padding: "4px 9px", border: item.selected ? "1px solid #789b72" : "1px solid #dfe5dc", borderRadius: 7, background: item.selected ? "#e1eddd" : "#fff", color: "#597356", fontSize: 12, fontWeight: 600 }}>
+            className={`min-w-8 rounded-lg px-2 py-1.5 text-sm transition hover:bg-[#EFF2EB] ${item.selected ? "bg-[#E5EDE2] text-[#456B43]" : "text-[#67746A]"}`}>
             {item.label}
           </button>
         ))}
-        <label style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11 }}>
-          <span>强调</span>
-          <select aria-label="文字强调颜色" value={highlightColor} onChange={event => setHighlightColor(event.target.value)}
-            style={{ padding: 4, border: "1px solid #dfe5dc", borderRadius: 6 }}>
-            {NOTE_COLORS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </label>
-        <button type="button" title="强调选中文字" onMouseDown={event => event.preventDefault()}
-          onClick={() => applyInlineColor("emphasis", highlightColor)}
-          style={{ padding: "4px 8px", border: "1px solid #dfe5dc", borderRadius: 6, color: "#62845B", background: "#fff" }}>强调</button>
-        <label style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11 }}>
-          <span>字体颜色</span>
-          <select aria-label="字体颜色" value={textColor} onChange={event => setTextColor(event.target.value)}
-            style={{ padding: 4, border: "1px solid #dfe5dc", borderRadius: 6 }}>
-            {NOTE_COLORS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </label>
-        <button type="button" title="给选中文字设置颜色" onMouseDown={event => event.preventDefault()}
-          onClick={() => applyInlineColor("color", textColor)}
-          style={{ padding: "4px 8px", border: "1px solid #dfe5dc", borderRadius: 6, background: "#fff", color: "#62845B" }}>A</button>
-        <span role="group" aria-label="字号">
-          {[{ label: "小", size: 12 }, { label: "中", size: 14 }, { label: "大", size: 17 }].map(item =>
-            <button key={item.label} type="button" title={item.label} aria-pressed={fontSize === item.size}
-              onClick={() => setFontSize(item.size)}
-              style={{ padding: "3px 6px", fontSize: item.size, border: fontSize === item.size ? "1px solid #789b72" : "1px solid #dfe5dc", background: fontSize === item.size ? "#e1eddd" : "#fff", borderRadius: 6 }}>
-              {item.label}
-            </button>
-          )}
-        </span>
+        <span className="mx-1 h-4 w-px bg-[#E1E6DE]" aria-hidden="true" />
+        <div className="relative group">
+          <button type="button" aria-label="文字颜色" title="文字颜色"
+            className="rounded-lg px-2 py-1.5 text-sm text-[#59685D] hover:bg-[#EFF2EB]">
+            <span className="border-b-2 border-[#62845B] font-semibold">A</span>
+            <span className="ml-1 text-[10px]">⌄</span>
+          </button>
+          <div className="absolute left-0 top-full z-20 hidden min-w-[160px] rounded-xl border border-[#E1E6DE] bg-white p-2 shadow-lg group-hover:block group-focus-within:block">
+            <p className="mb-2 px-1 text-[11px] text-[#839086]">字体颜色 · 选择颜色后应用</p>
+            <div className="flex flex-wrap gap-1.5">
+              {NOTE_COLORS.map(item => <button key={item.id} type="button" aria-label={`字体颜色 ${item.label}`} title={item.label}
+                onMouseDown={event => event.preventDefault()} onClick={() => { setTextColor(item.id); applyInlineColor("color", item.id); }}
+                className="h-6 w-6 rounded-full border border-black/10 hover:ring-2 hover:ring-[#CEDCCA]"
+                style={{ backgroundColor: item.hex }} />)}
+            </div>
+          </div>
+        </div>
+        <div className="relative group">
+          <button type="button" aria-label="高亮" title="高亮"
+            className="rounded-lg px-2 py-1.5 text-sm text-[#59685D] hover:bg-[#EFF2EB]">✦ <span className="text-[10px]">⌄</span></button>
+          <div className="absolute left-0 top-full z-20 hidden min-w-[170px] rounded-xl border border-[#E1E6DE] bg-white p-2 shadow-lg group-hover:block group-focus-within:block">
+            <p className="mb-2 px-1 text-[11px] text-[#839086]">高亮 · 选中文字</p>
+            <div className="flex flex-wrap gap-1.5">
+              {NOTE_COLORS.map(item => <button key={item.id} type="button" aria-label={`高亮 ${item.label}`} title={item.label}
+                onMouseDown={event => event.preventDefault()} onClick={() => { setHighlightColor(item.id); applyInlineColor("emphasis", item.id); }}
+                className="h-6 w-6 rounded-md border border-black/10 hover:ring-2 hover:ring-[#CEDCCA]"
+                style={{ backgroundColor: item.hex + "55" }} />)}
+            </div>
+          </div>
+        </div>
+        <span className="mx-1 h-4 w-px bg-[#E1E6DE]" aria-hidden="true" />
+        <div className="relative group">
+          <button type="button" aria-label="字号" title="字号"
+            className="rounded-lg px-2 py-1.5 text-sm text-[#59685D] hover:bg-[#EFF2EB]">Aa <span className="text-[10px]">⌄</span></button>
+          <div className="absolute right-0 top-full z-20 hidden min-w-[116px] rounded-xl border border-[#E1E6DE] bg-white p-2 shadow-lg group-hover:block group-focus-within:block">
+            {[{label:"小",size:12},{label:"中",size:14},{label:"大",size:17}].map(item =>
+              <button key={item.label} type="button" aria-pressed={fontSize===item.size}
+                onClick={()=>setFontSize(item.size)}
+                className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 hover:bg-[#EFF2EB] ${fontSize===item.size?"bg-[#E5EDE2]":""}`}>
+                <span style={{fontSize:item.size}}>{item.label}</span><span className="text-[10px] text-[#A0AAA0]">{item.size}</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
       <div
         ref={ref}
