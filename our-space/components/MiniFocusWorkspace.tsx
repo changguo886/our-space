@@ -1107,6 +1107,7 @@ export default function MiniFocusWorkspace({
                         )}
 
                         {editing ? (
+                          <>
                           <textarea
                             aria-label={labels.edit}
                             value={editingContent}
@@ -1131,6 +1132,7 @@ export default function MiniFocusWorkspace({
                             }}
                           />
                           <MarkdownToolbar value={editingContent} onChange={setEditingContent} textarea={null} />
+                          </>
                         ) : (
                           <div style={{
                             display: expanded ? "block" : "-webkit-box",
