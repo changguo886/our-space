@@ -659,6 +659,7 @@ export default function QuickNotes({
           subtask_id,
           title,
           content,
+          content_json,
           color,
           sort_order,
           created_at,
@@ -767,6 +768,7 @@ export default function QuickNotes({
           subtask_id,
           title,
           content,
+          content_json,
           color,
           sort_order,
           created_at,
@@ -1343,7 +1345,7 @@ function NoteComposer({
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   title: string;
   content: string;
-  content_json: JSONContent | null;
+  contentJson: JSONContent;
   color: QuickNoteColor;
   busy: boolean;
   onTitle: (value: string) => void;
