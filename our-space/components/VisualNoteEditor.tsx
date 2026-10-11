@@ -234,7 +234,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
     const editor = ref.current;
     if (!editor) return;
     editor.focus();
-    const sel = ref.current?.ownerDocument.defaultView?.getSelection();
+    const sel = editor.ownerDocument.defaultView?.getSelection();
     if (!sel?.rangeCount || !editor.contains(sel.anchorNode)) {
       const range = editor.ownerDocument.createRange();
       range.selectNodeContents(editor); range.collapse(false);
@@ -250,7 +250,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
   };
   const applyInlineColor = (kind: "color" | "emphasis", id: string) => {
     const editor = ref.current;
-    const selection = ref.current?.ownerDocument.defaultView?.getSelection();
+    const selection = editor.ownerDocument.defaultView?.getSelection();
     if (!editor || !selection) return;
     const range = selection.rangeCount && !selection.isCollapsed && editor.contains(selection.anchorNode)
       ? selection.getRangeAt(0)
@@ -441,7 +441,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
         onBlur={emit}
         onChange={undefined}
         onClick={(event) => {
-          if (event.target instanceof event.currentTarget.ownerDocument.defaultView!.HTMLInputElement && event.target.type === "checkbox") {
+          if ((event.target as HTMLElement).tagName === "INPUT" && (event.target as HTMLInputElement).type === "checkbox") {
             const label = event.target.parentElement?.querySelector("[data-task-text]") as HTMLElement | null;
             if (label) { label.style.textDecoration = event.target.checked ? "line-through" : "none"; label.style.textDecorationStyle = "solid"; label.style.textDecorationColor = "#ADB6AA"; label.style.color = event.target.checked ? "#9CA69B" : "inherit"; }
             emit();
