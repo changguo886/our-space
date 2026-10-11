@@ -21,6 +21,7 @@ import DurationInput, {
   type DurationUnit,
 } from "@/components/DurationInput";
 
+import GoalJourney from "@/components/GoalJourney";
 import TodoSubtasks, {
   type TodoSubtask,
 } from "@/components/TodoSubtasks";
@@ -372,6 +373,8 @@ export default function TodoList({
     setExpandedSubtasksId,
   ] = useState<string | null>(null);
 
+
+  const [expandedJourneyId, setExpandedJourneyId] = useState<string | null>(null);
 
   function toggleSubtasks(
     todoId: string
@@ -1093,6 +1096,10 @@ export default function TodoList({
                       ? t.collapseSteps
                       : t.splitTask}
                   </button>
+                  <button type="button" onClick={() => setExpandedJourneyId(current => current === todo.id ? null : todo.id)}
+                    className="ml-4 text-xs font-medium text-sage-700 transition hover:text-sage-500">
+                    {expandedJourneyId === todo.id ? "收起成长旅程" : "🐾 成长旅程"}
+                  </button>
                 </div>
               </div>
 
@@ -1138,6 +1145,12 @@ export default function TodoList({
               </div>
             </div>
 
+
+            {expandedJourneyId === todo.id && (
+              <div className="border-t border-line px-4 py-4">
+                <GoalJourney todoId={todo.id} todoTitle={todo.title} />
+              </div>
+            )}
 
             {expandedSubtasksId ===
               todo.id && (
