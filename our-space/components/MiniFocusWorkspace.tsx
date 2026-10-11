@@ -28,8 +28,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
 import QuickNoteMarkdown from "@/components/QuickNoteMarkdown";
-import VisualNoteEditor from "@/components/VisualNoteEditor";
+import type { JSONContent } from "@tiptap/core";
+import QuickNotesRichTextField from "@/components/editor/QuickNotesRichTextField";
+import RichTextReadOnly from "@/components/editor/RichTextReadOnly";
+import { initialRichText } from "@/lib/editor/richTextBridge";
 
+const MINI_NOTE_COLORS: Record<string, string> = { cream: "#FFFAF0", blush: "#FFF5F6", sage: "#F5F9F3", sky: "#F3F8FB", lavender: "#F8F5FB" };
+const MINI_COLOR_DOTS: Record<string, string> = { cream: "#F6E8C8", blush: "#EFCFD3", sage: "#CDDDC9", sky: "#CFE0EA", lavender: "#DDD4EA" };
 type Tab =
   | "steps"
   | "notes";
@@ -47,6 +52,7 @@ type MiniNote = {
   subtask_id: string | null;
   title: string | null;
   content: string;
+  content_json: JSONContent | null;
   color: string;
   sort_order: number;
   updated_at: string;
@@ -269,18 +275,25 @@ export default function MiniFocusWorkspace({
   );
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
+  const [noteColor, setNoteColor] = useState("cream");
+  const [editingColor, setEditingColor] = useState("cream");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingJson, setEditingJson] = useState<JSONContent>(() => initialRichText(""));
+  const [draftJson, setDraftJson] = useState<JSONContent>(() => initialRichText(readSessionValue(`ourspace:mini-focus:draft:${todoId}`, "")));
 
   function startEdit(note: MiniNote) {
     setEditingNoteId(note.id);
     setEditingContent(note.content);
+    setEditingJson(initialRichText(note.content, note.content_json));
+    setEditingColor(note.color);
     setExpandedNoteIds((current) => new Set(current).add(note.id));
     setError(null);
   }
 
   async function saveEditedNote(note: MiniNote) {
     const content = editingContent.trim();
-    if (busy || !content || content === note.content) {
-      if (!busy && content === note.content) setEditingNoteId(null);
+    if (busy || !content) {
+      if (!busy && !content) setEditingNoteId(null);
       return;
     }
 
@@ -289,10 +302,10 @@ export default function MiniFocusWorkspace({
     try {
       const { data, error: updateError } = await createClient()
         .from("quick_notes")
-        .update({ content })
+        .update({ content, content_json: editingJson, color: editingColor })
         .eq("id", note.id)
         .eq("todo_id", todoId)
-        .select("id, content, updated_at")
+        .select("id, content, content_json, color, updated_at")
         .single();
 
       if (updateError || !data) {
@@ -301,7 +314,7 @@ export default function MiniFocusWorkspace({
 
       setNotes((current) => current.map((item) =>
         item.id === note.id
-          ? { ...item, content: data.content, updated_at: data.updated_at }
+          ? { ...item, content: data.content, content_json: data.content_json as JSONContent, color: data.color, updated_at: data.updated_at }
           : item
       ));
       setEditingNoteId(null);
@@ -315,7 +328,7 @@ export default function MiniFocusWorkspace({
   }
 
   async function deleteNote(note: MiniNote) {
-    if (busy || !window.confirm("删除这条笔记？此操作无法撤销。")) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -326,6 +339,7 @@ export default function MiniFocusWorkspace({
         .eq("todo_id", todoId);
       if (deleteError) throw deleteError;
       setNotes(current => current.filter(item => item.id !== note.id));
+      setConfirmDeleteId(null);
       if (editingNoteId === note.id) {
         setEditingNoteId(null);
         setEditingContent("");
@@ -417,7 +431,7 @@ export default function MiniFocusWorkspace({
                 "quick_notes"
               )
               .select(
-                "id, subtask_id, title, content, color, sort_order, updated_at"
+                "id, subtask_id, title, content, content_json, color, sort_order, updated_at"
               )
               .eq(
                 "todo_id",
@@ -737,13 +751,14 @@ export default function MiniFocusWorkspace({
             title:
               null,
             content,
+            content_json: draftJson,
             color:
-              "cream",
+              noteColor,
             sort_order:
               sortOrder,
           })
           .select(
-            "id, subtask_id, title, content, color, sort_order, updated_at"
+            "id, subtask_id, title, content, content_json, color, sort_order, updated_at"
           )
           .single();
 
@@ -771,6 +786,7 @@ export default function MiniFocusWorkspace({
       );
 
       setDraft("");
+      setDraftJson(initialRichText(""));
       try {
         window.sessionStorage.removeItem(
           `ourspace:mini-focus:draft:${todoId}`
@@ -984,12 +1000,14 @@ export default function MiniFocusWorkspace({
               style={{
                 padding: "9px",
                 borderRadius: "11px",
-                background: "#F8F6F1",
+                background: MINI_NOTE_COLORS[noteColor],
                 border: "1px solid #ECEAE5",
               }}
             >
-              <VisualNoteEditor compact value={draft} onChange={setDraft}
+              <QuickNotesRichTextField compact value={draft} contentJson={draftJson}
+                onChange={(text, json) => { setDraft(text); setDraftJson(json); }}
                 placeholder={currentSubtask ? mini.noteForCurrentStep : mini.quickNote} />
+              <MiniNoteColorPicker value={noteColor} onChange={setNoteColor} />
               <div
                 style={{
                   marginTop: "6px",
@@ -1083,7 +1101,7 @@ export default function MiniFocusWorkspace({
                           padding: "8px 9px",
                           borderRadius: "10px",
                           border: "1px solid #F0EEE9",
-                          background: "#FFFDF8",
+                          background: MINI_NOTE_COLORS[editing ? editingColor : note.color] ?? MINI_NOTE_COLORS.cream,
                           minWidth: 0,
                         }}
                       >
@@ -1103,18 +1121,15 @@ export default function MiniFocusWorkspace({
 
                         {editing ? (
                           <>
-                          <VisualNoteEditor compact value={editingContent}
-                            onChange={setEditingContent} placeholder={labels.edit} />
+                          <QuickNotesRichTextField compact value={editingContent} contentJson={editingJson}
+                             onChange={(text, json) => { setEditingContent(text); setEditingJson(json); }} placeholder={labels.edit} />
+                           <MiniNoteColorPicker value={editingColor} onChange={setEditingColor} />
                           </>
                         ) : (
                           <div style={{ overflowWrap: "anywhere", fontSize: "11px", color: "#73786F" }}>
-                            {expanded ? (
-                              <QuickNoteMarkdown content={note.content} compact />
-                            ) : (
-                              <div style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap", lineHeight: 1.6, overflowWrap: "anywhere" }}>
-                                {note.content}
-                              </div>
-                            )}
+                            <div style={{ display: expanded ? "block" : "-webkit-box", WebkitLineClamp: expanded ? undefined : 3, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>
+                              {note.content_json ? <RichTextReadOnly value={note.content_json} /> : <QuickNoteMarkdown content={note.content} compact />}
+                            </div>
                           </div>
                         )}
 
@@ -1173,14 +1188,14 @@ export default function MiniFocusWorkspace({
                                   {expanded ? labels.collapse : labels.expand}
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                disabled={busy}
-                                aria-label="删除笔记"
-                                title="删除笔记"
-                                onClick={() => void deleteNote(note)}
-                                style={{ ...buttonBase, background: "transparent", color: "#A66D67", fontSize: "10px" }}
-                              >删除</button>
+                              {confirmDeleteId === note.id ? (
+                                <>
+                                  <button type="button" disabled={busy} onClick={() => setConfirmDeleteId(null)} style={{ ...buttonBase, background: "transparent", fontSize: "10px" }}>取消</button>
+                                  <button type="button" disabled={busy} onClick={() => void deleteNote(note)} style={{ ...buttonBase, background: "#F6E5E2", borderRadius: "6px", padding: "4px 8px", color: "#A24E47", fontSize: "10px" }}>确认删除</button>
+                                </>
+                              ) : (
+                                <button type="button" disabled={busy} onClick={() => setConfirmDeleteId(note.id)} style={{ ...buttonBase, background: "transparent", color: "#A66D67", fontSize: "10px" }}>删除</button>
+                              )}
                               <button
                                 type="button"
                                 disabled={busy || editingNoteId !== null}
@@ -1218,4 +1233,16 @@ export default function MiniFocusWorkspace({
       </div>
     </div>
   );
+}
+
+function MiniNoteColorPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <div aria-label="笔记背景色" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "7px", marginTop: "8px" }}>
+    <span style={{ fontSize: "10px", color: "#73786F" }}>背景</span>
+    {Object.entries(MINI_COLOR_DOTS).map(([name, color]) =>
+      <button key={name} type="button" title={name} aria-label={name + "背景"} aria-pressed={value === name}
+        onClick={() => onChange(name)} style={{ width: 21, height: 21, borderRadius: "50%", background: color,
+          border: value === name ? "2px solid #627D5D" : "1px solid #CECFC8",
+          boxShadow: value === name ? "0 0 0 2px white inset" : "none", cursor: "pointer" }} />
+    )}
+  </div>;
 }

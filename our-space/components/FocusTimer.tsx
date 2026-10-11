@@ -634,6 +634,57 @@ export default function FocusTimer({
         pipWindow.document.head.appendChild(source.cloneNode(true));
       });
       pipWindow.document.body.replaceChildren();
+      // PiP is a separate document. Runtime-injected styled-jsx rules in the
+      // opener may not be present when the editor mounts here.
+      const pipEditorStyles = pipWindow.document.createElement("style");
+      pipEditorStyles.textContent = `
+        .ourspace-rich-editor ul:not([data-type="taskList"]),
+        .ourspace-rich-reader ul:not([data-type="taskList"]) {
+          display: block !important; list-style: disc outside !important;
+          padding-left: 1.7em !important; margin: .25em 0 !important;
+        }
+        .ourspace-rich-editor ol, .ourspace-rich-reader ol {
+          display: block !important; list-style: decimal outside !important;
+          padding-left: 1.7em !important; margin: .25em 0 !important;
+        }
+        .ourspace-rich-editor ul:not([data-type="taskList"]) > li,
+        .ourspace-rich-editor ol > li,
+        .ourspace-rich-reader ul:not([data-type="taskList"]) > li,
+        .ourspace-rich-reader ol > li { display: list-item !important; }
+        .ourspace-rich-editor ul[data-type="taskList"],
+        .ourspace-rich-reader ul[data-type="taskList"] {
+          list-style: none !important; padding-left: 0 !important;
+        }
+        .ourspace-rich-editor ul[data-type="taskList"] > li,
+        .ourspace-rich-reader ul[data-type="taskList"] > li {
+          display: flex !important; align-items: flex-start !important;
+          flex-direction: row !important; flex-wrap: nowrap !important;
+          gap: 8px !important; list-style: none !important;
+        }
+        .ourspace-rich-editor ul[data-type="taskList"] > li > label,
+        .ourspace-rich-reader ul[data-type="taskList"] > li > label {
+          display: flex !important; flex: 0 0 18px !important;
+          width: 18px !important; align-items: flex-start !important;
+          margin: 0 !important; padding-top: 4px !important;
+        }
+        .ourspace-rich-editor ul[data-type="taskList"] > li > div,
+        .ourspace-rich-reader ul[data-type="taskList"] > li > div {
+          display: block !important; flex: 1 1 0 !important;
+          min-width: 0 !important; width: auto !important;
+          overflow-wrap: anywhere !important;
+        }
+        .ourspace-rich-editor ul[data-type="taskList"] > li > div > p {
+          min-height: 1.4em !important; margin: 0 !important;
+        }
+        .ourspace-rich-editor ul[data-type="taskList"] li[data-checked="true"] > div,
+        .ourspace-rich-reader ul[data-type="taskList"] li[data-checked="true"] > div {
+          color: #9CA69B !important;
+          text-decoration: line-through !important;
+          text-decoration-style: solid !important;
+        }
+      `;
+      pipWindow.document.head.appendChild(pipEditorStyles);
+
 
       /*
        * 设置基础页面样式

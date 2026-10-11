@@ -42,7 +42,10 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
 import QuickNoteMarkdown from "@/components/QuickNoteMarkdown";
-import VisualNoteEditor from "@/components/VisualNoteEditor";
+import type { JSONContent } from "@tiptap/core";
+import QuickNotesRichTextField from "@/components/editor/QuickNotesRichTextField";
+import RichTextReadOnly from "@/components/editor/RichTextReadOnly";
+import { initialRichText } from "@/lib/editor/richTextBridge";
 
 /* =========================================================
    Types
@@ -61,6 +64,7 @@ export type QuickNote = {
   subtask_id: string | null;
   title: string | null;
   content: string;
+  content_json: JSONContent | null;
   color: QuickNoteColor;
   sort_order: number;
   created_at: string;
@@ -205,11 +209,13 @@ export default function QuickNotes({
 
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
+  const [draftJson, setDraftJson] = useState<JSONContent>(() => initialRichText(""));
   const [draftColor, setDraftColor] = useState<QuickNoteColor>("cream");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
+  const [editJson, setEditJson] = useState<JSONContent>(() => initialRichText(""));
   const [editColor, setEditColor] = useState<QuickNoteColor>("cream");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -252,6 +258,7 @@ export default function QuickNotes({
             subtask_id,
             title,
             content,
+            content_json,
             color,
             sort_order,
             created_at,
@@ -610,6 +617,7 @@ export default function QuickNotes({
     setEditingId(null);
     setDraftTitle("");
     setDraftContent("");
+    setDraftJson(initialRichText(""));
     setDraftColor("cream");
     setComposerSubtaskId(subtaskId);
     expandSection(subtaskId);
@@ -619,6 +627,7 @@ export default function QuickNotes({
     setComposerSubtaskId(undefined);
     setDraftTitle("");
     setDraftContent("");
+    setDraftJson(initialRichText(""));
     setDraftColor("cream");
   }
 
@@ -640,6 +649,7 @@ export default function QuickNotes({
           subtask_id: composerSubtaskId,
           title: draftTitle.trim() || null,
           content: cleanContent,
+          content_json: draftJson,
           color: draftColor,
           sort_order: getNextSortOrder(composerSubtaskId),
         })
@@ -649,6 +659,7 @@ export default function QuickNotes({
           subtask_id,
           title,
           content,
+          content_json,
           color,
           sort_order,
           created_at,
@@ -714,6 +725,7 @@ export default function QuickNotes({
     setEditingId(note.id);
     setEditTitle(note.title ?? "");
     setEditContent(note.content);
+    setEditJson(initialRichText(note.content, note.content_json));
     setEditColor(note.color);
   }
 
@@ -722,6 +734,7 @@ export default function QuickNotes({
     setEditingId(null);
     setEditTitle("");
     setEditContent("");
+    setEditJson(initialRichText(""));
     setEditColor("cream");
   }
 
@@ -745,6 +758,7 @@ export default function QuickNotes({
         .update({
           title: editTitle.trim() || null,
           content: cleanContent,
+          content_json: editJson,
           color: editColor,
         })
         .eq("id", note.id)
@@ -754,6 +768,7 @@ export default function QuickNotes({
           subtask_id,
           title,
           content,
+          content_json,
           color,
           sort_order,
           created_at,
@@ -895,9 +910,11 @@ export default function QuickNotes({
                 editingId={expandedNoteId ? null : editingId}
                 draftTitle={draftTitle}
                 draftContent={draftContent}
+                draftJson={draftJson}
                 draftColor={draftColor}
                 editTitle={editTitle}
                 editContent={editContent}
+                editJson={editJson}
                 editColor={editColor}
                 busy={busy}
                 deletingId={deletingId}
@@ -906,6 +923,7 @@ export default function QuickNotes({
                 onCloseComposer={closeComposer}
                 onDraftTitle={setDraftTitle}
                 onDraftContent={setDraftContent}
+                onDraftJson={setDraftJson}
                 onDraftColor={setDraftColor}
                 onAddNote={addNote}
                 onStartEdit={startEditing}
@@ -913,6 +931,7 @@ export default function QuickNotes({
                 onCancelEdit={cancelEditing}
                 onEditTitle={setEditTitle}
                 onEditContent={setEditContent}
+                onEditJson={setEditJson}
                 onEditColor={setEditColor}
                 onSaveEdit={saveEdit}
                 onDelete={deleteNote}
@@ -934,9 +953,11 @@ export default function QuickNotes({
                   editingId={expandedNoteId ? null : editingId}
                   draftTitle={draftTitle}
                   draftContent={draftContent}
+                  draftJson={draftJson}
                   draftColor={draftColor}
                   editTitle={editTitle}
                   editContent={editContent}
+                  editJson={editJson}
                   editColor={editColor}
                   busy={busy}
                   deletingId={deletingId}
@@ -945,6 +966,7 @@ export default function QuickNotes({
                   onCloseComposer={closeComposer}
                   onDraftTitle={setDraftTitle}
                   onDraftContent={setDraftContent}
+                  onDraftJson={setDraftJson}
                   onDraftColor={setDraftColor}
                   onAddNote={addNote}
                   onStartEdit={startEditing}
@@ -952,6 +974,7 @@ export default function QuickNotes({
                   onCancelEdit={cancelEditing}
                   onEditTitle={setEditTitle}
                   onEditContent={setEditContent}
+                  onEditJson={setEditJson}
                   onEditColor={setEditColor}
                   onSaveEdit={saveEdit}
                   onDelete={deleteNote}
@@ -995,7 +1018,7 @@ export default function QuickNotes({
           <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}
             className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/35 p-3 backdrop-blur-[2px] sm:p-8">
             <section role="dialog" aria-modal="true" aria-label="Expanded Quick Note / 展开笔记"
-              className="flex max-h-[94vh] w-full max-w-[980px] flex-col overflow-hidden rounded-[22px] border border-white/70 bg-[#FFFEFB] shadow-2xl">
+              className={`flex max-h-[94vh] w-full max-w-[980px] flex-col overflow-hidden rounded-[22px] border border-white/70 shadow-2xl ${NOTE_BACKGROUND[editColor]}`}>
               <header className="flex shrink-0 items-center justify-between border-b border-line/50 px-6 py-4 sm:px-10">
                 <div>
                   <p className="text-[10px] font-semibold tracking-[0.13em] text-ink-faint">QUICK NOTE · EXPANDED</p>
@@ -1008,7 +1031,7 @@ export default function QuickNotes({
                   placeholder={q.titleOptional}
                   className="mx-auto block w-full max-w-[740px] bg-transparent text-2xl font-semibold text-ink outline-none placeholder:text-ink-faint/70 sm:text-3xl" />
                 <div className="mt-6">
-                  <VisualNoteEditor spacious value={editContent} onChange={setEditContent} />
+                  <QuickNotesRichTextField spacious value={editContent} contentJson={editJson} onChange={(text, json) => { setEditContent(text); setEditJson(json); }} />
                 </div>
                 <div className="mx-auto mt-5 flex max-w-[740px] items-center justify-between gap-3">
                   <ColorPicker value={editColor} onChange={setEditColor} />
@@ -1050,9 +1073,11 @@ type NoteSectionProps = {
   editingId: string | null;
   draftTitle: string;
   draftContent: string;
+  draftJson: JSONContent;
   draftColor: QuickNoteColor;
   editTitle: string;
   editContent: string;
+  editJson: JSONContent;
   editColor: QuickNoteColor;
   busy: boolean;
   deletingId: string | null;
@@ -1062,6 +1087,7 @@ type NoteSectionProps = {
   onCloseComposer: () => void;
   onDraftTitle: (value: string) => void;
   onDraftContent: (value: string) => void;
+  onDraftJson: (value: JSONContent) => void;
   onDraftColor: (value: QuickNoteColor) => void;
   onAddNote: () => Promise<void>;
   onStartEdit: (note: QuickNote) => void;
@@ -1069,6 +1095,7 @@ type NoteSectionProps = {
   onCancelEdit: () => void;
   onEditTitle: (value: string) => void;
   onEditContent: (value: string) => void;
+  onEditJson: (value: JSONContent) => void;
   onEditColor: (value: QuickNoteColor) => void;
   onSaveEdit: (note: QuickNote) => Promise<void>;
   onDelete: (note: QuickNote) => Promise<void>;
@@ -1088,9 +1115,11 @@ function NoteSection({
   editingId,
   draftTitle,
   draftContent,
+  draftJson,
   draftColor,
   editTitle,
   editContent,
+  editJson,
   editColor,
   busy,
   deletingId,
@@ -1099,6 +1128,7 @@ function NoteSection({
   onCloseComposer,
   onDraftTitle,
   onDraftContent,
+  onDraftJson,
   onDraftColor,
   onAddNote,
   onStartEdit,
@@ -1106,6 +1136,7 @@ function NoteSection({
   onCancelEdit,
   onEditTitle,
   onEditContent,
+  onEditJson,
   onEditColor,
   onSaveEdit,
   onDelete,
@@ -1202,10 +1233,12 @@ function NoteSection({
               textareaRef={textareaRef}
               title={draftTitle}
               content={draftContent}
+              contentJson={draftJson}
               color={draftColor}
               busy={busy}
               onTitle={onDraftTitle}
               onContent={onDraftContent}
+              onContentJson={onDraftJson}
               onColor={onDraftColor}
               onSave={onAddNote}
               onCancel={onCloseComposer}
@@ -1226,6 +1259,7 @@ function NoteSection({
                   editing={editingId === note.id}
                   editTitle={editTitle}
                   editContent={editContent}
+                  editJson={editJson}
                   editColor={editColor}
                   busy={busy}
                   deleting={deletingId === note.id}
@@ -1234,6 +1268,7 @@ function NoteSection({
                   onCancelEdit={onCancelEdit}
                   onEditTitle={onEditTitle}
                   onEditContent={onEditContent}
+                  onEditContentJson={onEditJson}
                   onEditColor={onEditColor}
                   onSaveEdit={onSaveEdit}
                   onDelete={onDelete}
@@ -1297,10 +1332,12 @@ function NoteComposer({
   textareaRef,
   title,
   content,
+  contentJson,
   color,
   busy,
   onTitle,
   onContent,
+  onContentJson,
   onColor,
   onSave,
   onCancel,
@@ -1308,10 +1345,12 @@ function NoteComposer({
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   title: string;
   content: string;
+  contentJson: JSONContent;
   color: QuickNoteColor;
   busy: boolean;
   onTitle: (value: string) => void;
   onContent: (value: string) => void;
+  onContentJson: (value: JSONContent) => void;
   onColor: (value: QuickNoteColor) => void;
   onSave: () => Promise<void>;
   onCancel: () => void;
@@ -1321,7 +1360,7 @@ function NoteComposer({
   const common = dictionary.common;
 
   return (
-    <div className="mt-2 rounded-2xl border border-line/80 bg-white/85 p-3 shadow-sm">
+    <div className={`mt-2 rounded-2xl border border-line/80 p-3 shadow-sm ${NOTE_BACKGROUND[color]}`}>
       <input
         value={title}
         onChange={(event) => onTitle(event.target.value)}
@@ -1329,7 +1368,7 @@ function NoteComposer({
         className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
       />
 
-      <VisualNoteEditor value={content} onChange={onContent} placeholder={q.writeNote} />
+      <QuickNotesRichTextField value={content} contentJson={contentJson} onChange={(text, json) => { onContent(text); onContentJson(json); }} placeholder={q.writeNote} />
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <ColorPicker value={color} onChange={onColor} />
@@ -1375,6 +1414,7 @@ function NoteCard({
   editing,
   editTitle,
   editContent,
+  editJson,
   editColor,
   busy,
   deleting,
@@ -1383,6 +1423,7 @@ function NoteCard({
   onCancelEdit,
   onEditTitle,
   onEditContent,
+  onEditContentJson,
   onEditColor,
   onSaveEdit,
   onDelete,
@@ -1394,6 +1435,7 @@ function NoteCard({
   editing: boolean;
   editTitle: string;
   editContent: string;
+  editJson: JSONContent;
   editColor: QuickNoteColor;
   busy: boolean;
   deleting: boolean;
@@ -1402,6 +1444,7 @@ function NoteCard({
   onCancelEdit: () => void;
   onEditTitle: (value: string) => void;
   onEditContent: (value: string) => void;
+  onEditContentJson: (value: JSONContent) => void;
   onEditColor: (value: QuickNoteColor) => void;
   onSaveEdit: (note: QuickNote) => Promise<void>;
   onDelete: (note: QuickNote) => Promise<void>;
@@ -1438,7 +1481,7 @@ function NoteCard({
       <div
         ref={setNodeRef}
         style={style}
-        className="rounded-2xl border border-line/80 bg-white/90 p-3 shadow-sm"
+        className={`rounded-2xl border border-line/80 p-3 shadow-sm ${NOTE_BACKGROUND[editColor]}`}
       >
         <input
           value={editTitle}
@@ -1447,7 +1490,7 @@ function NoteCard({
           className="w-full bg-transparent text-xs font-medium text-ink outline-none placeholder:text-ink-faint/75"
         />
 
-        <VisualNoteEditor value={editContent} onChange={onEditContent} />
+        <QuickNotesRichTextField value={editContent} contentJson={editJson} onChange={(text, json) => { onEditContent(text); onEditContentJson(json); }} />
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <ColorPicker value={editColor} onChange={onEditColor} />
@@ -1541,7 +1584,7 @@ function NoteCard({
               <p className="mb-1 text-xs font-medium text-ink">{note.title}</p>
             )}
 
-            <QuickNoteMarkdown content={note.content} />
+            {note.content_json ? <RichTextReadOnly value={note.content_json} /> : <QuickNoteMarkdown content={note.content} />}
           </div>
         </div>
 

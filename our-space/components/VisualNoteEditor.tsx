@@ -131,24 +131,24 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
 }
 
 function inlineMarkdown(node: Node): string {
-  const editor = node as HTMLElement;
   if (node.nodeType === 3) return node.textContent ?? "";
   if (node.nodeType !== 1) return "";
-  const children = Array.from(node.childNodes).map(inlineMarkdown).join("");
-  if (node.tagName === "STRONG" || node.tagName === "B") return `**${children}**`;
-  if (node.tagName === "EM" || node.tagName === "I") return `*${children}*`;
-  if (node.tagName === "U") return `{{underline|${children}}}`;
-  if (node.dataset.noteStyle && node.dataset.noteColor) return `{{${node.dataset.noteStyle}:${node.dataset.noteColor}|${children}}}`;
-  if (node.tagName === "FONT" && node.getAttribute("color")) return children;
-  if (node.tagName === "MARK") {
-    const color = node.style.backgroundColor;
+  const el = node as HTMLElement;
+  const children = Array.from(el.childNodes).map(inlineMarkdown).join("");
+  if (el.tagName === "STRONG" || el.tagName === "B") return `**${children}**`;
+  if (el.tagName === "EM" || el.tagName === "I") return `*${children}*`;
+  if (el.tagName === "U") return `{{underline|${children}}}`;
+  if (el.dataset.noteStyle && el.dataset.noteColor) return `{{${el.dataset.noteStyle}:${el.dataset.noteColor}|${children}}}`;
+  if (el.tagName === "FONT" && el.getAttribute("color")) return children;
+  if (el.tagName === "MARK") {
+    const color = el.style.backgroundColor;
     const match = color.match(/\d+/g);
     const hex = match && match.length >= 3 ? "#" + match.slice(0, 3).map(n => Number(n).toString(16).padStart(2,"0")).join("") : "#F4D46D";
     return `==${hex}|${children}==`;
   }
-  if (node.tagName === "BR") return "";
-  if (node.tagName === "A") {
-    const href = node.getAttribute("href") ?? "";
+  if (el.tagName === "BR") return "";
+  if (el.tagName === "A") {
+    const href = el.getAttribute("href") ?? "";
     return /^https?:\/\//i.test(href) ? `[${children}](${href})` : children;
   }
   return children;
@@ -212,9 +212,10 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
 
   const updateActive = () => {
     const editor = ref.current;
+    if (!editor) return;
     let node = editor.ownerDocument.defaultView?.getSelection()?.anchorNode ?? null;
     let bold = false, italic = false, ordered = false, bullet = false, checklist = false;
-    if (!editor || !node || !editor.contains(node)) return;
+    if (!node || !editor.contains(node)) return;
     const selection = editor.ownerDocument.defaultView?.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) selectedRange.current = selection.getRangeAt(0).cloneRange();
     while (node && node !== editor) {
@@ -250,8 +251,9 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
   };
   const applyInlineColor = (kind: "color" | "emphasis", id: string) => {
     const editor = ref.current;
+    if (!editor) return;
     const selection = editor.ownerDocument.defaultView?.getSelection();
-    if (!editor || !selection) return;
+    if (!selection) return;
     const range = selection.rangeCount && !selection.isCollapsed && editor.contains(selection.anchorNode)
       ? selection.getRangeAt(0)
       : selectedRange.current;
@@ -441,9 +443,11 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
         onBlur={emit}
         onChange={undefined}
         onClick={(event) => {
-          if ((event.target as HTMLElement).tagName === "INPUT" && (event.target as HTMLInputElement).type === "checkbox") {
-            const label = event.target.parentElement?.querySelector("[data-task-text]") as HTMLElement | null;
-            if (label) { label.style.textDecoration = event.target.checked ? "line-through" : "none"; label.style.textDecorationStyle = "solid"; label.style.textDecorationColor = "#ADB6AA"; label.style.color = event.target.checked ? "#9CA69B" : "inherit"; }
+          const target = event.target as HTMLElement;
+          if (target.tagName === "INPUT" && (target as HTMLInputElement).type === "checkbox") {
+            const checkbox = target as HTMLInputElement;
+            const label = checkbox.parentElement?.querySelector("[data-task-text]") as HTMLElement | null;
+            if (label) { label.style.textDecoration = checkbox.checked ? "line-through" : "none"; label.style.textDecorationStyle = "solid"; label.style.textDecorationColor = "#ADB6AA"; label.style.color = checkbox.checked ? "#9CA69B" : "inherit"; }
             emit();
           }
         }}
