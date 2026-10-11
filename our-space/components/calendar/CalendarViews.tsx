@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import CalendarPlanner from "@/components/calendar/CalendarPlanner";
 import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
 type CalendarTask = { id:string; title:string; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
@@ -61,6 +62,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
         </div>
       </div>
       {mode==="journey"?<div className="rounded-2xl border border-line bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-ink-faint">成长旅程 · 选择任务，查看日期中的点滴进展</p><Link className="rounded-lg border border-line bg-paper px-3 py-2 text-xs font-medium text-sage-700 hover:bg-sage-50" href={activeJourney?"/todo?todoId="+encodeURIComponent(activeJourney.todo_id):"/todo"}>← 返回任务</Link></div>
         <label className="mb-3 block text-sm text-ink-soft">选择长期旅程
           <select className="input mt-1 w-full" value={activeJourney?.todo_id??""} onChange={e=>setSelectedTodo(e.target.value)}>
             {journeys.map(j=><option key={j.id} value={j.todo_id}>{initialTodos.find(t=>t.id===j.todo_id)?.title??"长期任务"}</option>)}
