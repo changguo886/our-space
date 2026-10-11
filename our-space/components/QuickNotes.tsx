@@ -1018,7 +1018,7 @@ export default function QuickNotes({
           <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}
             className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/35 p-3 backdrop-blur-[2px] sm:p-8">
             <section role="dialog" aria-modal="true" aria-label="Expanded Quick Note / 展开笔记"
-              className="flex max-h-[94vh] w-full max-w-[980px] flex-col overflow-hidden rounded-[22px] border border-white/70 bg-[#FFFEFB] shadow-2xl">
+              className={`flex max-h-[94vh] w-full max-w-[980px] flex-col overflow-hidden rounded-[22px] border border-white/70 shadow-2xl ${NOTE_BACKGROUND[editColor]}`}>
               <header className="flex shrink-0 items-center justify-between border-b border-line/50 px-6 py-4 sm:px-10">
                 <div>
                   <p className="text-[10px] font-semibold tracking-[0.13em] text-ink-faint">QUICK NOTE · EXPANDED</p>
