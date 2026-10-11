@@ -149,7 +149,7 @@ export default function FocusTimer({
     setFloatingWorkspaceOpen,
   ] = useState(false);
 
-  const [workspacePinned, setWorkspacePinned] = useState(false);
+  const [pinnedMode, setPinnedMode] = useState<"compact" | "workspace" | null>(null);
   const [preferredWorkspaceOpen, setPreferredWorkspaceOpen] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
@@ -157,9 +157,10 @@ export default function FocusTimer({
     try {
       const stored = window.localStorage.getItem(`ourspace:mini-focus:${todo.id}`);
       if (stored) {
-        const saved = JSON.parse(stored) as { pinned?: boolean; workspaceOpen?: boolean };
-        setWorkspacePinned(Boolean(saved.pinned));
-        setPreferredWorkspaceOpen(Boolean(saved.workspaceOpen || saved.pinned));
+        const saved = JSON.parse(stored) as { pinned?: boolean; workspaceOpen?: boolean; pinnedMode?: "compact" | "workspace" | null };
+        const mode = saved.pinnedMode ?? (saved.pinned ? "workspace" : null);
+        setPinnedMode(mode);
+        setPreferredWorkspaceOpen(Boolean(mode === "workspace" || saved.workspaceOpen));
       }
     } catch { /* Preferences are optional. */ }
     setPreferencesLoaded(true);
@@ -169,10 +170,10 @@ export default function FocusTimer({
     if (!preferencesLoaded) return;
     try {
       window.localStorage.setItem(`ourspace:mini-focus:${todo.id}`, JSON.stringify({
-        pinned: workspacePinned, workspaceOpen: preferredWorkspaceOpen,
+        pinnedMode, workspaceOpen: preferredWorkspaceOpen,
       }));
     } catch { /* Browser storage may be blocked. */ }
-  }, [todo.id, workspacePinned, preferredWorkspaceOpen, preferencesLoaded]);
+  }, [todo.id, pinnedMode, preferredWorkspaceOpen, preferencesLoaded]);
 
   const [
     floatingError,
@@ -485,7 +486,6 @@ export default function FocusTimer({
     }
 
     const next = !floatingWorkspaceOpen;
-    if (!next && workspacePinned) return;
     setFloatingWorkspaceOpen(next);
     setPreferredWorkspaceOpen(next);
 
@@ -522,7 +522,6 @@ export default function FocusTimer({
     }
 
     const next = !floatingCompact;
-    if (next && workspacePinned) return;
 
     setFloatingCompact(next);
 
@@ -618,8 +617,8 @@ export default function FocusTimer({
     try {
       const pipWindow =
         await api.requestWindow({
-          width: preferredWorkspaceOpen ? 420 : 320,
-          height: preferredWorkspaceOpen ? 590 : 220,
+          width: pinnedMode === "compact" ? 120 : preferredWorkspaceOpen ? 420 : 320,
+          height: pinnedMode === "compact" ? 150 : preferredWorkspaceOpen ? 590 : 220,
         });
 
       pipWindow.document.title =
@@ -682,8 +681,8 @@ export default function FocusTimer({
       floatingRootRef.current =
         root;
 
-      setFloatingCompact(false);
-      setFloatingWorkspaceOpen(preferredWorkspaceOpen);
+      setFloatingCompact(pinnedMode === "compact");
+      setFloatingWorkspaceOpen(pinnedMode === "workspace" || preferredWorkspaceOpen);
       setFloatingOpen(true);
 
       /*
@@ -1251,6 +1250,15 @@ export default function FocusTimer({
         ↗
       </button>
 
+      <button type="button" aria-pressed={pinnedMode === "compact"}
+        aria-label={pinnedMode === "compact" ? "取消记住精简模式" : "记住精简模式"}
+        title="记住精简模式（浏览器仍可拖动窗口）"
+        onClick={() => setPinnedMode(current => current === "compact" ? null : "compact")}
+        style={{...buttonBase, borderRadius:"8px", width:"26px", height:"22px",
+          background:pinnedMode === "compact" ? "#E9F1E7" : "transparent",
+          color:pinnedMode === "compact" ? "#597356" : "#8B9188"}}>
+        {pinnedMode === "compact" ? "●" : "◇"}
+      </button>
       {/*
        * 时间
        */}
@@ -1499,7 +1507,6 @@ export default function FocusTimer({
         <button
           type="button"
           onClick={toggleFloatingWorkspace}
-          disabled={workspacePinned && floatingWorkspaceOpen}
           title={
             floatingWorkspaceOpen
               ? focusText.collapseWorkspace
@@ -1541,27 +1548,15 @@ export default function FocusTimer({
           }
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            const next = !workspacePinned;
-            setWorkspacePinned(next);
-            if (next) {
-              setPreferredWorkspaceOpen(true);
-              setFloatingWorkspaceOpen(true);
-              setFloatingCompact(false);
-              try { floatingWindowRef.current?.resizeTo(420, 590); } catch { /* Window sizing is browser-managed. */ }
-            }
-          }}
-          title={workspacePinned ? "取消固定工作区" : "固定展开步骤与笔记"}
-          aria-label={workspacePinned ? "取消固定工作区" : "固定展开工作区"}
-          aria-pressed={workspacePinned}
-          style={{
-            ...buttonBase, width: "25px", height: "25px", borderRadius: "999px",
-            background: workspacePinned ? "#E9F1E7" : "transparent",
-            color: workspacePinned ? "#597356" : "#999D96", fontSize: "14px",
-          }}
-        >{workspacePinned ? "📌" : "◇"}</button>
+        <button type="button"
+          onClick={() => setPinnedMode(current => current === "workspace" ? null : "workspace")}
+          title={pinnedMode === "workspace" ? "取消记住展开模式（不锁定窗口位置）" : "记住展开模式（不锁定窗口位置）"}
+          aria-label={pinnedMode === "workspace" ? "取消记住展开模式" : "记住展开模式"}
+          aria-pressed={pinnedMode === "workspace"}
+          style={{...buttonBase, width:"25px", height:"25px", borderRadius:"999px",
+            background:pinnedMode === "workspace" ? "#E9F1E7" : "transparent",
+            color:pinnedMode === "workspace" ? "#597356" : "#999D96", fontSize:"14px"}}
+        >{pinnedMode === "workspace" ? "●" : "◇"}</button>
 
         {/*
          * 收到侧边
@@ -1569,8 +1564,7 @@ export default function FocusTimer({
         <button
           type="button"
           onClick={toggleFloatingCompact}
-          disabled={workspacePinned}
-          title={workspacePinned ? "先取消固定工作区，再收起" : focusText.collapseSide}
+          title={focusText.collapseSide}
           style={{
             ...buttonBase,
 
@@ -2008,7 +2002,7 @@ export default function FocusTimer({
     busy,
     targetSeconds,
     floatingWorkspaceOpen,
-    workspacePinned,
+    pinnedMode,
     focusText,
   ]);
 
