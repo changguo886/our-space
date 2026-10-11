@@ -1134,7 +1134,7 @@ function NoteSection({
   onCancelEdit,
   onEditTitle,
   onEditContent,
-  onEditContentJson,
+  onEditJson,
   onEditColor,
   onSaveEdit,
   onDelete,
