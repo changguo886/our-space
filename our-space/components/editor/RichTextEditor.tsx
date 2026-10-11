@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -15,6 +15,7 @@ type Props = {
   value: JSONContent;
   onChange: (value: JSONContent) => void;
   compact?: boolean;
+  spacious?: boolean;
   placeholder?: string;
 };
 
@@ -45,12 +46,15 @@ const extensions = [
   LocalFontSize,
 ];
 
-export default function RichTextEditor({ value, onChange, compact = false, placeholder }: Props) {
+export default function RichTextEditor({ value, onChange, compact = false, spacious = false, placeholder }: Props) {
+  const [, refreshToolbar] = useState(0);
   const editor = useEditor({
     extensions,
     content: value,
     immediatelyRender: false,
     onUpdate({ editor }) { onChange(editor.getJSON()); },
+    onSelectionUpdate() { refreshToolbar(n => n + 1); },
+    onTransaction() { refreshToolbar(n => n + 1); },
     editorProps: {
       attributes: {
         class: "min-h-[150px] w-full rounded-xl px-3 py-4 text-sm leading-7 text-[#4A5048] outline-none focus:outline-none",
@@ -73,44 +77,42 @@ export default function RichTextEditor({ value, onChange, compact = false, place
       onMouseDown={event => event.preventDefault()} onClick={onClick}
       className={`rounded-lg px-2 py-1.5 text-xs transition hover:bg-[#EFF2EB] ${active ? "bg-[#E5EDE2] text-[#456B43]" : "text-[#67746A]"}`}>{label}</button>;
 
+  const swatch = (color: string, label: string, action: () => void, selected = false) =>
+    <button key={label} type="button" title={label} aria-label={label} aria-pressed={selected}
+      onMouseDown={event => event.preventDefault()} onClick={action}
+      className={`h-6 w-6 shrink-0 rounded-full border-2 transition hover:scale-110 ${selected ? "border-[#455F47] ring-2 ring-[#DDE8DA]" : "border-white ring-1 ring-[#D9DED6]"}`}
+      style={{ backgroundColor: color }} />;
+  const labels: Record<string, string> = { default: "默认", sage: "绿色", amber: "橙色", rose: "粉色", sky: "蓝色", lavender: "紫色" };
   return <div className="w-full min-w-0">
-    <div role="toolbar" aria-label="笔记格式" className="mb-2 flex flex-wrap items-center gap-1 border-b border-[#E8EBE5] pb-2">
-      {button("B", "加粗", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
-      {button("I", "斜体", () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"))}
-      {button("U", "下划线", () => editor.chain().focus().toggleUnderline().run(), editor.isActive("underline"))}
-      {button("1.", "编号列表", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"))}
-      {button("•", "项目列表", () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"))}
-      {button("☐", "复选框", () => editor.chain().focus().toggleTaskList().run(), editor.isActive("taskList"))}
-      {button("↶", "撤销", () => editor.chain().focus().undo().run())}
-      {button("↷", "重做", () => editor.chain().focus().redo().run())}
-      <label className="flex items-center gap-1 text-xs text-[#67746A]">字号
-        <select aria-label="选中文字字号" className="rounded-lg border border-[#E8EBE5] bg-white px-1 py-1"
-          onChange={event => {
-            const size = event.target.value;
-            editor.chain().focus().setMark("textStyle", { fontSize: size === "normal" ? null : size }).run();
-          }} defaultValue="normal">
-          <option value="12px">小</option><option value="normal">中</option><option value="18px">大</option>
-        </select>
-      </label>
-      <label className="flex items-center gap-1 text-xs text-[#67746A]">文字
-        <select aria-label="选中文字颜色" className="rounded-lg border border-[#E8EBE5] bg-white px-1 py-1"
-          defaultValue="default" onChange={event => editor.chain().focus().setColor(EDITOR_COLORS[event.target.value as keyof typeof EDITOR_COLORS]).run()}>
-          {Object.keys(EDITOR_COLORS).map(key => <option key={key} value={key}>{key === "default" ? "默认" : key}</option>)}
-        </select>
-      </label>
-      <label className="flex items-center gap-1 text-xs text-[#67746A]">高亮
-        <select aria-label="高亮颜色" className="rounded-lg border border-[#E8EBE5] bg-white px-1 py-1" defaultValue=""
-          onChange={event => {
-            const color = HIGHLIGHT_COLORS[event.target.value as keyof typeof HIGHLIGHT_COLORS];
-            if (color) editor.chain().focus().setHighlight({ color }).run();
-            else editor.chain().focus().unsetHighlight().run();
-          }}>
-          <option value="">无</option>
-          {Object.keys(HIGHLIGHT_COLORS).map(key => <option key={key} value={key}>{key}</option>)}
-        </select>
-      </label>
+    <div role="toolbar" aria-label="笔记格式" className="mb-2 flex flex-wrap items-center gap-2 border-b border-[#E8EBE5] pb-2">
+      <div className="flex items-center gap-1">
+        {button("B", "加粗", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
+        {button("I", "斜体", () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"))}
+        {button("U", "下划线", () => editor.chain().focus().toggleUnderline().run(), editor.isActive("underline"))}
+        {button("1.", "编号列表", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"))}
+        {button("•", "项目列表", () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"))}
+        {button("☐", "复选框", () => editor.chain().focus().toggleTaskList().run(), editor.isActive("taskList"))}
+        {button("↶", "撤销", () => editor.chain().focus().undo().run())}
+        {button("↷", "重做", () => editor.chain().focus().redo().run())}
+      </div>
+      <div className="flex flex-wrap items-center gap-1" aria-label="局部字号">
+        <span className="mr-1 text-xs text-[#67746A]">字号</span>
+        {([["12px", "小"], ["14px", "中"], ["18px", "大"]] as const).map(([size, label]) =>
+          button(label, `选区字号：${label}`, () => editor.chain().focus().setMark("textStyle", { fontSize: size }).run(), editor.getAttributes("textStyle").fontSize === size))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1" aria-label="文字颜色">
+        <span className="mr-1 text-xs text-[#67746A]">文字</span>
+        {Object.entries(EDITOR_COLORS).map(([name, color]) =>
+          swatch(color, `文字：${labels[name]}`, () => editor.chain().focus().setColor(color).run(), editor.getAttributes("textStyle").color === color))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1" aria-label="高亮颜色">
+        <span className="mr-1 text-xs text-[#67746A]">高亮</span>
+        {swatch("#FFFFFF", "移除高亮", () => editor.chain().focus().unsetHighlight().run(), !editor.isActive("highlight"))}
+        {Object.entries(HIGHLIGHT_COLORS).map(([name, color]) =>
+          swatch(color, `高亮：${labels[name]}`, () => editor.chain().focus().setHighlight({ color }).run(), editor.isActive("highlight", { color })))}
+      </div>
     </div>
-    <div className={compact ? "max-h-[250px] overflow-y-auto" : "max-h-[640px] overflow-y-auto"} data-editor-placeholder={placeholder}>
+    <div className={spacious ? "min-h-[360px] max-h-[65vh] overflow-y-auto" : compact ? "max-h-[250px] overflow-y-auto" : "max-h-[640px] overflow-y-auto"} data-editor-placeholder={placeholder}>
       <EditorContent editor={editor} />
     </div>
     <style jsx global>{`
