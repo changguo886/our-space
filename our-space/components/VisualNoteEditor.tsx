@@ -66,7 +66,7 @@ function appendInline(target: HTMLElement, text: string) {
         target.appendChild(anchor);
       }
     } else {
-      target.appendChild(document.createTextNode(part));
+      target.appendChild(editor.ownerDocument.createTextNode(part));
     }
   });
 }
@@ -133,7 +133,7 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
 function inlineMarkdown(node: Node): string {
   const editor = node as HTMLElement;
   if (node.nodeType === 3) return node.textContent ?? "";
-  if (!(node instanceof (editor.ownerDocument.defaultView?.HTMLElement ?? HTMLElement))) return "";
+  if (node.nodeType !== 1) return "";
   const children = Array.from(node.childNodes).map(inlineMarkdown).join("");
   if (node.tagName === "STRONG" || node.tagName === "B") return `**${children}**`;
   if (node.tagName === "EM" || node.tagName === "I") return `*${children}*`;
@@ -441,7 +441,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
         onBlur={emit}
         onChange={undefined}
         onClick={(event) => {
-          if (event.target instanceof HTMLInputElement && event.target.type === "checkbox") {
+          if (event.target instanceof event.currentTarget.ownerDocument.defaultView!.HTMLInputElement && event.target.type === "checkbox") {
             const label = event.target.parentElement?.querySelector("[data-task-text]") as HTMLElement | null;
             if (label) { label.style.textDecoration = event.target.checked ? "line-through" : "none"; label.style.textDecorationStyle = "solid"; label.style.textDecorationColor = "#ADB6AA"; label.style.color = event.target.checked ? "#9CA69B" : "inherit"; }
             emit();
@@ -449,11 +449,13 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
-          const selection = ref.current?.ownerDocument.defaultView?.getSelection();
+          const editor = ref.current;
+          if (!editor) return;
+          const selection = editor.ownerDocument.defaultView?.getSelection();
           let node = selection?.anchorNode ?? null;
           let row: HTMLElement | null = null;
           while (node && node !== ref.current) {
-            if (node instanceof (editor.ownerDocument.defaultView?.HTMLElement ?? HTMLElement) && node.dataset.task === "true") { row = node; break; }
+            if (node.nodeType === 1 && (node as HTMLElement).dataset.task === "true") { row = node as HTMLElement; break; }
             node = node.parentNode;
           }
           if (!row) return; // Native contenteditable already continues numbered/bulleted lists.
