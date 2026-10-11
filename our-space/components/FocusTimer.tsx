@@ -627,11 +627,13 @@ export default function FocusTimer({
       /*
        * 清空默认内容
        */
-      pipWindow.document.head.innerHTML =
-        "";
-
-      pipWindow.document.body.innerHTML =
-        "";
+      // Document PiP has its own document. Copy the active app styles so
+      // shared components (including the Quick Notes editor) retain their UI.
+      pipWindow.document.head.replaceChildren();
+      document.querySelectorAll('link[rel="stylesheet"], style').forEach((source) => {
+        pipWindow.document.head.appendChild(source.cloneNode(true));
+      });
+      pipWindow.document.body.replaceChildren();
 
       /*
        * 设置基础页面样式
