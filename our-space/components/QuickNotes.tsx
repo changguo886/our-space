@@ -1360,7 +1360,7 @@ function NoteComposer({
   const common = dictionary.common;
 
   return (
-    <div className="mt-2 rounded-2xl border border-line/80 bg-white/85 p-3 shadow-sm">
+    <div className={`mt-2 rounded-2xl border border-line/80 p-3 shadow-sm ${NOTE_BACKGROUND[color]}`}>
       <input
         value={title}
         onChange={(event) => onTitle(event.target.value)}
