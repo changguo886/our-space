@@ -521,8 +521,8 @@ export default function FocusTimer({
       return;
     }
 
-    const next =
-      !floatingCompact;
+    const next = !floatingCompact;
+    if (next && workspacePinned) return;
 
     setFloatingCompact(next);
 
@@ -1568,10 +1568,9 @@ export default function FocusTimer({
          */}
         <button
           type="button"
-          onClick={
-            toggleFloatingCompact
-          }
-          title={focusText.collapseSide}
+          onClick={toggleFloatingCompact}
+          disabled={workspacePinned}
+          title={workspacePinned ? "先取消固定工作区，再收起" : focusText.collapseSide}
           style={{
             ...buttonBase,
 
