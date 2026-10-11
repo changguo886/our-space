@@ -149,6 +149,31 @@ export default function FocusTimer({
     setFloatingWorkspaceOpen,
   ] = useState(false);
 
+  const [workspacePinned, setWorkspacePinned] = useState(false);
+  const [preferredWorkspaceOpen, setPreferredWorkspaceOpen] = useState(false);
+  const preferencesLoaded = useRef(false);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(`ourspace:mini-focus:${todo.id}`);
+      if (stored) {
+        const saved = JSON.parse(stored) as { pinned?: boolean; workspaceOpen?: boolean };
+        setWorkspacePinned(Boolean(saved.pinned));
+        setPreferredWorkspaceOpen(Boolean(saved.workspaceOpen || saved.pinned));
+      }
+    } catch { /* Preferences are optional. */ }
+    preferencesLoaded.current = true;
+  }, [todo.id]);
+
+  useEffect(() => {
+    if (!preferencesLoaded.current) return;
+    try {
+      window.localStorage.setItem(`ourspace:mini-focus:${todo.id}`, JSON.stringify({
+        pinned: workspacePinned, workspaceOpen: preferredWorkspaceOpen,
+      }));
+    } catch { /* Browser storage may be blocked. */ }
+  }, [todo.id, workspacePinned, preferredWorkspaceOpen]);
+
   const [
     floatingError,
     setFloatingError,
@@ -459,12 +484,10 @@ export default function FocusTimer({
       return;
     }
 
-    const next =
-      !floatingWorkspaceOpen;
-
-    setFloatingWorkspaceOpen(
-      next
-    );
+    const next = !floatingWorkspaceOpen;
+    if (!next && workspacePinned) return;
+    setFloatingWorkspaceOpen(next);
+    setPreferredWorkspaceOpen(next);
 
     setFloatingCompact(
       false
@@ -595,8 +618,8 @@ export default function FocusTimer({
     try {
       const pipWindow =
         await api.requestWindow({
-          width: 320,
-          height: 220,
+          width: preferredWorkspaceOpen ? 420 : 320,
+          height: preferredWorkspaceOpen ? 590 : 220,
         });
 
       pipWindow.document.title =
@@ -660,6 +683,7 @@ export default function FocusTimer({
         root;
 
       setFloatingCompact(false);
+      setFloatingWorkspaceOpen(preferredWorkspaceOpen);
       setFloatingOpen(true);
 
       /*
@@ -1474,9 +1498,8 @@ export default function FocusTimer({
          */}
         <button
           type="button"
-          onClick={
-            toggleFloatingWorkspace
-          }
+          onClick={toggleFloatingWorkspace}
+          disabled={workspacePinned && floatingWorkspaceOpen}
           title={
             floatingWorkspaceOpen
               ? focusText.collapseWorkspace
@@ -1517,6 +1540,28 @@ export default function FocusTimer({
               : focusText.stepsAndNotes
           }
         </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = !workspacePinned;
+            setWorkspacePinned(next);
+            if (next) {
+              setPreferredWorkspaceOpen(true);
+              setFloatingWorkspaceOpen(true);
+              setFloatingCompact(false);
+              try { floatingWindowRef.current?.resizeTo(420, 590); } catch { /* Window sizing is browser-managed. */ }
+            }
+          }}
+          title={workspacePinned ? "取消固定工作区" : "固定展开步骤与笔记"}
+          aria-label={workspacePinned ? "取消固定工作区" : "固定展开工作区"}
+          aria-pressed={workspacePinned}
+          style={{
+            ...buttonBase, width: "25px", height: "25px", borderRadius: "999px",
+            background: workspacePinned ? "#E9F1E7" : "transparent",
+            color: workspacePinned ? "#597356" : "#999D96", fontSize: "14px",
+          }}
+        >{workspacePinned ? "●" : "○"}</button>
 
         {/*
          * 收到侧边
@@ -1964,6 +2009,7 @@ export default function FocusTimer({
     busy,
     targetSeconds,
     floatingWorkspaceOpen,
+    workspacePinned,
     focusText,
   ]);
 
