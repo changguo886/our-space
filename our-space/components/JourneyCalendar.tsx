@@ -7,7 +7,7 @@ type DayStatus = "planned" | "progress" | "completed" | "rest" | "skipped";
 type DayRow = { day_date: string; day_status: DayStatus; note: string };
 type JourneyCalendarProps = {
   journeyId: string; startDate: string; targetDate: string;
-  animal: string; route: string;
+  animal: string; route: string; initialDate?: string;
 };
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
 const STATUS: Record<DayStatus,string> = { planned: "计划中", progress: "有进展", completed: "已完成", rest: "休息", skipped: "未推进" };
@@ -16,8 +16,8 @@ function thisMonth() { const d=new Date();return { year:d.getFullYear(),month:d.
 const emoji:Record<string,string>={cat:"🐱",dog:"🐶",rabbit:"🐰",fox:"🦊"};
 const scenery:Record<string,string>={swim:"🌊",run:"🌿",hike:"⛰️",cycle:"🚲"};
 
-export default function JourneyCalendar({journeyId,startDate,targetDate,animal,route}:JourneyCalendarProps) {
-  const [month,setMonth]=useState(thisMonth);
+export default function JourneyCalendar({journeyId,startDate,targetDate,animal,route,initialDate}:JourneyCalendarProps) {
+  const [month,setMonth]=useState(() => { const match=initialDate?.match(/^(\d{4})-(\d{2})-\d{2}$/); return match ? {year:Number(match[1]),month:Number(match[2])-1}:thisMonth(); });
   const [selected,setSelected]=useState<string|null>(null);
   const [rows,setRows]=useState<Record<string,DayRow>>({});
   const [loading,setLoading]=useState(false);
