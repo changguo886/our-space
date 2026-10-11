@@ -30,6 +30,16 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
   const [rangeSaving,setRangeSaving]=useState(false);
   const [rangeMessage,setRangeMessage]=useState("");
   const drag=useRef<{edge:"start"|"end";pointerId:number}|null>(null);
+  const monthEdgeTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const monthEdgeDirection=useRef(0);
+  function clearMonthEdge(){
+    if(monthEdgeTimer.current)clearTimeout(monthEdgeTimer.current);
+    monthEdgeTimer.current=null;monthEdgeDirection.current=0;
+  }
+  useEffect(()=>()=>{if(monthEdgeTimer.current)clearTimeout(monthEdgeTimer.current);},[]);
+  function turnMonth(delta:number){
+    setMonth(current=>{const d=new Date(current.year,current.month+delta,1);return {year:d.getFullYear(),month:d.getMonth()};});
+  }
   useEffect(()=>{setRange({start:startDate,end:targetDate});setDraft(null);setEdge(null);},[journeyId,startDate,targetDate]);
   const display=draft??range;
   function adjust(which:"start"|"end",date:string){
@@ -40,7 +50,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
   function begin(which:"start"|"end"){
     setEdge(which);setSelected(null);setDraft(prev=>prev??{...range});setRangeMessage("");
   }
-  function cancelRange(){setDraft(null);setEdge(null);setRangeMessage("");}
+  function cancelRange(){clearMonthEdge();setDraft(null);setEdge(null);setRangeMessage("");}
   async function confirmRange(){
     if(!draft||rangeSaving||draft.start>draft.end)return;
     if(draft.start===range.start&&draft.end===range.end){cancelRange();return;}
@@ -63,10 +73,22 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     const el=document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-journey-date]");
     const date=el?.getAttribute("data-journey-date");
     if(date)adjust(drag.current.edge,date);
+    const region=event.currentTarget.getBoundingClientRect();
+    const direction=event.clientX<region.left+24?-1:event.clientX>region.right-24?1:0;
+    if(direction!==monthEdgeDirection.current){
+      clearMonthEdge();
+      if(direction){
+        monthEdgeDirection.current=direction;
+        monthEdgeTimer.current=setTimeout(()=>{
+          turnMonth(direction);
+          clearMonthEdge();
+        },850);
+      }
+    }
   }
   function dragEnd(event:React.PointerEvent<HTMLButtonElement>){
     if(drag.current?.pointerId!==event.pointerId)return;
-    drag.current=null;
+    drag.current=null;clearMonthEdge();
     if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
   }
   const firstOfMonth=toISO(month.year,month.month,1);
@@ -123,7 +145,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-paper/60 px-3 py-2">
       <button type="button" onClick={()=>begin("start")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整起点</button>
       <button type="button" onClick={()=>begin("end")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整终点</button>
-      <span className="text-[11px] text-ink-faint">拖动边缘手柄，或选择起点/终点后点日期；翻月时不会丢失草稿。</span>
+      <span className="text-[11px] text-ink-faint">拖动边缘手柄；拖到月历左右侧稍作停留可翻月。也可点击日期或使用日期输入框。</span>
     </div>
     <div className="mt-4 grid grid-cols-7 gap-1.5">
       {WEEKDAYS.map(d=><div key={d} className="pb-1 text-center text-[10px] text-[#87958B]">{d}</div>)}
