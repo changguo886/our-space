@@ -25,7 +25,7 @@ export default function QuickNotesRichTextField({
   }, [value, contentJson, dirty]);
 
   return <div className={spacious ? "mx-auto w-full max-w-[740px]" : "w-full"}>
-    <RichTextEditor compact={compact} value={document} placeholder={placeholder}
+    <RichTextEditor compact={compact} spacious={spacious} value={document} placeholder={placeholder}
       onChange={next => {
         setDirty(true);
         setDocument(next);
