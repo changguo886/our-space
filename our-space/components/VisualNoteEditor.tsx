@@ -212,9 +212,10 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
 
   const updateActive = () => {
     const editor = ref.current;
+    if (!editor) return;
     let node = editor.ownerDocument.defaultView?.getSelection()?.anchorNode ?? null;
     let bold = false, italic = false, ordered = false, bullet = false, checklist = false;
-    if (!editor || !node || !editor.contains(node)) return;
+    if (!node || !editor.contains(node)) return;
     const selection = editor.ownerDocument.defaultView?.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) selectedRange.current = selection.getRangeAt(0).cloneRange();
     while (node && node !== editor) {
