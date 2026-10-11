@@ -1905,7 +1905,7 @@ export default function FocusTimer({
             <button
               type="button"
               disabled={busy}
-              onClick={confirmWholeTask}
+              onClick={() => { if (window.confirm("确定完成整个 Todo 吗？如果只是结束本次专注，请选择「结束本次」。")) void completeTimer(); }}
               title={focusText.completeTask}
               style={{
                 ...buttonBase,
