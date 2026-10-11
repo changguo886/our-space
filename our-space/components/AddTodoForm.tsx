@@ -81,6 +81,10 @@ export default function AddTodoForm({
       "private" | "space"
     >("private");
 
+  const [longTerm, setLongTerm] = useState(false);
+  const [startDate, setStartDate] = useState(taskDate);
+  const [endDate, setEndDate] = useState(taskDate);
+
   const [busy, setBusy] =
     useState(false);
 
@@ -125,13 +129,14 @@ export default function AddTodoForm({
       return;
     }
 
+    if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
     setBusy(true);
     setError(null);
 
     const supabase =
       createClient();
 
-    const { error } =
+    const { data: created, error } =
       await supabase
         .from("todos")
         .insert({
@@ -171,8 +176,12 @@ export default function AddTodoForm({
             customTag.trim()
               ? customTag.trim()
               : null,
-        });
+        }).select("id").single();
 
+    if (!error && created && longTerm) {
+      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim"});
+      if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
+    }
     setBusy(false);
 
     if (error) {
@@ -190,6 +199,9 @@ export default function AddTodoForm({
     setDescription("");
     setMinutes("");
     setCustomTag("");
+    setLongTerm(false);
+    setStartDate(taskDate);
+    setEndDate(taskDate);
 
     /*
      * category 和 visibility
@@ -356,6 +368,22 @@ export default function AddTodoForm({
         <p className="mt-1.5 text-[11px] text-ink-faint">
           {t.durationHelp}
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-line bg-paper/40 p-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-ink">
+          <input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy} />
+          {dictionary.common?.minutes === "分钟" ? "这是长期任务（开启成长旅程）" : "Long-term task (enable Journey)"}
+        </label>
+        {longTerm && <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "开始日期" : "Start date"}
+            <input className="input mt-1 w-full" type="date" value={startDate} onChange={e=>{setStartDate(e.target.value);if(endDate<e.target.value)setEndDate(e.target.value);}} disabled={busy}/>
+          </label>
+          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "目标结束日期" : "Target end date"}
+            <input className="input mt-1 w-full" type="date" min={startDate} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/>
+          </label>
+          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes === "分钟" ? "创建后可在 Calendar 的旅程视图中调整日期。" : "Adjust journey dates later in Calendar."}</p>
+        </div>}
       </div>
 
       {/* 可见范围 */}
