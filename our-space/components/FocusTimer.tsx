@@ -151,7 +151,7 @@ export default function FocusTimer({
 
   const [workspacePinned, setWorkspacePinned] = useState(false);
   const [preferredWorkspaceOpen, setPreferredWorkspaceOpen] = useState(false);
-  const preferencesLoaded = useRef(false);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   useEffect(() => {
     try {
@@ -162,17 +162,17 @@ export default function FocusTimer({
         setPreferredWorkspaceOpen(Boolean(saved.workspaceOpen || saved.pinned));
       }
     } catch { /* Preferences are optional. */ }
-    preferencesLoaded.current = true;
+    setPreferencesLoaded(true);
   }, [todo.id]);
 
   useEffect(() => {
-    if (!preferencesLoaded.current) return;
+    if (!preferencesLoaded) return;
     try {
       window.localStorage.setItem(`ourspace:mini-focus:${todo.id}`, JSON.stringify({
         pinned: workspacePinned, workspaceOpen: preferredWorkspaceOpen,
       }));
     } catch { /* Browser storage may be blocked. */ }
-  }, [todo.id, workspacePinned, preferredWorkspaceOpen]);
+  }, [todo.id, workspacePinned, preferredWorkspaceOpen, preferencesLoaded]);
 
   const [
     floatingError,
@@ -1561,7 +1561,7 @@ export default function FocusTimer({
             background: workspacePinned ? "#E9F1E7" : "transparent",
             color: workspacePinned ? "#597356" : "#999D96", fontSize: "14px",
           }}
-        >{workspacePinned ? "●" : "○"}</button>
+        >{workspacePinned ? "📌" : "◇"}</button>
 
         {/*
          * 收到侧边
