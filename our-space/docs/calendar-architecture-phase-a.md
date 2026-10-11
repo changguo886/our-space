@@ -58,3 +58,42 @@ type CalendarEventView = {
 7. Run `npm run build` and manual browser checks before merge to `main`.
 
 This decision supersedes earlier proposals that expand a full Journey calendar directly inside Todo details.
+
+
+## Decision: edit Journey dates directly in the month grid (2026-10-11)
+
+**Interaction principle:** the highlighted Journey date cells are the editable surface. Do NOT add a second, separate task bar solely to resize the Journey range.
+
+- Desktop: grab the start/end *boundary cell/handle* and drag to a date; normal click continues opening daily details. Do not make the entire highlighted region draggable in Phase A.
+- Touch: long-press the boundary to enter adjustment mode; normal touch and vertical scroll must keep working.
+- Continue across months: draft start/end dates survive navigation. Allow month-edge navigation/autoscroll where feasible, but always support manually switching months while draft remains active.
+- During drag, preview highlighted days including exact inclusive start/end; days beyond target date are not highlighted. Display existing range, proposed range and an explicit **Confirm / Cancel** step.
+- Persist only `goal_journeys.start_date` and `goal_journeys.target_date` after confirmation. Enforce `start_date <= target_date`; show Supabase failures without claiming success. **Do not mutate `todo_sessions`, completed history, or `todos.scheduled_start/end`** as a side effect.
+- Show a warning if existing planned Sessions fall outside proposed Journey dates. The warning does not silently replan them.
+- Offer accessible date-picker/manual date-entry fallback and keyboard interactions.
+- Phase A must work for ranges spanning months and years, including days outside the range.
+- Separately audit semantic mismatch between Todo deadline and Journey target date; do not silently equate or sync them. They are independent until an explicit user choice and migration policy exists.
+
+### Explicitly deferred to Phase B: workload semantics and rescheduling
+
+There are **three independent dimensions**:
+1. **Date range:** calendar boundaries (Journey start/target).
+2. **Workload:** total target hours vs habit/routine target per session.
+3. **Session schedule:** exact booked slots, fixed recurring or flexible manual.
+
+Workload calculation is *not* implied by resizing dates. After resizing, future UI may offer:
+- **Keep total workload, redistribute remaining hours.** Example: 20 total hours, 10 available days = 2h/day; shrink to 5 available days = 4h/day only if none completed. Correct general formula: `remaining_hours = max(0, target_total_hours - verified_completed_hours)`; `daily_suggestion = remaining_hours / remaining_available_work_days`. Exclude rest/non-working days; respect timezone and already-completed history.
+- **Keep per-day/per-session effort**, possibly reducing total planned occurrences/amount (especially important for habit/physical exercise tasks).
+- **Change dates only**, leaving booked Sessions untouched and previewing out-of-range exceptions.
+
+Any redistributing, moving future Sessions, or changing total work commitments requires a separate preview with conflict checks and explicit confirmation. Do not automatically turn an edited Journey date into daily work duration, or assume calendar days = working days.
+
+### Scope and acceptance order
+
+1. Verify existing Day planner, newly added Week/Month/Journey shell, Todo deep link and goal_journey_days migration persist after refresh.
+2. Verify highlighting actually stops on `goal_journeys.target_date` even when Todo date fields differ; show Journey range plainly.
+3. Implement **date boundary preview + Confirm/Cancel + database persistence** in Journey month cells, including adjacent months and date input fallback. Keep normal day-click semantics.
+4. Only after robust boundary behavior, consider visual path animation and Companion polish.
+5. Keep schedule rules, total-hour allocation, Session shifting, conflict resolution and external-provider sync **out of Phase A**.
+
+Design mantra: **Dragging a date expresses an intention; it never silently rearranges work.**
