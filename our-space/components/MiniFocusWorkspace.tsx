@@ -314,6 +314,29 @@ export default function MiniFocusWorkspace({
     }
   }
 
+  async function deleteNote(note: MiniNote) {
+    if (busy || !window.confirm("删除这条笔记？此操作无法撤销。")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { error: deleteError } = await createClient()
+        .from("quick_notes")
+        .delete()
+        .eq("id", note.id)
+        .eq("todo_id", todoId);
+      if (deleteError) throw deleteError;
+      setNotes(current => current.filter(item => item.id !== note.id));
+      if (editingNoteId === note.id) {
+        setEditingNoteId(null);
+        setEditingContent("");
+      }
+    } catch (unknownError) {
+      setError(unknownError instanceof Error ? unknownError.message : String(unknownError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Preserve the selected tab and unfinished note across PiP
   // collapse / expand and normal component remounts.
   useEffect(() => {
@@ -1150,6 +1173,14 @@ export default function MiniFocusWorkspace({
                                   {expanded ? labels.collapse : labels.expand}
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                disabled={busy}
+                                aria-label="删除笔记"
+                                title="删除笔记"
+                                onClick={() => void deleteNote(note)}
+                                style={{ ...buttonBase, background: "transparent", color: "#A66D67", fontSize: "10px" }}
+                              >删除</button>
                               <button
                                 type="button"
                                 disabled={busy || editingNoteId !== null}
