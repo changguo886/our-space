@@ -32,6 +32,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
   const drag=useRef<{edge:"start"|"end";pointerId:number}|null>(null);
   const monthEdgeTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const monthEdgeDirection=useRef(0);
+  const calendarGrid=useRef<HTMLDivElement|null>(null);
   function clearMonthEdge(){
     if(monthEdgeTimer.current)clearTimeout(monthEdgeTimer.current);
     monthEdgeTimer.current=null;monthEdgeDirection.current=0;
@@ -53,6 +54,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
   function cancelRange(){clearMonthEdge();setDraft(null);setEdge(null);setRangeMessage("");}
   async function confirmRange(){
     if(!draft||rangeSaving||draft.start>draft.end)return;
+    clearMonthEdge();
     if(draft.start===range.start&&draft.end===range.end){cancelRange();return;}
     setRangeSaving(true);setRangeMessage("");
     const {data,error:err}=await createClient().from("goal_journeys")
@@ -73,8 +75,8 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     const el=document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-journey-date]");
     const date=el?.getAttribute("data-journey-date");
     if(date)adjust(drag.current.edge,date);
-    const region=event.currentTarget.getBoundingClientRect();
-    const direction=event.clientX<region.left+24?-1:event.clientX>region.right-24?1:0;
+    const region=calendarGrid.current?.getBoundingClientRect();
+    const direction=!region?0:event.clientX<=region.left+44?-1:event.clientX>=region.right-44?1:0;
     if(direction!==monthEdgeDirection.current){
       clearMonthEdge();
       if(direction){
@@ -147,7 +149,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
       <button type="button" onClick={()=>begin("end")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整终点</button>
       <span className="text-[11px] text-ink-faint">拖动边缘手柄；拖到月历左右侧稍作停留可翻月。也可点击日期或使用日期输入框。</span>
     </div>
-    <div className="mt-4 grid grid-cols-7 gap-1.5">
+    <div ref={calendarGrid} className="mt-4 grid grid-cols-7 gap-1.5">
       {WEEKDAYS.map(d=><div key={d} className="pb-1 text-center text-[10px] text-[#87958B]">{d}</div>)}
       {cells.map((cell,i)=>{
         if(!cell)return <div key={"empty-"+i} className="min-h-[63px] sm:min-h-[78px]"/>;
@@ -180,8 +182,8 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
       </div>
       <p className="text-xs text-ink-faint">仅修改旅程范围，不会移动已安排的 Session，也不会更改 Todo 截止日期。</p>
       <div className="flex gap-2">
-        <button type="button" disabled={rangeSaving} onClick={()=>void confirmRange()} className="rounded-lg bg-sage-600 px-4 py-2 text-xs text-white disabled:opacity-50">{rangeSaving?"保存中…":"确认保存"}</button>
-        <button type="button" disabled={rangeSaving} onClick={cancelRange} className="rounded-lg border border-line bg-white px-4 py-2 text-xs">取消</button>
+        <button type="button" disabled={rangeSaving} onClick={()=>void confirmRange()} className="rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#326A4B] disabled:cursor-not-allowed disabled:opacity-50" style={{backgroundColor:"#366B50",color:"#FFFFFF"}}>{rangeSaving?"保存中…":"确认保存"}</button>
+        <button type="button" disabled={rangeSaving} onClick={cancelRange} className="rounded-lg border border-[#CCD5CD] bg-white px-4 py-2.5 text-sm font-medium text-[#435949]">取消</button>
       </div>
     </div>}
     {rangeMessage&&<p role="status" className="mt-2 text-xs text-ink-soft">{rangeMessage}</p>}
