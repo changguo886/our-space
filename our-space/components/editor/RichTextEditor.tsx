@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
 import { TextStyle, Color } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TaskList from "@tiptap/extension-task-list";
@@ -36,8 +35,7 @@ const LocalFontSize = Extension.create({
 });
 
 const extensions = [
-  StarterKit.configure({ /* Tiptap 3 StarterKit includes undo/redo history. */ }),
-  Underline,
+  StarterKit,
   TextStyle,
   Color,
   Highlight.configure({ multicolor: true }),
@@ -57,7 +55,7 @@ export default function RichTextEditor({ value, onChange, compact = false, spaci
     onTransaction() { refreshToolbar(n => n + 1); },
     editorProps: {
       attributes: {
-        class: "min-h-[150px] w-full rounded-xl px-3 py-4 text-sm leading-7 text-[#4A5048] outline-none focus:outline-none",
+        class: "ourspace-rich-editor min-h-[150px] w-full rounded-xl px-3 py-4 text-sm leading-7 text-[#4A5048] outline-none focus:outline-none",
       },
     },
   });
@@ -116,13 +114,15 @@ export default function RichTextEditor({ value, onChange, compact = false, spaci
       <EditorContent editor={editor} />
     </div>
     <style jsx global>{`
-      .ProseMirror ul { list-style: disc; padding-left: 1.6em; }
-      .ProseMirror ol { list-style: decimal; padding-left: 1.6em; }
-      .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; }
-      .ProseMirror ul[data-type="taskList"] li { display: flex; align-items: baseline; gap: 8px; }
-      .ProseMirror ul[data-type="taskList"] li > label { flex: none; }
-      .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { color: #9CA69B; text-decoration: line-through; text-decoration-color: #ADB6AA; text-decoration-style: solid; }
-      .ProseMirror p { margin: 0 0 0.3em; }
+      .ourspace-rich-editor ul:not([data-type="taskList"]) { list-style-type: disc !important; list-style-position: outside; padding-left: 1.7em !important; margin: .25em 0; }
+      .ourspace-rich-editor ol { list-style-type: decimal !important; list-style-position: outside; padding-left: 1.7em !important; margin: .25em 0; }
+      .ourspace-rich-editor ul[data-type="taskList"] { list-style: none !important; padding-left: 0 !important; margin: .3em 0; }
+      .ourspace-rich-editor ul[data-type="taskList"] > li { display: flex !important; align-items: flex-start; gap: 8px; list-style: none !important; }
+      .ourspace-rich-editor ul[data-type="taskList"] > li > label { display: flex; flex: 0 0 auto; align-items: center; padding-top: 4px; cursor: pointer; }
+      .ourspace-rich-editor ul[data-type="taskList"] > li > div { flex: 1 1 auto; min-width: 0; width: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .ourspace-rich-editor ul[data-type="taskList"] > li > div > p { min-height: 1.4em; }
+      .ourspace-rich-editor ul[data-type="taskList"] li[data-checked="true"] > div { color: #9CA69B; text-decoration: line-through; text-decoration-color: #ADB6AA; text-decoration-style: solid; }
+      .ourspace-rich-editor p { margin: 0 0 .3em; }
     `}</style>
   </div>;
 }
