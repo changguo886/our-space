@@ -76,12 +76,6 @@ export default function DurationInput({
     onUnitChange(nextUnit);
   }
 
-  const presets = [{minutes:25,label:"25"},{minutes:45,label:"45"},{minutes:60,label:"60"},{minutes:120,label:"120"}];
-  const currentMinutes = durationValueToMinutes(value,unit);
-  function choosePreset(minutes:number){
-    onValueChange(unit==="hour"?trimNumber(minutes/60):String(minutes));
-  }
-
   return (
     <div className="space-y-2">
       <div className="flex min-h-[52px] items-stretch overflow-hidden rounded-2xl border border-line bg-white shadow-sm transition focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100/70">
@@ -106,15 +100,7 @@ export default function DurationInput({
           )}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-[11px] text-ink-faint">{common.minutes==="分钟"?"快捷选择":"Quick pick"}</span>
-        {presets.map(p=><button type="button" key={p.minutes} disabled={disabled}
-          onClick={()=>choosePreset(p.minutes)}
-          aria-pressed={currentMinutes===p.minutes}
-          className={`rounded-full border px-3 py-1 text-xs transition disabled:opacity-50 ${currentMinutes===p.minutes?"border-sage-300 bg-sage-50 font-medium text-sage-700":"border-line bg-white/70 text-ink-soft hover:border-sage-200 hover:bg-sage-50"}`}>
-          {p.minutes<60?`${p.minutes} ${common.minutes}`:`${p.minutes/60} ${common.hours}`}
-        </button>)}
-      </div>
+
     </div>
   )
 }
