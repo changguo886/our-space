@@ -1224,256 +1224,73 @@ export default function FocusTimer({
       userId={preferences.user_id}
     >
       {floatingCompact ? (
-    /*
-     * ==========================
-     * Side Compact Mode
-     * ==========================
-     */
-    <div
-      style={{
-        boxSizing:
-          "border-box",
-
-        width:
-          "100%",
-
-        height:
-          "100vh",
-
-        padding:
-          "10px 8px",
-
-        display:
-          "flex",
-
-        flexDirection:
-          "column",
-
-        alignItems:
-          "center",
-
-        justifyContent:
-          "space-between",
-
-        background:
-          "#FFFDFA",
-
-        color:
-          "#353934",
-
-        userSelect:
-          "none",
-      }}
-    >
-      {/*
-       * 展开
-       */}
-      <button
-        type="button"
-        onClick={
-          toggleFloatingCompact
-        }
-        title={focusText.expandFloating}
-        style={{
-          ...buttonBase,
-
-          width:
-            "28px",
-
-          height:
-            "24px",
-
-          borderRadius:
-            "9px",
-
-          background:
-            "transparent",
-
-          color:
-            "#8B9188",
-
-          fontSize:
-            "15px",
-
-          opacity:
-            busy
-              ? 0.5
-              : 1,
-        }}
-      >
-        ↗
-      </button>
-
-      <button type="button" aria-pressed={pinnedMode === "compact"}
-        aria-label={pinnedMode === "compact" ? "取消记住精简模式" : "记住精简模式"}
-        title="记住精简模式（浏览器仍可拖动窗口）"
-        onClick={() => setPinnedMode(current => current === "compact" ? null : "compact")}
-        style={{...buttonBase, borderRadius:"8px", width:"26px", height:"22px",
-          background:pinnedMode === "compact" ? "#E9F1E7" : "transparent",
-          color:pinnedMode === "compact" ? "#597356" : "#8B9188"}}>
-        {pinnedMode === "compact" ? "●" : "◇"}
-      </button>
-      {/*
-       * 时间
-       */}
-      <div
-        style={{
-          textAlign:
-            "center",
-
-          fontSize:
-            "21px",
-
-          lineHeight:
-            1,
-
-          fontWeight:
-            600,
-
-          fontVariantNumeric:
-            "tabular-nums",
-
-          letterSpacing:
-            "-0.8px",
-
-          color:
-            "#353934",
-        }}
-      >
-        {
-          floatingDisplayTime
-        }
-      </div>
-
-      {/*
-       * 状态
-       */}
-      <div
-        style={{
-          maxWidth:
-            "100%",
-
-          overflow:
-            "hidden",
-
-          textOverflow:
-            "ellipsis",
-
-          whiteSpace:
-            "nowrap",
-
-          fontSize:
-            "9px",
-
-          color:
-            timeUp
-              ? "#A66D67"
-              : "#999D96",
-        }}
-      >
-        {
-          floatingStatusText
-        }
-      </div>
-
-      {compactFinishConfirm ? (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-          <span style={{ fontSize: 9, color: "#A66D67" }}>结束并完成任务？</span>
-          <button type="button" disabled={busy} onClick={() => void completeTimer()} style={{ ...buttonBase, color: "#A66D67", fontSize: 10 }}>确认完成</button>
-          <button type="button" onClick={() => setCompactFinishConfirm(false)} style={{ ...buttonBase, fontSize: 10 }}>取消</button>
+        <div style={{
+          boxSizing: "border-box", width: "100%", height: "100vh",
+          padding: "10px 12px 12px", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "space-between", gap: 6,
+          background: "#FFFDFA", color: "#353934", userSelect: "none",
+        }}>
+          <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <button type="button" onClick={toggleFloatingCompact} disabled={busy}
+              title={focusText.expandFloating} aria-label={focusText.expandFloating}
+              style={{ ...buttonBase, width: 30, height: 26, display: "inline-flex", alignItems: "center",
+                justifyContent: "center", borderRadius: 8, background: "transparent", color: "#818A80",
+                fontSize: 16 }}>↗</button>
+            <button type="button" aria-pressed={pinnedMode === "compact"}
+              aria-label={pinnedMode === "compact" ? "取消记住精简模式" : "记住精简模式"}
+              title="记住精简模式（浏览器仍可拖动窗口）"
+              onClick={() => setPinnedMode(current => current === "compact" ? null : "compact")}
+              style={{ ...buttonBase, width: 30, height: 26, display: "inline-flex", alignItems: "center",
+                justifyContent: "center", borderRadius: 8,
+                background: pinnedMode === "compact" ? "#E9F1E7" : "transparent",
+                color: pinnedMode === "compact" ? "#597356" : "#818A80",
+                fontSize: 16 }}>{pinnedMode === "compact" ? "●" : "◇"}</button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0, width: "100%" }}>
+            <div style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.1,
+              fontVariantNumeric: "tabular-nums", letterSpacing: "-0.8px", color: "#353934",
+              whiteSpace: "nowrap" }}>{floatingDisplayTime}</div>
+            <div style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis",
+              whiteSpace: "nowrap", fontSize: 10, color: timeUp ? "#A66D67" : "#858E84" }}>
+              {floatingStatusText}
+            </div>
+          </div>
+          {compactFinishConfirm ? (
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>结束计时并完成整个任务？</span>
+              <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+                <button type="button" disabled={busy} onClick={() => void completeTimer()}
+                  style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#F5E2DF",
+                    color: "#9B514C", fontSize: 11, fontWeight: 600 }}>确认完成</button>
+                <button type="button" disabled={busy} onClick={() => setCompactFinishConfirm(false)}
+                  style={{ ...buttonBase, minWidth: 54, height: 30, borderRadius: 9,
+                    background: "#EFF0EC", color: "#657066", fontSize: 11 }}>取消</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14 }}>
+              <button type="button" disabled={busy || status === "completed"}
+                onClick={status === "running" ? pauseTimer : () => startTimer(false)}
+                title={status === "running" ? focusText.pause : focusText.continue}
+                aria-label={status === "running" ? focusText.pause : focusText.continue}
+                style={{ ...buttonBase, width: 44, height: 44, display: "inline-flex",
+                  justifyContent: "center", alignItems: "center", borderRadius: "50%",
+                  background: "#E9F1E7", color: "#597356",
+                  opacity: busy ? 0.5 : 1 }}>
+                {status === "running" ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}
+              </button>
+              <button type="button" disabled={busy || status === "completed"}
+                onClick={() => setCompactFinishConfirm(true)}
+                title="结束计时并完成任务" aria-label="结束计时并完成任务"
+                style={{ ...buttonBase, width: 44, height: 44, display: "inline-flex",
+                  justifyContent: "center", alignItems: "center", borderRadius: "50%",
+                  background: "#F8ECE9", color: "#A66D67",
+                  opacity: busy ? 0.5 : 1 }}>
+                <Square size={17} fill="currentColor" />
+              </button>
+            </div>
+          )}
         </div>
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-
-      {status ===
-      "running" ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={
-            pauseTimer
-          }
-          title={focusText.pause}
-          style={{
-            ...buttonBase,
-
-            width:
-              "34px",
-
-            height:
-              "34px",
-
-            borderRadius:
-              "999px",
-
-            background:
-              "#E9F1E7",
-
-            color:
-              "#597356",
-
-            fontSize:
-              "14px",
-
-            fontWeight:
-              700,
-
-            opacity:
-              busy
-                ? 0.5
-                : 1,
-          }}
-        >
-          Ⅱ
-        </button>
-      ) : (
-        <button
-          type="button"
-          disabled={
-            busy ||
-            status ===
-              "completed"
-          }
-          onClick={() =>
-            startTimer(false)
-          }
-          title={focusText.continue}
-          style={{
-            ...buttonBase,
-
-            width:
-              "34px",
-
-            height:
-              "34px",
-
-            borderRadius:
-              "999px",
-
-            background:
-              "#E9F1E7",
-
-            color:
-              "#597356",
-
-            fontSize:
-              "14px",
-
-            opacity:
-              busy
-                ? 0.5
-                : 1,
-          }}
-        >
-          ▶
-        </button>
-      )}
-          <button type="button" disabled={busy || status === "completed"} onClick={() => setCompactFinishConfirm(true)}
-            title="结束计时并完成任务" aria-label="结束计时并完成任务"
-            style={{ ...buttonBase, width: 30, height: 30, borderRadius: "999px", background: "#F8ECE9", color: "#A66D67" }}>■</button>
-        </div>
-      )}
-    </div>
   ) : (
     /*
      * ==========================
