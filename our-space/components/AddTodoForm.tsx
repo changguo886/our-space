@@ -81,6 +81,9 @@ export default function AddTodoForm({
       "private" | "space"
     >("private");
 
+  const [planMode,setPlanMode]=useState<"flexible"|"fixed">("flexible");
+  const [sessionStart,setSessionStart]=useState("");
+  const [sessionEnd,setSessionEnd]=useState("");
   const [longTerm, setLongTerm] = useState(false);
   const [startDate, setStartDate] = useState(taskDate);
   const [endDate, setEndDate] = useState(taskDate);
@@ -129,6 +132,12 @@ export default function AddTodoForm({
       return;
     }
 
+    if(planMode==="fixed"){
+      const from=new Date(sessionStart).getTime(),to=new Date(sessionEnd).getTime();
+      if(!sessionStart||!sessionEnd||!Number.isFinite(from)||!Number.isFinite(to)||to<=from){
+        setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
+      }
+    }
     if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
     setBusy(true);
     setError(null);
@@ -169,6 +178,9 @@ export default function AddTodoForm({
           task_date:
             taskDate,
 
+          scheduled_start: planMode==="fixed"?new Date(sessionStart).toISOString():null,
+          scheduled_end: planMode==="fixed"?new Date(sessionEnd).toISOString():null,
+
           category:
             category,
 
@@ -200,6 +212,8 @@ export default function AddTodoForm({
     setMinutes("");
     setCustomTag("");
     setLongTerm(false);
+    setPlanMode("flexible");
+    setSessionStart("");setSessionEnd("");
     setStartDate(taskDate);
     setEndDate(taskDate);
 
@@ -368,6 +382,26 @@ export default function AddTodoForm({
         <p className="mt-1.5 text-[11px] text-ink-faint">
           {t.durationHelp}
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-line bg-white/80 p-4">
+        <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"安排时间":"Schedule time"}</p>
+        <div className="grid grid-cols-2 gap-2">
+          {(["flexible","fixed"] as const).map(mode=><button key={mode} type="button" disabled={busy}
+            aria-pressed={planMode===mode} onClick={()=>setPlanMode(mode)}
+            className={`rounded-xl border px-3 py-3 text-left text-sm transition ${planMode===mode?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft"}`}>
+            {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time")}
+          </button>)}
+        </div>
+        {planMode==="fixed"?<div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-xs font-medium text-ink-soft">{dictionary.common?.minutes==="分钟"?"开始时间":"Start time"}
+            <input type="datetime-local" lang={dictionary.common?.minutes==="分钟"?"zh-CN":"en"} className="mt-2 block min-h-[52px] w-full rounded-xl border border-line bg-white px-3 text-sm text-ink outline-none focus:border-sage-300 focus:ring-2 focus:ring-sage-100" value={sessionStart} onChange={e=>setSessionStart(e.target.value)} disabled={busy}/>
+          </label>
+          <label className="block text-xs font-medium text-ink-soft">{dictionary.common?.minutes==="分钟"?"结束时间":"End time"}
+            <input type="datetime-local" lang={dictionary.common?.minutes==="分钟"?"zh-CN":"en"} className="mt-2 block min-h-[52px] w-full rounded-xl border border-line bg-white px-3 text-sm text-ink outline-none focus:border-sage-300 focus:ring-2 focus:ring-sage-100" min={sessionStart||undefined} value={sessionEnd} onChange={e=>setSessionEnd(e.target.value)} disabled={busy}/>
+          </label>
+          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes==="分钟"?"只安排这一次；之后仍可在 Calendar 中拖动。每天/每周重复安排稍后支持。":"Schedule this occurrence; you can still drag it in Calendar. Recurrence comes later."}</p>
+        </div>:<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"不占用具体日历时段；以后可在 Calendar 自由安排。":"No time slot booked yet. Schedule it later in Calendar."}</p>}
       </div>
 
       <div className="rounded-2xl border border-line bg-paper/40 p-4">
