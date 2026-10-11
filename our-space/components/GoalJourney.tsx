@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import JourneyCalendar from "@/components/JourneyCalendar";
 
 type Animal = "cat" | "dog" | "rabbit" | "fox";
 type Route = "swim" | "run" | "hike" | "cycle";
@@ -167,6 +168,7 @@ export default function GoalJourney({ todoId, todoTitle }: { todoId: string; tod
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-sage-100"><div className="h-full rounded-full bg-sage-500"
           style={{ width: (journey.status === "finished" ? journey.final_completion_percent : completion) + "%" }}/></div>
+        <JourneyCalendar journeyId={journey.id} startDate={journey.start_date} targetDate={journey.target_date} animal={journey.animal_type} route={journey.journey_type} />
         {journey.status === "finished"
           ? <p className="rounded-xl bg-white p-3 text-center">{(journey.final_completion_percent ?? 0) === 100 ? "🥳 完美达成！特别开心！" : "😊 这段旅程有收获，下次再一起出发！"}</p>
           : <button type="button" disabled={busy} onClick={() => void finish()}
