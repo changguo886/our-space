@@ -5,6 +5,8 @@
  * implementation are validated. Never overwrite content from this preview
  * conversion without an explicit user edit.
  */
+import { resolveEditorColor } from "@/components/editor/editorPalette";
+
 export type RichTextNode = {
   type: string;
   attrs?: Record<string, unknown>;
@@ -28,9 +30,9 @@ function inlineNodes(source: string): RichTextNode[] {
     const underline = /^\{\{underline\|([^}\n]+)\}\}$/.exec(part);
     if (underline) return mark("underline", underline[1]);
     const styled = /^\{\{(color|emphasis):(default|sage|amber|rose|sky|lavender)\|([^}\n]+)\}\}$/.exec(part);
-    if (styled) return mark(styled[1] === "color" ? "textStyle" : "highlight", styled[3], { color: styled[2] });
+    if (styled) return mark(styled[1] === "color" ? "textStyle" : "highlight", styled[3], { color: resolveEditorColor(styled[2], styled[1] === "color" ? "text" : "highlight") });
     const legacyHighlight = /^==(?:([^|=]+)\|)?([^=\n]+)==$/.exec(part);
-    if (legacyHighlight) return mark("highlight", legacyHighlight[2], { color: legacyHighlight[1] ?? "amber" });
+    if (legacyHighlight) return mark("highlight", legacyHighlight[2], { color: resolveEditorColor(legacyHighlight[1] ?? "amber", "highlight") });
     const link = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
     if (link) return mark("link", link[1], { href: link[2] });
     return { type: "text", text: part };
@@ -40,17 +42,18 @@ function inlineNodes(source: string): RichTextNode[] {
 export function legacyMarkdownToRichText(content: string): RichTextDocument {
   const nodes: RichTextNode[] = [];
   const lines = content.split(/\r?\n/);
-  let listType: "bulletList" | "orderedList" | null = null;
+  let listType: "bulletList" | "orderedList" | "taskList" | null = null;
   let list: RichTextNode | null = null;
   for (const line of lines) {
     const task = /^\s*[-*]\s+\[([ xX])\]\s*(.*)$/.exec(line);
     const ordered = /^\s*\d+\.\s+(.*)$/.exec(line);
     const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
     if (task) {
-      listType = null; list = null;
-      nodes.push({ type: "taskList", content: [{ type: "taskItem",
-        attrs: { checked: task[1].toLowerCase() === "x" },
-        content: [{ type: "paragraph", content: inlineNodes(task[2]) }] }] });
+      if (listType !== "taskList" || !list) {
+        list = { type: "taskList", content: [] }; nodes.push(list);
+      }
+      listType = "taskList";
+      list.content!.push({ type: "taskItem", attrs: { checked: task[1].toLowerCase() === "x" }, content: [{ type: "paragraph", content: inlineNodes(task[2]) }] });
       continue;
     }
     const nextType = ordered ? "orderedList" : bullet ? "bulletList" : null;
