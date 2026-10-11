@@ -97,3 +97,19 @@ Any redistributing, moving future Sessions, or changing total work commitments r
 5. Keep schedule rules, total-hour allocation, Session shifting, conflict resolution and external-provider sync **out of Phase A**.
 
 Design mantra: **Dragging a date expresses an intention; it never silently rearranges work.**
+
+## Decision: task span and scheduling mode are independent (2026-10-11)
+
+A task's short/long span **must never force** a fixed/flexible schedule choice.
+- Short Todo + flexible: create task with no booked session.
+- Short Todo + specific time: specify one start/end while creating; save to existing `todos.scheduled_start/end` for legacy Calendar compatibility, and keep Calendar drag editing available.
+- Long Todo + flexible: create `goal_journeys` with dates but no forced daily slots.
+- Long Todo + specific time: a single explicitly scheduled occurrence plus independent Journey date range; do **not** infer daily recurrence from the Journey range.
+
+A recurring fixed-time rule (daily/weekly) is a separate Phase B capability; it should reference Todo, produce safely linked `todo_sessions`, support individual edits, and maintain time-zone rules. Avoid changing or generating sessions in Phase A from long-term dates alone.
+
+### Input UI preference
+- Do not show duration quick-select chips; the user prefers direct free-form duration plus a clear minute/hour switch.
+- `estimated_minutes` is *effort estimate*, not a calendar slot or task deadline.
+- Show two clean start/end datetime fields when 'Specific time' is chosen, independently of long-term Journey start/target dates.
+- Native HTML `date`/`datetime-local` popup rendering is browser/OS controlled; CSS can style the field, but truly consistent custom month/year/time selection needs a purpose-built accessible picker. Do not promise that `lang` alone translates browser placeholders.
