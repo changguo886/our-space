@@ -1481,7 +1481,7 @@ function NoteCard({
       <div
         ref={setNodeRef}
         style={style}
-        className="rounded-2xl border border-line/80 bg-white/90 p-3 shadow-sm"
+        className={`rounded-2xl border border-line/80 p-3 shadow-sm ${NOTE_BACKGROUND[editColor]}`}
       >
         <input
           value={editTitle}
