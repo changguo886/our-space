@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type DayStatus = "planned" | "progress" | "completed" | "rest" | "skipped";
@@ -24,6 +24,51 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
   const [note,setNote]=useState("");
+  const [range,setRange]=useState({start:startDate,end:targetDate});
+  const [draft,setDraft]=useState<{start:string;end:string}|null>(null);
+  const [edge,setEdge]=useState<"start"|"end"|null>(null);
+  const [rangeSaving,setRangeSaving]=useState(false);
+  const [rangeMessage,setRangeMessage]=useState("");
+  const drag=useRef<{edge:"start"|"end";pointerId:number}|null>(null);
+  useEffect(()=>{setRange({start:startDate,end:targetDate});setDraft(null);setEdge(null);},[journeyId,startDate,targetDate]);
+  const display=draft??range;
+  function adjust(which:"start"|"end",date:string){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
+    setDraft(prev=>{const next={...(prev??range),[which]:date};return next.start<=next.end?next:prev??range;});
+    setRangeMessage("");
+  }
+  function begin(which:"start"|"end"){
+    setEdge(which);setSelected(null);setDraft(prev=>prev??{...range});setRangeMessage("");
+  }
+  function cancelRange(){setDraft(null);setEdge(null);setRangeMessage("");}
+  async function confirmRange(){
+    if(!draft||rangeSaving||draft.start>draft.end)return;
+    if(draft.start===range.start&&draft.end===range.end){cancelRange();return;}
+    setRangeSaving(true);setRangeMessage("");
+    const {data,error:err}=await createClient().from("goal_journeys")
+      .update({start_date:draft.start,target_date:draft.end}).eq("id",journeyId)
+      .select("start_date,target_date").single();
+    if(err)setRangeMessage("保存日期失败："+err.message);
+    else if(data){setRange({start:data.start_date,end:data.target_date});setDraft(null);setEdge(null);setRangeMessage("日期已保存，原有 Session 未改变。");}
+    setRangeSaving(false);
+  }
+  function dragStart(event:React.PointerEvent<HTMLButtonElement>,which:"start"|"end"){
+    if(event.pointerType==="mouse"&&event.button!==0)return;
+    event.stopPropagation();begin(which);
+    drag.current={edge:which,pointerId:event.pointerId};
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function dragMove(event:React.PointerEvent<HTMLButtonElement>){
+    if(!drag.current||drag.current.pointerId!==event.pointerId)return;
+    const el=document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-journey-date]");
+    const date=el?.getAttribute("data-journey-date");
+    if(date)adjust(drag.current.edge,date);
+  }
+  function dragEnd(event:React.PointerEvent<HTMLButtonElement>){
+    if(drag.current?.pointerId!==event.pointerId)return;
+    drag.current=null;
+    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
+  }
   const firstOfMonth=toISO(month.year,month.month,1);
   const lastOfMonth=toISO(month.year,month.month,new Date(month.year,month.month+1,0).getDate());
   const today=(()=>{const d=new Date();return toISO(d.getFullYear(),d.getMonth(),d.getDate());})();
@@ -49,9 +94,9 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     const d=new Date(month.year,month.month+delta,1);
     setMonth({year:d.getFullYear(),month:d.getMonth()});setSelected(null);
   }
-  function open(date:string) {setSelected(date);setNote(rows[date]?.note??"");}
+  function open(date:string) {if(edge){adjust(edge,date);return;}setSelected(date);setNote(rows[date]?.note??"");}
   async function save(status:DayStatus) {
-    if(!selected||saving||selected<startDate||selected>targetDate)return;
+    if(!selected||saving||selected<range.start||selected>range.end)return;
     setSaving(true);setError("");
     const {data,error:saveError}=await createClient().from("goal_journey_days")
       .upsert({journey_id:journeyId,day_date:selected,day_status:status,note:note.trim()},
@@ -66,6 +111,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
       <div>
         <h4 className="text-sm font-semibold text-[#425F4B]">旅程月历</h4>
         <p className="text-xs text-[#8B958A]">每一天是一段小小的路 · {scenery[route]??"🌱"}</p>
+        <p className="mt-1 text-xs text-[#54735C]">旅程日期：{range.start} → {range.end}</p>
       </div>
       <div className="flex items-center gap-2">
         <button type="button" onClick={()=>move(-1)} aria-label="上个月" className="rounded-lg border border-line px-3 py-1.5">‹</button>
@@ -74,24 +120,50 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
         <button type="button" onClick={()=>{setMonth(thisMonth());setSelected(null);}} className="rounded-lg bg-sage-50 px-2 py-1.5 text-xs text-sage-700">今天</button>
       </div>
     </div>
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" onClick={()=>begin("start")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整起点</button>
+      <button type="button" onClick={()=>begin("end")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整终点</button>
+      <span className="text-xs text-ink-faint">拖动绿色范围端点的 ⋮，或选择起点/终点后点击日期；可跨月。</span>
+    </div>
     <div className="mt-4 grid grid-cols-7 gap-1">
       {WEEKDAYS.map(d=><div key={d} className="pb-1 text-center text-[10px] text-[#87958B]">{d}</div>)}
       {cells.map((cell,i)=>{
         if(!cell)return <div key={"empty-"+i} className="min-h-[63px] sm:min-h-[78px]"/>;
-        const active=cell.date>=startDate&&cell.date<=targetDate;
+        const active=cell.date>=display.start&&cell.date<=display.end;
         const state=rows[cell.date]?.day_status;
         const current=cell.date===today;
-        return <button type="button" key={cell.date} onClick={()=>open(cell.date)}
+        return <div key={cell.date} data-journey-date={cell.date} className="relative"><button type="button" onClick={()=>open(cell.date)}
           aria-label={cell.date+(state?" "+STATUS[state]:"")}
           aria-pressed={selected===cell.date}
-          className={`relative flex min-h-[63px] flex-col items-start gap-1 rounded-xl border p-1.5 text-left transition sm:min-h-[78px] sm:p-2 ${selected===cell.date?"border-sage-500 ring-1 ring-sage-300":current?"border-sage-300":"border-[#E8EDE7]"} ${active?"bg-[#EFF7F2]":"bg-[#FCFBF8] opacity-60"}`}>
+          className={`relative flex w-full min-h-[63px] flex-col items-start gap-1 rounded-xl border p-1.5 text-left transition sm:min-h-[78px] sm:p-2 ${selected===cell.date?"border-sage-500 ring-1 ring-sage-300":current?"border-sage-300":"border-[#E8EDE7]"} ${active?"bg-[#EFF7F2]":"bg-[#FCFBF8] opacity-60"}`}>
           <span className={`text-[11px] ${current?"font-bold text-sage-700":"text-[#69786C]"}`}>{cell.day}</span>
           {active&&<span aria-hidden="true" className="h-1 w-full rounded-full bg-[#D4E5DE]"/>}
           {active && <span className="text-sm leading-none">{state==="rest"?"💤":state==="completed"?"✨":state==="progress"?"💧":state==="skipped"?"☁️":current?emoji[animal]??"🐱":"·"}</span>}
           {active && state && <span className="text-[9px] leading-tight text-[#637C6C]">{STATUS[state]}</span>}
-        </button>;
+        </button>
+        {(cell.date===display.start||cell.date===display.end)&&<button type="button"
+          aria-label={cell.date===display.start?"拖动旅程开始日期":"拖动旅程结束日期"}
+          onPointerDown={e=>dragStart(e,cell.date===display.start?"start":"end")}
+          onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd}
+          onClick={e=>e.stopPropagation()} style={{touchAction:"none"}}
+          className="absolute bottom-1 right-1 flex h-7 w-7 cursor-ew-resize items-center justify-center rounded-md border border-sage-400 bg-white text-sage-700 shadow-sm">⋮</button>}
+        </div>;
       })}
     </div>
+    {draft&&<div className="mt-3 space-y-3 rounded-xl border border-sage-200 bg-sage-50 p-3">
+      <p className="text-sm font-medium text-sage-700">调整日期（草稿，尚未保存）</p>
+      <p className="text-xs text-ink-soft">原范围：{range.start} → {range.end}</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="text-xs">新的开始日期<input type="date" className="input mt-1 w-full" value={draft.start} max={draft.end} onChange={e=>adjust("start",e.target.value)}/></label>
+        <label className="text-xs">新的结束日期<input type="date" className="input mt-1 w-full" value={draft.end} min={draft.start} onChange={e=>adjust("end",e.target.value)}/></label>
+      </div>
+      <p className="text-xs text-ink-faint">仅修改旅程范围，不会移动已安排的 Session，也不会更改 Todo 截止日期。</p>
+      <div className="flex gap-2">
+        <button type="button" disabled={rangeSaving} onClick={()=>void confirmRange()} className="rounded-lg bg-sage-600 px-4 py-2 text-xs text-white disabled:opacity-50">{rangeSaving?"保存中…":"确认保存"}</button>
+        <button type="button" disabled={rangeSaving} onClick={cancelRange} className="rounded-lg border border-line bg-white px-4 py-2 text-xs">取消</button>
+      </div>
+    </div>}
+    {rangeMessage&&<p role="status" className="mt-2 text-xs text-ink-soft">{rangeMessage}</p>}
     <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-[#78877B]">
       <span>🌱 计划中</span><span>💧 有进展</span><span>✨ 已完成</span><span>💤 休息</span><span>🐾 今天的伙伴</span>
     </div>
