@@ -22,7 +22,6 @@ function localDate() {
   const d = new Date();
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2,"0"), String(d.getDate()).padStart(2,"0")].join("-");
 }
-function dateNumber(s: string) { return new Date(s + "T12:00:00").getTime(); }
 function percent(n: number) { return Math.min(100, Math.max(0, Math.round(n))); }
 
 export default function GoalJourney({ todoId, todoTitle }: { todoId: string; todoTitle: string }) {
@@ -56,11 +55,13 @@ export default function GoalJourney({ todoId, todoTitle }: { todoId: string; tod
     return () => { live = false; };
   }, [todoId]);
 
-  const time = journey ? percent(100 * (dateNumber(localDate()) - dateNumber(journey.start_date) + 86400000) /
-    (dateNumber(journey.target_date) - dateNumber(journey.start_date) + 86400000)) : 0;
+  const dayNumber = (s: string) => { const [y,m,d] = s.split("-").map(Number); return Math.floor(Date.UTC(y,m-1,d) / 86400000); };
+  const today = localDate();
+  const time = journey ? (today < journey.start_date ? 0 : percent(100 * (dayNumber(today)-dayNumber(journey.start_date)+1) / (dayNumber(journey.target_date)-dayNumber(journey.start_date)+1))) : 0;
   const completion = steps.total ? percent(100 * steps.completed / steps.total) : manualPercent;
   const animalEmoji = animals.find(x => x.id === (journey?.animal_type ?? animal))?.emoji ?? "🐱";
   const routeLabel = routes.find(x => x.id === (journey?.journey_type ?? route))?.name ?? "游泳";
+  const mood = journey?.status === "finished" ? (journey.final_completion_percent === 100 ? "大获全胜！动物伙伴特别开心！" : "完成了一段旅程，动物伙伴温柔地为你庆祝！") : journey && today < journey.start_date ? "还没出发，伙伴正期待旅程开始。" : steps.total > 0 && steps.completed === steps.total ? "步骤全部完成，真棒！" : journey && today > journey.target_date ? "到达预定日期了，选择结算或继续安排。" : "伙伴正在努力前进，期待今天的进步！";
 
   async function create() {
     if (busy || !start || !end || end < start) return;
@@ -124,6 +125,7 @@ export default function GoalJourney({ todoId, todoTitle }: { todoId: string; tod
             <span className="absolute -top-5 text-2xl" style={{ left: `clamp(0px, calc(${time}% - 12px), calc(100% - 28px))` }}>{animalEmoji}</span>
           </div>
           <p className="text-xs text-[#66858B]">时间旅程 {time}%</p>
+          <p className="mt-2 rounded-lg bg-white/75 px-3 py-2 text-xs text-[#607C81]">{journey.status === "finished" ? (journey.final_completion_percent === 100 ? "🥳" : "😊") : "🐾"} {mood}</p>
         </div>
         {steps.total === 0 && journey.status === "active" && <label className="block text-xs text-ink-soft">
           尚未设置步骤，可暂时手动记录完成度：{manualPercent}%
