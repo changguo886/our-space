@@ -529,8 +529,8 @@ export default function FocusTimer({
     try {
       if (next) {
         pipWindow.resizeTo(
-          120,
-          150
+          200,
+          240
         );
       } else {
         pipWindow.resizeTo(
@@ -618,8 +618,8 @@ export default function FocusTimer({
     try {
       const pipWindow =
         await api.requestWindow({
-          width: pinnedMode === "compact" ? 120 : preferredWorkspaceOpen ? 420 : 320,
-          height: pinnedMode === "compact" ? 150 : preferredWorkspaceOpen ? 590 : 220,
+          width: pinnedMode === "compact" ? 200 : preferredWorkspaceOpen ? 420 : 320,
+          height: pinnedMode === "compact" ? 240 : preferredWorkspaceOpen ? 590 : 220,
         });
 
       pipWindow.document.title =
