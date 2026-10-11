@@ -28,7 +28,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
 import QuickNoteMarkdown from "@/components/QuickNoteMarkdown";
-import VisualNoteEditor from "@/components/VisualNoteEditor";
+import type { JSONContent } from "@tiptap/core";
+import QuickNotesRichTextField from "@/components/editor/QuickNotesRichTextField";
+import RichTextReadOnly from "@/components/editor/RichTextReadOnly";
+import { initialRichText } from "@/lib/editor/richTextBridge";
 
 type Tab =
   | "steps"
@@ -47,6 +50,7 @@ type MiniNote = {
   subtask_id: string | null;
   title: string | null;
   content: string;
+  content_json: JSONContent | null;
   color: string;
   sort_order: number;
   updated_at: string;
@@ -269,18 +273,21 @@ export default function MiniFocusWorkspace({
   );
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
+  const [editingJson, setEditingJson] = useState<JSONContent>(() => initialRichText(""));
+  const [draftJson, setDraftJson] = useState<JSONContent>(() => initialRichText(readSessionValue(`ourspace:mini-focus:draft:${todoId}`, "")));
 
   function startEdit(note: MiniNote) {
     setEditingNoteId(note.id);
     setEditingContent(note.content);
+    setEditingJson(initialRichText(note.content, note.content_json));
     setExpandedNoteIds((current) => new Set(current).add(note.id));
     setError(null);
   }
 
   async function saveEditedNote(note: MiniNote) {
     const content = editingContent.trim();
-    if (busy || !content || content === note.content) {
-      if (!busy && content === note.content) setEditingNoteId(null);
+    if (busy || !content) {
+      if (!busy && !content) setEditingNoteId(null);
       return;
     }
 
@@ -289,10 +296,10 @@ export default function MiniFocusWorkspace({
     try {
       const { data, error: updateError } = await createClient()
         .from("quick_notes")
-        .update({ content })
+        .update({ content, content_json: editingJson })
         .eq("id", note.id)
         .eq("todo_id", todoId)
-        .select("id, content, updated_at")
+        .select("id, content, content_json, updated_at")
         .single();
 
       if (updateError || !data) {
@@ -301,7 +308,7 @@ export default function MiniFocusWorkspace({
 
       setNotes((current) => current.map((item) =>
         item.id === note.id
-          ? { ...item, content: data.content, updated_at: data.updated_at }
+          ? { ...item, content: data.content, content_json: data.content_json as JSONContent, updated_at: data.updated_at }
           : item
       ));
       setEditingNoteId(null);
@@ -417,7 +424,7 @@ export default function MiniFocusWorkspace({
                 "quick_notes"
               )
               .select(
-                "id, subtask_id, title, content, color, sort_order, updated_at"
+                "id, subtask_id, title, content, content_json, color, sort_order, updated_at"
               )
               .eq(
                 "todo_id",
@@ -737,13 +744,14 @@ export default function MiniFocusWorkspace({
             title:
               null,
             content,
+            content_json: draftJson,
             color:
               "cream",
             sort_order:
               sortOrder,
           })
           .select(
-            "id, subtask_id, title, content, color, sort_order, updated_at"
+            "id, subtask_id, title, content, content_json, color, sort_order, updated_at"
           )
           .single();
 
@@ -771,6 +779,7 @@ export default function MiniFocusWorkspace({
       );
 
       setDraft("");
+      setDraftJson(initialRichText(""));
       try {
         window.sessionStorage.removeItem(
           `ourspace:mini-focus:draft:${todoId}`
@@ -988,7 +997,8 @@ export default function MiniFocusWorkspace({
                 border: "1px solid #ECEAE5",
               }}
             >
-              <VisualNoteEditor compact value={draft} onChange={setDraft}
+              <QuickNotesRichTextField compact value={draft} contentJson={draftJson}
+                onChange={(text, json) => { setDraft(text); setDraftJson(json); }}
                 placeholder={currentSubtask ? mini.noteForCurrentStep : mini.quickNote} />
               <div
                 style={{
@@ -1103,13 +1113,13 @@ export default function MiniFocusWorkspace({
 
                         {editing ? (
                           <>
-                          <VisualNoteEditor compact value={editingContent}
-                            onChange={setEditingContent} placeholder={labels.edit} />
+                          <QuickNotesRichTextField compact value={editingContent} contentJson={editingJson}
+                             onChange={(text, json) => { setEditingContent(text); setEditingJson(json); }} placeholder={labels.edit} />
                           </>
                         ) : (
                           <div style={{ overflowWrap: "anywhere", fontSize: "11px", color: "#73786F" }}>
                             {expanded ? (
-                              <QuickNoteMarkdown content={note.content} compact />
+                              note.content_json ? <RichTextReadOnly value={note.content_json} /> : <QuickNoteMarkdown content={note.content} compact />
                             ) : (
                               <div style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap", lineHeight: 1.6, overflowWrap: "anywhere" }}>
                                 {note.content}
