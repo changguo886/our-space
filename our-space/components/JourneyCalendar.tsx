@@ -106,11 +106,11 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     setSaving(false);
   }
   const chosen=selected?rows[selected]:undefined;
-  return <section onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} className="mt-4 rounded-2xl border border-[#E6EBE4] bg-[#FFFDF9] p-3 sm:p-4">
+  return <section onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} className="mt-3 rounded-2xl border border-line bg-white p-3 shadow-sm sm:p-5">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h4 className="text-sm font-semibold text-[#425F4B]">旅程月历</h4>
-        <p className="text-xs text-[#8B958A]">每一天是一段小小的路 · {scenery[route]??"🌱"}</p>
+        <h4 className="text-sm font-semibold text-[#425F4B]">成长日历</h4>
+        <p className="mt-1 text-xs text-ink-faint">{scenery[route]??"🌱"} 和伙伴一起，慢慢走到终点</p>
         <p className="mt-1 text-xs text-[#54735C]">旅程日期：{range.start} → {range.end}</p>
       </div>
       <div className="flex items-center gap-2">
@@ -120,12 +120,12 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
         <button type="button" onClick={()=>{setMonth(thisMonth());setSelected(null);}} className="rounded-lg bg-sage-50 px-2 py-1.5 text-xs text-sage-700">今天</button>
       </div>
     </div>
-    <div className="mt-3 flex flex-wrap items-center gap-2">
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-paper/60 px-3 py-2">
       <button type="button" onClick={()=>begin("start")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整起点</button>
       <button type="button" onClick={()=>begin("end")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整终点</button>
-      <span className="text-xs text-ink-faint">拖动绿色范围端点的 ⋮，或选择起点/终点后点击日期；可跨月。</span>
+      <span className="text-[11px] text-ink-faint">拖动边缘手柄，或选择起点/终点后点日期；翻月时不会丢失草稿。</span>
     </div>
-    <div className="mt-4 grid grid-cols-7 gap-1">
+    <div className="mt-4 grid grid-cols-7 gap-1.5">
       {WEEKDAYS.map(d=><div key={d} className="pb-1 text-center text-[10px] text-[#87958B]">{d}</div>)}
       {cells.map((cell,i)=>{
         if(!cell)return <div key={"empty-"+i} className="min-h-[63px] sm:min-h-[78px]"/>;
@@ -135,7 +135,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
         return <div key={cell.date} data-journey-date={cell.date} className="relative"><button type="button" onClick={()=>open(cell.date)}
           aria-label={cell.date+(state?" "+STATUS[state]:"")}
           aria-pressed={selected===cell.date}
-          className={`relative flex w-full min-h-[63px] flex-col items-start gap-1 rounded-xl border p-1.5 text-left transition sm:min-h-[78px] sm:p-2 ${selected===cell.date?"border-sage-500 ring-1 ring-sage-300":current?"border-sage-300":"border-[#E8EDE7]"} ${active?"bg-[#EFF7F2]":"bg-[#FCFBF8] opacity-60"}`}>
+          className={`relative flex w-full min-h-[63px] flex-col items-start gap-1 rounded-xl border p-1.5 text-left transition sm:min-h-[78px] sm:p-2 ${selected===cell.date?"border-sage-500 ring-1 ring-sage-300":current?"border-sage-300":"border-[#E8EDE7]"} ${active?"bg-[#E8F2EB]":"bg-[#FAFAF8] opacity-65"}`}>
           <span className={`text-[11px] ${current?"font-bold text-sage-700":"text-[#69786C]"}`}>{cell.day}</span>
           {active&&<span aria-hidden="true" className="h-1 w-full rounded-full bg-[#D4E5DE]"/>}
           {active && <span className="text-sm leading-none">{state==="rest"?"💤":state==="completed"?"✨":state==="progress"?"💧":state==="skipped"?"☁️":current?emoji[animal]??"🐱":"·"}</span>}
@@ -163,7 +163,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
       </div>
     </div>}
     {rangeMessage&&<p role="status" className="mt-2 text-xs text-ink-soft">{rangeMessage}</p>}
-    <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-[#78877B]">
+    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-3 text-[10px] text-ink-faint">
       <span>🌱 计划中</span><span>💧 有进展</span><span>✨ 已完成</span><span>💤 休息</span><span>🐾 今天的伙伴</span>
     </div>
     {selected && <div className="mt-3 rounded-xl border border-[#E5E9E2] bg-white p-3">
