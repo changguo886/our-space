@@ -1882,16 +1882,6 @@ export default function FocusTimer({
               </button>
             )}
 
-            <button
-              type="button"
-              disabled={busy || status === "completed"}
-              onClick={() => void endFocusOnly()}
-              title="结束本次专注，保留整个任务"
-              style={{ ...buttonBase, minWidth: "70px", height: "34px", borderRadius: "12px",
-                background: "#E4F0E6", color: "#376649", fontSize: "11px", fontWeight: 600 }}
-            >
-              结束本次
-            </button>
             <button type="button" disabled={busy || status === "completed"}
               onClick={() => void endFocusOnly()}
               title="结束本次专注（Todo 保持未完成）"
