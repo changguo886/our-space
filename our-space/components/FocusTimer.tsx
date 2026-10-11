@@ -151,6 +151,7 @@ export default function FocusTimer({
 
   const [pinnedMode, setPinnedMode] = useState<"compact" | "workspace" | null>(null);
   const [preferredWorkspaceOpen, setPreferredWorkspaceOpen] = useState(false);
+  const [compactFinishConfirm, setCompactFinishConfirm] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   useEffect(() => {
@@ -1375,9 +1376,15 @@ export default function FocusTimer({
         }
       </div>
 
-      {/*
-       * Compact 模式只保留暂停 / 继续
-       */}
+      {compactFinishConfirm ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+          <span style={{ fontSize: 9, color: "#A66D67" }}>结束并完成任务？</span>
+          <button type="button" disabled={busy} onClick={() => void completeTimer()} style={{ ...buttonBase, color: "#A66D67", fontSize: 10 }}>确认完成</button>
+          <button type="button" onClick={() => setCompactFinishConfirm(false)} style={{ ...buttonBase, fontSize: 10 }}>取消</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+
       {status ===
       "running" ? (
         <button
@@ -1460,6 +1467,11 @@ export default function FocusTimer({
         >
           ▶
         </button>
+      )}
+          <button type="button" disabled={busy || status === "completed"} onClick={() => setCompactFinishConfirm(true)}
+            title="结束计时并完成任务" aria-label="结束计时并完成任务"
+            style={{ ...buttonBase, width: 30, height: 30, borderRadius: "999px", background: "#F8ECE9", color: "#A66D67" }}>■</button>
+        </div>
       )}
     </div>
   ) : (
@@ -2056,6 +2068,7 @@ export default function FocusTimer({
     targetSeconds,
     floatingWorkspaceOpen,
     pinnedMode,
+    compactFinishConfirm,
     focusText,
   ]);
 
