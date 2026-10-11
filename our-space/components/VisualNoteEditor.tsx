@@ -20,13 +20,14 @@ const NOTE_COLORS = [
 ] as const;
 
 function appendInline(target: HTMLElement, text: string) {
+  const editor = target;
   const parts = text.split(/(\{\{underline\|[^}\n]+\}\}|\{\{(?:color|emphasis):(?:default|sage|amber|rose|sky|lavender)\|[^}\n]+\}\}|==(?:#[0-9a-fA-F]{6}\|)?[^=\n]+==|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g);
   parts.forEach((part) => {
     const underline = /^\{\{underline\|([^}\n]+)\}\}$/.exec(part);
-    if (underline) { const el = document.createElement("u"); el.textContent = underline[1]; target.appendChild(el); return; }
+    if (underline) { const el = editor.ownerDocument.createElement("u"); el.textContent = underline[1]; target.appendChild(el); return; }
     const token = /^\{\{(color|emphasis):(sage|amber|rose|sky|lavender)\|([^}\n]+)\}\}$/.exec(part);
     if (token) {
-      const span = document.createElement("span");
+      const span = editor.ownerDocument.createElement("span");
       span.dataset.noteStyle = token[1];
       span.dataset.noteColor = token[2];
       if (token[1] === "emphasis") {
@@ -39,13 +40,13 @@ function appendInline(target: HTMLElement, text: string) {
       span.textContent = token[3];
       target.appendChild(span);
     } else if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      const strong = document.createElement("strong");
+      const strong = editor.ownerDocument.createElement("strong");
       strong.textContent = part.slice(2, -2);
       target.appendChild(strong);
     } else if (part.startsWith("==") && part.endsWith("==")) {
       const match = /^(?:#[0-9a-fA-F]{6}\|)?(.*)$/.exec(part.slice(2, -2));
       const color = /^#[0-9a-fA-F]{6}\|/.exec(part.slice(2, -2));
-      const mark = document.createElement("mark");
+      const mark = editor.ownerDocument.createElement("mark");
       mark.style.backgroundColor = "transparent";
       mark.style.color = color ? color[0].slice(0, -1) : "#AC7936";
       mark.style.textDecoration = "underline";
@@ -53,11 +54,11 @@ function appendInline(target: HTMLElement, text: string) {
       mark.textContent = match?.[1] ?? part.slice(2, -2);
       target.appendChild(mark);
     } else if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
-      const em = document.createElement("em"); em.textContent = part.slice(1, -1); target.appendChild(em);
+      const em = editor.ownerDocument.createElement("em"); em.textContent = part.slice(1, -1); target.appendChild(em);
     } else if (/^\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)$/.test(part)) {
       const matched = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
       if (matched) {
-        const anchor = document.createElement("a");
+        const anchor = editor.ownerDocument.createElement("a");
         anchor.textContent = matched[1];
         anchor.href = matched[2];
         anchor.target = "_blank";
@@ -84,13 +85,13 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
     if (number || bullet) {
       const type = number ? "ol" : "ul";
       if (listType !== type || !list) {
-        list = document.createElement(type) as HTMLOListElement | HTMLUListElement;
+        list = editor.ownerDocument.createElement(type) as HTMLOListElement | HTMLUListElement;
         list.style.listStyleType = type === "ol" ? "decimal" : "disc";
         list.style.paddingLeft = "22px";
         editor.appendChild(list);
       }
       listType = type;
-      const li = document.createElement("li");
+      const li = editor.ownerDocument.createElement("li");
       appendInline(li, (number || bullet)![1]);
       list.appendChild(li);
       return;
@@ -99,17 +100,17 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
     list = null;
     listType = "";
     if (task) {
-      const row = document.createElement("div");
+      const row = editor.ownerDocument.createElement("div");
       row.dataset.task = "true";
       row.style.display = "flex";
       row.style.alignItems = "flex-start";
       row.style.gap = "8px";
-      const check = document.createElement("input");
+      const check = editor.ownerDocument.createElement("input");
       check.type = "checkbox";
       check.checked = task[1].toLowerCase() === "x";
       check.contentEditable = "false";
       check.style.marginTop = "5px";
-      const span = document.createElement("span");
+      const span = editor.ownerDocument.createElement("span");
       span.dataset.taskText = "true";
       span.style.flex = "1";
       span.style.textDecoration = check.checked ? "line-through" : "none";
@@ -122,16 +123,17 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
       return;
     }
 
-    const p = document.createElement("div");
+    const p = editor.ownerDocument.createElement("div");
     appendInline(p, line);
-    if (!line) p.appendChild(document.createElement("br"));
+    if (!line) p.appendChild(editor.ownerDocument.createElement("br"));
     editor.appendChild(p);
   });
 }
 
 function inlineMarkdown(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
-  if (!(node instanceof HTMLElement)) return "";
+  const editor = node as HTMLElement;
+  if (node.nodeType === 3) return node.textContent ?? "";
+  if (!(node instanceof (editor.ownerDocument.defaultView?.HTMLElement ?? HTMLElement))) return "";
   const children = Array.from(node.childNodes).map(inlineMarkdown).join("");
   if (node.tagName === "STRONG" || node.tagName === "B") return `**${children}**`;
   if (node.tagName === "EM" || node.tagName === "I") return `*${children}*`;
@@ -210,13 +212,13 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
 
   const updateActive = () => {
     const editor = ref.current;
-    let node = window.getSelection()?.anchorNode ?? null;
+    let node = editor.ownerDocument.defaultView?.getSelection()?.anchorNode ?? null;
     let bold = false, italic = false, ordered = false, bullet = false, checklist = false;
     if (!editor || !node || !editor.contains(node)) return;
-    const selection = window.getSelection();
+    const selection = editor.ownerDocument.defaultView?.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) selectedRange.current = selection.getRangeAt(0).cloneRange();
     while (node && node !== editor) {
-      if (node instanceof HTMLElement) {
+      if (node instanceof (editor.ownerDocument.defaultView?.HTMLElement ?? HTMLElement)) {
         if (node.tagName === "B" || node.tagName === "STRONG") bold = true;
         if (node.tagName === "EM" || node.tagName === "I") italic = true;
         if (node.tagName === "OL") ordered = true;
@@ -232,13 +234,13 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
     const editor = ref.current;
     if (!editor) return;
     editor.focus();
-    const sel = window.getSelection();
+    const sel = ref.current?.ownerDocument.defaultView?.getSelection();
     if (!sel?.rangeCount || !editor.contains(sel.anchorNode)) {
-      const range = document.createRange();
+      const range = editor.ownerDocument.createRange();
       range.selectNodeContents(editor); range.collapse(false);
       sel?.removeAllRanges(); sel?.addRange(range);
     }
-    document.execCommand(name, false);
+    editor.ownerDocument.execCommand(name, false);
     editor.querySelectorAll("ol,ul").forEach((list) => {
       const el = list as HTMLElement;
       el.style.listStyleType = list.tagName === "OL" ? "decimal" : "disc";
@@ -248,7 +250,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
   };
   const applyInlineColor = (kind: "color" | "emphasis", id: string) => {
     const editor = ref.current;
-    const selection = window.getSelection();
+    const selection = ref.current?.ownerDocument.defaultView?.getSelection();
     if (!editor || !selection) return;
     const range = selection.rangeCount && !selection.isCollapsed && editor.contains(selection.anchorNode)
       ? selection.getRangeAt(0)
@@ -256,7 +258,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
     if (!range || !editor.contains(range.commonAncestorContainer)) return;
     const text = range.toString();
     if (!text.trim() || text.includes("\n")) return;
-    const span = document.createElement("span");
+    const span = editor.ownerDocument.createElement("span");
     span.dataset.noteStyle = kind;
     span.dataset.noteColor = id;
     if (kind === "emphasis") {
@@ -271,7 +273,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
       return;
     }
     selection.removeAllRanges();
-    const next = document.createRange();
+    const next = editor.ownerDocument.createRange();
     next.selectNodeContents(span);
     selection.addRange(next);
     selectedRange.current = next.cloneRange();
@@ -294,37 +296,37 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
   const insertTask = () => {
     const editor = ref.current;
     if (!editor) return;
-    const selection = window.getSelection();
+    const selection = ref.current?.ownerDocument.defaultView?.getSelection();
     let node: Node | null = selection?.anchorNode ?? null;
     if (!node || !editor.contains(node)) node = editor.lastChild;
     let row: HTMLElement | null = null;
     while (node && node !== editor) {
-      if (node instanceof HTMLElement && (node.dataset.task === "true" || ["DIV","P","LI"].includes(node.tagName))) {
+      if (node instanceof (editor.ownerDocument.defaultView?.HTMLElement ?? HTMLElement) && (node.dataset.task === "true" || ["DIV","P","LI"].includes(node.tagName))) {
         row = node;
         break;
       }
       node = node.parentNode;
     }
     const makeTask = (content: Node[] = []) => {
-      const task = document.createElement("div");
+      const task = editor.ownerDocument.createElement("div");
       task.dataset.task = "true";
       task.style.display = "flex";
       task.style.gap = "8px";
-      const box = document.createElement("input");
+      const box = editor.ownerDocument.createElement("input");
       box.type = "checkbox"; box.contentEditable = "false";
-      const label = document.createElement("span");
+      const label = editor.ownerDocument.createElement("span");
       label.dataset.taskText = "true"; label.style.flex = "1";
       content.forEach(child => label.appendChild(child));
-      if (!label.childNodes.length) label.appendChild(document.createElement("br"));
+      if (!label.childNodes.length) label.appendChild(editor.ownerDocument.createElement("br"));
       task.append(box, label);
       return { task, label };
     };
     let target: HTMLElement;
     if (row?.dataset.task === "true") {
-      target = document.createElement("div");
+      target = editor.ownerDocument.createElement("div");
       const existing = row.querySelector("[data-task-text]");
       if (existing) while (existing.firstChild) target.appendChild(existing.firstChild);
-      if (!target.childNodes.length) target.appendChild(document.createElement("br"));
+      if (!target.childNodes.length) target.appendChild(editor.ownerDocument.createElement("br"));
       row.replaceWith(target);
     } else if (row?.tagName === "LI" && row.parentElement) {
       const list = row.parentElement;
@@ -354,7 +356,7 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
       editor.appendChild(result.task);
       target = result.label;
     }
-    const range = document.createRange();
+    const range = editor.ownerDocument.createRange();
     range.selectNodeContents(target); range.collapse(false);
     selection?.removeAllRanges(); selection?.addRange(range);
     editor.focus(); emit(); updateActive();
@@ -447,37 +449,37 @@ export default function VisualNoteEditor({ value, onChange, compact = false, spa
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
-          const selection = window.getSelection();
+          const selection = ref.current?.ownerDocument.defaultView?.getSelection();
           let node = selection?.anchorNode ?? null;
           let row: HTMLElement | null = null;
           while (node && node !== ref.current) {
-            if (node instanceof HTMLElement && node.dataset.task === "true") { row = node; break; }
+            if (node instanceof (editor.ownerDocument.defaultView?.HTMLElement ?? HTMLElement) && node.dataset.task === "true") { row = node; break; }
             node = node.parentNode;
           }
           if (!row) return; // Native contenteditable already continues numbered/bulleted lists.
           event.preventDefault();
           const label = row.querySelector('[data-task-text]');
           if (!label?.textContent?.trim()) {
-            const plain = document.createElement("div");
-            plain.appendChild(document.createElement("br"));
+            const plain = editor.ownerDocument.createElement("div");
+            plain.appendChild(editor.ownerDocument.createElement("br"));
             row.replaceWith(plain);
-            const range = document.createRange();
+            const range = editor.ownerDocument.createRange();
             range.selectNodeContents(plain);
             range.collapse(true);
             selection?.removeAllRanges(); selection?.addRange(range);
           } else {
-            const next = document.createElement("div");
+            const next = editor.ownerDocument.createElement("div");
             next.dataset.task = "true";
             next.style.display = "flex";
             next.style.gap = "8px";
-            const box = document.createElement("input");
+            const box = editor.ownerDocument.createElement("input");
             box.type = "checkbox"; box.contentEditable = "false";
-            const span = document.createElement("span");
+            const span = editor.ownerDocument.createElement("span");
             span.dataset.taskText = "true"; span.style.flex = "1";
-            span.appendChild(document.createElement("br"));
+            span.appendChild(editor.ownerDocument.createElement("br"));
             next.append(box, span);
             row.after(next);
-            const range = document.createRange();
+            const range = editor.ownerDocument.createRange();
             range.selectNodeContents(span);
             range.collapse(true);
             selection?.removeAllRanges(); selection?.addRange(range);
