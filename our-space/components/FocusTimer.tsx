@@ -1310,7 +1310,7 @@ export default function FocusTimer({
               <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
                 <button type="button" disabled={busy} onClick={() => void endFocusOnly()}
                   style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#E4F0E6",
-                    color: "#376649", fontSize: 11, fontWeight: 600 }}>仅结束专注</button>
+                    color: "#376649", fontSize: 11, fontWeight: 600 }}>结束本次</button>
                 <button type="button" disabled={busy} onClick={() => void completeTimer()}
                   style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#F5E2DF",
                     color: "#9B514C", fontSize: 11, fontWeight: 600 }}>确认完成</button>
@@ -1333,10 +1333,10 @@ export default function FocusTimer({
               </button>
               <button type="button" disabled={busy || status === "completed"}
                 onClick={() => setCompactFinishConfirm(true)}
-                title="结束计时并完成任务" aria-label="结束计时并完成任务"
+                title="结束本次或完成任务（点击选择）" aria-label="结束本次或完成任务（点击选择）"
                 style={{ ...buttonBase, width: 44, height: 44, display: "inline-flex",
                   justifyContent: "center", alignItems: "center", borderRadius: "50%",
-                  background: "#F8ECE9", color: "#A66D67",
+                  background: "#EFF4EE", color: "#587361",
                   opacity: busy ? 0.5 : 1 }}>
                 <Square size={17} fill="currentColor" />
               </button>
@@ -1892,12 +1892,20 @@ export default function FocusTimer({
             >
               结束本次
             </button>
+            <button type="button" disabled={busy || status === "completed"}
+              onClick={() => void endFocusOnly()}
+              title="结束本次专注（Todo 保持未完成）"
+              aria-label="结束本次专注（Todo 保持未完成）"
+              style={{ ...buttonBase, height: "34px", minWidth: "72px", padding: "0 10px",
+                borderRadius: "12px", background: "#E8F1E8", color: "#43694B",
+                fontSize: "11px", fontWeight: 600 }}>
+              结束本次
+            </button>
+
             <button
               type="button"
               disabled={busy}
-              onClick={
-                completeTimer
-              }
+              onClick={confirmWholeTask}
               title={focusText.completeTask}
               style={{
                 ...buttonBase,
@@ -2313,7 +2321,7 @@ export default function FocusTimer({
             </button>
             <button type="button" onClick={() => void endFocusOnly()}
               disabled={busy || status === "completed"}
-              className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-[#C9D8CD] bg-white px-5 py-3 text-sm font-medium text-[#496A54] shadow-sm transition hover:bg-[#F3F8F3] disabled:opacity-50">
+              className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-[#D9E4D9] bg-[#F8FAF7] px-4 py-3 text-sm font-medium text-[#597461] transition hover:border-[#B5CBB8] hover:bg-[#EEF5EE] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#71987A] disabled:opacity-50">
               <Square className="h-4 w-4" />
               结束本次
             </button>
