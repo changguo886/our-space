@@ -5,7 +5,7 @@ import {
   tzOf,
 } from "@/lib/utils";
 
-import CalendarPlanner from "@/components/calendar/CalendarPlanner";
+import CalendarViews from "@/components/calendar/CalendarViews";
 
 export const dynamic =
   "force-dynamic";
@@ -85,7 +85,7 @@ export default async function CalendarPage() {
   }
 
   return (
-    <CalendarPlanner
+    <CalendarViews
       initialTodos={
         todos ?? []
       }
