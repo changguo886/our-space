@@ -27,7 +27,8 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import QuickNoteMarkdown, { MarkdownToolbar } from "@/components/QuickNoteMarkdown";
+import QuickNoteMarkdown from "@/components/QuickNoteMarkdown";
+import VisualNoteEditor from "@/components/VisualNoteEditor";
 
 type Tab =
   | "steps"
@@ -251,8 +252,6 @@ export default function MiniFocusWorkspace({
       string | null
     >(null);
 
-  const composerRef = useRef<HTMLTextAreaElement>(null);
-  const editRef = useRef<HTMLTextAreaElement>(null);
 
   const [
     draft,
@@ -966,46 +965,8 @@ export default function MiniFocusWorkspace({
                 border: "1px solid #ECEAE5",
               }}
             >
-              <textarea
-                ref={composerRef}
-                value={
-                  draft
-                }
-                onChange={(
-                  event
-                ) =>
-                  setDraft(
-                    event.target
-                      .value
-                  )
-                }
-                rows={6}
-                placeholder={
-                  currentSubtask
-                    ? mini.noteForCurrentStep
-                    : mini.quickNote
-                }
-                style={{
-                  boxSizing: "border-box",
-                  width: "100%",
-                  display: "block",
-                  minHeight: "118px",
-                  maxHeight: "210px",
-                  padding: "10px",
-                  resize: "vertical",
-                  overflowY: "auto",
-                  border: "1px solid #E2E5DC",
-                  borderRadius: "9px",
-                  outline: "none",
-                  background: "#FFFFFF",
-                  color: "#4A5048",
-                  fontFamily: "inherit",
-                  fontSize: "12px",
-                  lineHeight: 1.6,
-                }}
-              />
-
-              <MarkdownToolbar value={draft} onChange={setDraft} textarea={composerRef.current} />
+              <VisualNoteEditor compact value={draft} onChange={setDraft}
+                placeholder={currentSubtask ? mini.noteForCurrentStep : mini.quickNote} />
               <div
                 style={{
                   marginTop: "6px",
@@ -1119,31 +1080,8 @@ export default function MiniFocusWorkspace({
 
                         {editing ? (
                           <>
-                          <textarea
-                            ref={editRef}
-                            aria-label={labels.edit}
-                            value={editingContent}
-                            onChange={(event) => setEditingContent(event.target.value)}
-                            rows={5}
-                            style={{
-                              boxSizing: "border-box",
-                              display: "block",
-                              width: "100%",
-                              maxHeight: "240px",
-                              minHeight: "125px",
-                              overflowY: "auto",
-                              resize: "vertical",
-                              border: "1px solid #DDE8D8",
-                              borderRadius: "7px",
-                              padding: "7px",
-                              background: "#FFFFFF",
-                              fontSize: "10px",
-                              fontFamily: "inherit",
-                              lineHeight: 1.5,
-                              color: "#4A5048",
-                            }}
-                          />
-                          <MarkdownToolbar value={editingContent} onChange={setEditingContent} textarea={editRef.current} />
+                          <VisualNoteEditor compact value={editingContent}
+                            onChange={setEditingContent} placeholder={labels.edit} />
                           </>
                         ) : (
                           <div style={{ overflowWrap: "anywhere", fontSize: "11px", color: "#73786F" }}>
