@@ -80,9 +80,8 @@ export default function DurationInput({
     <div className="flex overflow-hidden rounded-xl border border-line bg-white/70 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100/70">
       <input
         className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-ink outline-none disabled:cursor-not-allowed disabled:opacity-60"
-        type="text"\n        inputMode="decimal"
-        min={unit === "hour" ? "0.1" : "1"}
-        step={unit === "hour" ? "0.25" : "1"}
+        type="text"
+        inputMode="decimal"
         placeholder={unit === "hour" ? "1.5" : "45"}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
