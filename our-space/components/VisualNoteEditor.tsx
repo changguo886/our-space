@@ -131,24 +131,24 @@ function buildMarkup(editor: HTMLElement, markdown: string) {
 }
 
 function inlineMarkdown(node: Node): string {
-  const editor = node as HTMLElement;
   if (node.nodeType === 3) return node.textContent ?? "";
   if (node.nodeType !== 1) return "";
-  const children = Array.from(node.childNodes).map(inlineMarkdown).join("");
-  if (node.tagName === "STRONG" || node.tagName === "B") return `**${children}**`;
-  if (node.tagName === "EM" || node.tagName === "I") return `*${children}*`;
-  if (node.tagName === "U") return `{{underline|${children}}}`;
-  if (node.dataset.noteStyle && node.dataset.noteColor) return `{{${node.dataset.noteStyle}:${node.dataset.noteColor}|${children}}}`;
-  if (node.tagName === "FONT" && node.getAttribute("color")) return children;
-  if (node.tagName === "MARK") {
-    const color = node.style.backgroundColor;
+  const el = node as HTMLElement;
+  const children = Array.from(el.childNodes).map(inlineMarkdown).join("");
+  if (el.tagName === "STRONG" || el.tagName === "B") return `**${children}**`;
+  if (el.tagName === "EM" || el.tagName === "I") return `*${children}*`;
+  if (el.tagName === "U") return `{{underline|${children}}}`;
+  if (el.dataset.noteStyle && el.dataset.noteColor) return `{{${el.dataset.noteStyle}:${el.dataset.noteColor}|${children}}}`;
+  if (el.tagName === "FONT" && el.getAttribute("color")) return children;
+  if (el.tagName === "MARK") {
+    const color = el.style.backgroundColor;
     const match = color.match(/\d+/g);
     const hex = match && match.length >= 3 ? "#" + match.slice(0, 3).map(n => Number(n).toString(16).padStart(2,"0")).join("") : "#F4D46D";
     return `==${hex}|${children}==`;
   }
-  if (node.tagName === "BR") return "";
-  if (node.tagName === "A") {
-    const href = node.getAttribute("href") ?? "";
+  if (el.tagName === "BR") return "";
+  if (el.tagName === "A") {
+    const href = el.getAttribute("href") ?? "";
     return /^https?:\/\//i.test(href) ? `[${children}](${href})` : children;
   }
   return children;
