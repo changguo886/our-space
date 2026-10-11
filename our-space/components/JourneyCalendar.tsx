@@ -56,7 +56,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     if(event.pointerType==="mouse"&&event.button!==0)return;
     event.stopPropagation();begin(which);
     drag.current={edge:which,pointerId:event.pointerId};
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.closest("section")?.setPointerCapture(event.pointerId);
   }
   function dragMove(event:React.PointerEvent<HTMLButtonElement>){
     if(!drag.current||drag.current.pointerId!==event.pointerId)return;
@@ -106,7 +106,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     setSaving(false);
   }
   const chosen=selected?rows[selected]:undefined;
-  return <section className="mt-4 rounded-2xl border border-[#E6EBE4] bg-[#FFFDF9] p-3 sm:p-4">
+  return <section onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} className="mt-4 rounded-2xl border border-[#E6EBE4] bg-[#FFFDF9] p-3 sm:p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h4 className="text-sm font-semibold text-[#425F4B]">旅程月历</h4>
@@ -144,7 +144,6 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
         {(cell.date===display.start||cell.date===display.end)&&<button type="button"
           aria-label={cell.date===display.start?"拖动旅程开始日期":"拖动旅程结束日期"}
           onPointerDown={e=>dragStart(e,cell.date===display.start?"start":"end")}
-          onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd}
           onClick={e=>e.stopPropagation()} style={{touchAction:"none"}}
           className="absolute bottom-1 right-1 flex h-7 w-7 cursor-ew-resize items-center justify-center rounded-md border border-sage-400 bg-white text-sage-700 shadow-sm">⋮</button>}
         </div>;
