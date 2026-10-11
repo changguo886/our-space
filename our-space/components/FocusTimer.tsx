@@ -92,6 +92,19 @@ export default function FocusTimer({
   const router = useRouter();
   const { dictionary } = useI18n();
   const focusText = dictionary.focus;
+  const [focusEncouragement] = useState(() => {
+    const phrases = [
+      "慢慢来，也是在向前走。",
+      "每一小段专注，都值得被珍惜。",
+      "不用急着抵达，认真走好眼前这一步。",
+      "今天的努力，正在悄悄积累。",
+      "把注意力交给当下，剩下的交给时间。",
+      "做一点，也比停在原地更接近目标。",
+      "重要的不是速度，而是继续前行。",
+      "让这一刻的专注，成为小小的收获。",
+    ];
+    return phrases[Math.floor(Math.random() * phrases.length)];
+  });
   const common = dictionary.common;
 
   const [
@@ -2169,11 +2182,17 @@ export default function FocusTimer({
       <h1 className="mt-3 max-w-lg text-center text-2xl font-semibold">
         {todo.title}
       </h1>
-      <div className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 rounded-2xl border border-line bg-white/70 px-5 py-3 text-center text-xs text-ink-soft">
-        <div><span className="block text-[11px] text-ink-faint">预计总时长</span><strong className="mt-1 block text-sm font-semibold text-ink">{todo.estimated_minutes != null ? `${todo.estimated_minutes} 分钟` : "未设定"}</strong></div>
-        <div><span className="block text-[11px] text-ink-faint">累计专注</span><strong className="mt-1 block text-sm font-semibold text-sage-700">{Math.floor(currentElapsed / 60)} 分钟</strong></div>
-        {todo.estimated_minutes != null && <div><span className="block text-[11px] text-ink-faint">参考剩余</span><strong className="mt-1 block text-sm font-semibold text-ink">{Math.max(0, todo.estimated_minutes - Math.floor(currentElapsed / 60))} 分钟</strong></div>}
-        <p className="w-full text-[11px] text-ink-faint">投入时间仅供参考，不代表任务完成进度</p>
+      <div className="mt-5 flex flex-col items-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 rounded-full border border-[#E4EAE3] bg-[#FCFDFB] px-5 py-2.5 text-center shadow-sm sm:gap-x-7">
+          <div><span className="block text-[10px] tracking-wide text-ink-faint">预计</span><strong className="block text-sm font-medium tabular-nums text-ink">{todo.estimated_minutes != null ? `${todo.estimated_minutes} 分钟` : "未设定"}</strong></div>
+          <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
+          <div><span className="block text-[10px] tracking-wide text-ink-faint">已专注</span><strong className="block text-sm font-semibold tabular-nums text-sage-700">{Math.floor(currentElapsed / 60)} 分钟</strong></div>
+          {todo.estimated_minutes != null && <>
+            <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
+            <div><span className="block text-[10px] tracking-wide text-ink-faint">参考剩余</span><strong className="block text-sm font-medium tabular-nums text-ink">{Math.max(0, todo.estimated_minutes - Math.floor(currentElapsed / 60))} 分钟</strong></div>
+          </>}
+        </div>
+        <p className="text-center text-xs leading-relaxed text-[#7D9181]">{focusEncouragement}</p>
       </div>
 
       {/*
