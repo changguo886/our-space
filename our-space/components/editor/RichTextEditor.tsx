@@ -45,7 +45,7 @@ const extensions = [
   LocalFontSize,
 ];
 
-export default function RichTextEditor({ value, onChange, compact = false }: Props) {
+export default function RichTextEditor({ value, onChange, compact = false, placeholder }: Props) {
   const editor = useEditor({
     extensions,
     content: value,
