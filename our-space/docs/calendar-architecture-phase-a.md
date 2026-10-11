@@ -113,3 +113,13 @@ A recurring fixed-time rule (daily/weekly) is a separate Phase B capability; it 
 - `estimated_minutes` is *effort estimate*, not a calendar slot or task deadline.
 - Show two clean start/end datetime fields when 'Specific time' is chosen, independently of long-term Journey start/target dates.
 - Native HTML `date`/`datetime-local` popup rendering is browser/OS controlled; CSS can style the field, but truly consistent custom month/year/time selection needs a purpose-built accessible picker. Do not promise that `lang` alone translates browser placeholders.
+
+## Focus behavior audit and first UX change (2026-10-11)
+
+Current `FocusTimer.tsx` stores running/paused/completed status and cumulative `elapsed_seconds` on `todos`. `todo_sessions` represents planned blocks, not executed focus history. History currently reads Todo values.
+
+Phase A UX patch: **End current focus** stores the latest cumulative elapsed time on Todo, sets `status='paused'` and `started_at=null`, and leaves `completed_at` untouched; users can resume later. **Complete Todo** remains an explicit distinct action. This does not create independent focus entries and does not mark a scheduled Session completed.
+
+**Known gap:** the existing Reset operation clears `todos.elapsed_seconds`; avoid using Reset when preserving accumulated work matters. Future focus_entries ledger must capture intervals idempotently, including pauses/resumes and timeouts, before showing per-day actual work totals. Plan and actual execution must stay separate. No unreviewed schema migration in this patch.
+
+Manual validation: start -> pause -> resume -> end focus -> refresh -> resume; ensure elapsed seconds persist and Todo is not completed; separately verify Complete Todo. Test main Focus, normal PiP, compact PiP, and time-up overlay. Build before merging.
