@@ -12,7 +12,6 @@ type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:st
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
 type Mode = "day"|"week"|"month"|"journey";
 const modes: { key:Mode; title:string }[]=[{key:"day",title:"日"},{key:"week",title:"周"},{key:"month",title:"月"},{key:"journey",title:"旅程"}];
-function monthStart(s:string) { return s.slice(0,7)+"-01"; }
 function dateOf(y:number,m:number,d:number) { return [y,String(m+1).padStart(2,"0"),String(d).padStart(2,"0")].join("-"); }
 function addDay(s:string,n:number) { const [y,m,d]=s.split("-").map(Number);const v=new Date(y,m-1,d+n);return dateOf(v.getFullYear(),v.getMonth(),v.getDate()); }
 function addMonth(s:string,n:number){const [y,m]=s.split("-").map(Number);const d=new Date(y,m-1+n,1);return dateOf(d.getFullYear(),d.getMonth(),1);}
@@ -69,13 +68,13 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
         </label>
         {loadError?<p role="alert" className="text-xs text-blush-500">读取旅程失败：{loadError}</p>:activeJourney?
           <JourneyCalendar key={activeJourney.id} journeyId={activeJourney.id} startDate={activeJourney.start_date}
-            targetDate={activeJourney.target_date} animal={activeJourney.animal_type} route={activeJourney.journey_type}/>:
+            targetDate={activeJourney.target_date} animal={activeJourney.animal_type} route={activeJourney.journey_type} initialDate={date}/>:
           <p className="text-sm text-ink-faint">还没有成长旅程。请先从 Todo 创建一条长期旅程。</p>}
       </div>:<div className="rounded-2xl border border-line bg-white p-4">
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-ink-faint">{["一","二","三","四","五","六","日"].map(x=><div key={x}>{x}</div>)}</div>
         <div className="mt-3 grid grid-cols-7 gap-1">
           {(mode==="month"?[...Array.from({length:(new Date(y,m-1,1).getDay()+6)%7},()=>null),...monthly]:Array.from({length:7},(_,i)=>addDay(date,i-((new Date(y,m-1,Number(date.slice(-2))).getDay()+6)%7)))).map((d,i)=>
-            <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);change("day");router.replace("/calendar?view=day&date="+d);}}}
+            <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
                 <div key={e.todoId+j} className="truncate rounded bg-sage-50 px-1 py-0.5 text-[10px] text-sage-700">{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
