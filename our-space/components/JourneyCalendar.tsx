@@ -118,7 +118,12 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
     const d=new Date(month.year,month.month+delta,1);
     setMonth({year:d.getFullYear(),month:d.getMonth()});setSelected(null);
   }
-  function open(date:string) {if(edge){adjust(edge,date);return;}setSelected(date);setNote(rows[date]?.note??"");}
+  function open(date:string) {
+    if(edge){adjust(edge,date);return;}
+    if(date===range.start){begin("start");return;}
+    if(date===range.end){begin("end");return;}
+    setSelected(date);setNote(rows[date]?.note??"");
+  }
   async function save(status:DayStatus) {
     if(!selected||saving||selected<range.start||selected>range.end)return;
     setSaving(true);setError("");
@@ -144,11 +149,10 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
         <button type="button" onClick={()=>{setMonth(thisMonth());setSelected(null);}} className="rounded-lg bg-sage-50 px-2 py-1.5 text-xs text-sage-700">今天</button>
       </div>
     </div>
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-paper/60 px-3 py-2">
-      <button type="button" onClick={()=>begin("start")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整起点</button>
-      <button type="button" onClick={()=>begin("end")} className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs">调整终点</button>
-      <span className="text-[11px] text-ink-faint">拖动边缘手柄；拖到月历左右侧稍作停留可翻月。也可点击日期或使用日期输入框。</span>
-    </div>
+    {edge&&<div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#C6DBCD] bg-[#F0F7F1] px-3 py-2">
+      <p className="text-xs font-medium text-[#366B50]">正在选择新的{edge==="start"?"开始":"结束"}日期 · 可翻月后点击目标日期</p>
+      <button type="button" onClick={cancelRange} className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-[#436B52]">退出调整</button>
+    </div>}
     <div ref={calendarGrid} className="mt-4 grid grid-cols-7 gap-1.5">
       {WEEKDAYS.map(d=><div key={d} className="pb-1 text-center text-[10px] text-[#87958B]">{d}</div>)}
       {cells.map((cell,i)=>{
@@ -158,7 +162,7 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
         const current=cell.date===today;
         return <div key={cell.date} data-journey-date={cell.date} className="relative"><button type="button" onClick={()=>open(cell.date)}
           aria-label={cell.date+(state?" "+STATUS[state]:"")}
-          aria-pressed={selected===cell.date}
+          aria-pressed={selected===cell.date || (!!edge && cell.date===display[edge])}
           className={`relative flex w-full min-h-[63px] flex-col items-start gap-1 rounded-xl border p-1.5 text-left transition sm:min-h-[78px] sm:p-2 ${selected===cell.date?"border-sage-500 ring-1 ring-sage-300":current?"border-sage-300":"border-[#E8EDE7]"} ${active?"bg-[#E8F2EB]":"bg-[#FAFAF8] opacity-65"}`}>
           <span className={`text-[11px] ${current?"font-bold text-sage-700":"text-[#69786C]"}`}>{cell.day}</span>
           {active&&<span aria-hidden="true" className="h-1 w-full rounded-full bg-[#D4E5DE]"/>}
@@ -168,14 +172,14 @@ export default function JourneyCalendar({journeyId,startDate,targetDate,animal,r
         {(cell.date===display.start||cell.date===display.end)&&<button type="button"
           aria-label={cell.date===display.start?"拖动旅程开始日期":"拖动旅程结束日期"}
           onPointerDown={e=>dragStart(e,cell.date===display.start?"start":"end")}
-          onClick={e=>e.stopPropagation()} style={{touchAction:"none"}}
-          className="absolute bottom-1 right-1 flex h-7 w-7 cursor-ew-resize items-center justify-center rounded-md border border-sage-400 bg-white text-sage-700 shadow-sm">⋮</button>}
+          onClick={e=>{e.stopPropagation();begin(cell.date===display.start?"start":"end");}} style={{touchAction:"none"}}
+          className="absolute bottom-1 right-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[#A8C5B2] bg-white text-[#366B50] shadow-sm" title="点击选择新的日期，或拖动微调">↔</button>}
         </div>;
       })}
     </div>
-    {draft&&<div className="mt-3 space-y-3 rounded-xl border border-sage-200 bg-sage-50 p-3">
-      <p className="text-sm font-medium text-sage-700">调整日期（草稿，尚未保存）</p>
-      <p className="text-xs text-ink-soft">原范围：{range.start} → {range.end}</p>
+    {draft&&<div className="mt-3 space-y-3 rounded-xl border border-[#CFDDCF] bg-[#F7FAF6] p-4">
+      <p className="text-sm font-medium text-sage-700">调整旅程日期</p>
+      <p className="text-xs text-ink-soft">原范围：{range.start} → {range.end}　/　新范围：{draft.start} → {draft.end}</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs">新的开始日期<input type="date" className="input mt-1 w-full" value={draft.start} max={draft.end} onChange={e=>adjust("start",e.target.value)}/></label>
         <label className="text-xs">新的结束日期<input type="date" className="input mt-1 w-full" value={draft.end} min={draft.start} onChange={e=>adjust("end",e.target.value)}/></label>
