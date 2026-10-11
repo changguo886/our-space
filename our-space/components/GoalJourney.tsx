@@ -38,6 +38,7 @@ export default function GoalJourney({ todoId, todoTitle }: { todoId: string; tod
   const [route, setRoute] = useState<Route>("swim");
   const [steps, setSteps] = useState({ total: 0, completed: 0 });
   const [manualPercent, setManualPercent] = useState(0);
+  const [extendDate, setExtendDate] = useState("");
   useEffect(() => {
     let live = true;
     const db = createClient();
@@ -73,6 +74,22 @@ export default function GoalJourney({ todoId, todoTitle }: { todoId: string; tod
     else setJourney(data as Journey);
     setBusy(false);
   }
+  async function extend() {
+    if (!journey || busy || journey.status !== "active" || !extendDate || extendDate <= journey.target_date) return;
+    setBusy(true); setError("");
+    const { data, error: err } = await createClient().from("goal_journeys")
+      .update({ target_date: extendDate }).eq("id", journey.id).select("*").single();
+    if (err) setError("延长失败：" + err.message);
+    else { setJourney(data as Journey); setExtendDate(""); }
+    setBusy(false);
+  }
+  async function refreshSteps() {
+    const { data, error: err } = await createClient().from("todo_subtasks")
+      .select("id, completed").eq("todo_id", todoId);
+    if (err) setError("刷新步骤失败：" + err.message);
+    else setSteps({ total: data?.length ?? 0, completed: data?.filter(x => x.completed).length ?? 0 });
+  }
+
   async function finish() {
     if (!journey || busy || !window.confirm("结束这段旅程并根据当前完成度结算？")) return;
     setBusy(true); setError("");
@@ -132,6 +149,18 @@ export default function GoalJourney({ todoId, todoTitle }: { todoId: string; tod
           <input className="w-full" type="range" min="0" max="100" value={manualPercent} onChange={e => setManualPercent(Number(e.target.value))}/>
           <span className="text-[11px] text-ink-faint">手动完成度仅在当前页面有效；请添加步骤以获得可持久追踪的进度。</span>
         </label>}
+        {journey.status === "active" && (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-xs text-ink-soft">延长目标日期
+              <input className="input mt-1" type="date" min={journey.target_date} value={extendDate}
+                onChange={e => setExtendDate(e.target.value)} />
+            </label>
+            <button type="button" disabled={busy || !extendDate || extendDate <= journey.target_date}
+              onClick={() => void extend()} className="rounded-lg border border-line bg-white px-3 py-2 text-xs disabled:opacity-50">延长旅程</button>
+            <button type="button" disabled={busy} onClick={() => void refreshSteps()}
+              className="rounded-lg border border-line bg-white px-3 py-2 text-xs">刷新步骤进度</button>
+          </div>
+        )}
         <div className="flex items-center justify-between text-xs text-ink-soft">
           <span>实际完成度 {journey.status === "finished" ? journey.final_completion_percent : completion}%</span>
           <span>{steps.total ? `${steps.completed}/${steps.total} 步已完成` : "建议拆分成可完成的步骤"}</span>
