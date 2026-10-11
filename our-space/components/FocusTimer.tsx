@@ -960,6 +960,36 @@ export default function FocusTimer({
   }
 
   /*
+   * End this focus, not the parent Todo.
+   * Preserve all accrued seconds so the task can be resumed later.
+   * This is not yet a per-occurrence focus history record.
+   */
+  async function endFocusOnly() {
+    if (busy || status === "completed") return;
+    setBusy(true);
+    const savedElapsed = currentElapsed;
+    const { error } = await createClient()
+      .from("todos")
+      .update({
+        status: "paused",
+        started_at: null,
+        elapsed_seconds: savedElapsed,
+      })
+      .eq("id", todo.id);
+    setBusy(false);
+    if (error) {
+      alert("结束本次专注失败 / Failed to end focus: " + error.message);
+      return;
+    }
+    setElapsedSeconds(savedElapsed);
+    setStartedAt(null);
+    setStatus("paused");
+    setTimeUp(false);
+    setCompactFinishConfirm(false);
+    closeFloatingTimer();
+  }
+
+  /*
    * 时间到了以后继续
    */
   function continueAfterTimeUp() {
@@ -1257,8 +1287,11 @@ export default function FocusTimer({
           </div>
           {compactFinishConfirm ? (
             <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>结束计时并完成整个任务？</span>
+              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>结束这次专注，还是完成整个任务？</span>
               <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+                <button type="button" disabled={busy} onClick={() => void endFocusOnly()}
+                  style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#E4F0E6",
+                    color: "#376649", fontSize: 11, fontWeight: 600 }}>仅结束专注</button>
                 <button type="button" disabled={busy} onClick={() => void completeTimer()}
                   style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#F5E2DF",
                     color: "#9B514C", fontSize: 11, fontWeight: 600 }}>确认完成</button>
@@ -1832,6 +1865,16 @@ export default function FocusTimer({
 
             <button
               type="button"
+              disabled={busy || status === "completed"}
+              onClick={() => void endFocusOnly()}
+              title="结束本次专注，保留整个任务"
+              style={{ ...buttonBase, minWidth: "70px", height: "34px", borderRadius: "12px",
+                background: "#E4F0E6", color: "#376649", fontSize: "11px", fontWeight: 600 }}
+            >
+              结束本次
+            </button>
+            <button
+              type="button"
               disabled={busy}
               onClick={
                 completeTimer
@@ -2195,6 +2238,12 @@ export default function FocusTimer({
             {focusText.timeUpHint}
           </p>
 
+          <div className="mt-3 flex justify-center">
+            <button type="button" onClick={() => void endFocusOnly()} disabled={busy}
+              className="rounded-xl border border-sage-300 bg-white px-4 py-2 text-sm font-medium text-sage-700">
+              结束本次专注（保留任务）
+            </button>
+          </div>
           <div className="mt-5 flex justify-center gap-3">
             <button
               type="button"
@@ -2256,6 +2305,16 @@ export default function FocusTimer({
               <Play className="ml-0.5 h-5 w-5 fill-current" />
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => void endFocusOnly()}
+            disabled={busy || status === "completed"}
+            className="rounded-xl border border-sage-300 bg-sage-50 px-3 py-2 text-sm font-semibold text-sage-700"
+            title="记录累计专注时间，保留任务未完成"
+          >
+            结束本次专注
+          </button>
 
           <button
             type="button"
