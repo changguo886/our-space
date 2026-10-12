@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import ScheduleDateTimeField from "@/components/ScheduleDateTimeField";
+import { CalendarDays, Clock3 } from "lucide-react";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -85,6 +85,7 @@ export default function AddTodoForm({
   const [planMode,setPlanMode]=useState<"flexible"|"fixed">("flexible");
   const [sessionStart,setSessionStart]=useState("");
   const [sessionEnd,setSessionEnd]=useState("");
+  const [crossDay,setCrossDay]=useState(false);
   const [longTerm, setLongTerm] = useState(false);
   const [startDate, setStartDate] = useState(taskDate);
   const [endDate, setEndDate] = useState(taskDate);
@@ -227,7 +228,7 @@ export default function AddTodoForm({
     setCustomTag("");
     setLongTerm(false);
     setPlanMode("flexible");
-    setSessionStart("");setSessionEnd("");
+    setSessionStart("");setSessionEnd("");setCrossDay(false);
     setStartDate(taskDate);
     setEndDate(taskDate);
 
@@ -407,17 +408,52 @@ export default function AddTodoForm({
             {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time")}
           </button>)}
         </div>
-        {planMode==="fixed"?<div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <ScheduleDateTimeField label={dictionary.common?.minutes==="分钟"?"开始时间":"Start"} chinese={dictionary.common?.minutes==="分钟"} value={sessionStart} onChange={v=>{setSessionStart(v);if(sessionEnd && sessionEnd<v)setSessionEnd(v);}} disabled={busy}/>
-          <ScheduleDateTimeField label={dictionary.common?.minutes==="分钟"?"结束时间":"End"} chinese={dictionary.common?.minutes==="分钟"} value={sessionEnd} min={sessionStart} onChange={setSessionEnd} disabled={busy}/>
-          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes==="分钟"?"日期和时刻分别选择；本次安排后仍可在 Calendar 拖动。":"Pick date and time separately; edit later in Calendar."}</p>
-        </div>:<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"不占用具体日历时段；以后可在 Calendar 自由安排。":"No time slot booked yet. Schedule it later in Calendar."}</p>}
+        {planMode==="fixed" ? <div className="mt-5 space-y-4">
+          <div>
+            <label className="mb-2 block text-xs font-semibold text-ink-soft">{dictionary.common?.minutes==="分钟"?"工作日期":"Work date"}</label>
+            <div className="relative flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-4 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
+              <CalendarDays className="h-4 w-4 text-sage-700"/>
+              <span className="text-sm font-medium text-ink">{sessionStart
+                ? new Intl.DateTimeFormat(dictionary.common?.minutes==="分钟"?"zh-CN":"en-US",{year:"numeric",month:"short",day:"numeric",weekday:"short"}).format(new Date(Number(sessionStart.slice(0,4)),Number(sessionStart.slice(5,7))-1,Number(sessionStart.slice(8,10))))
+                : dictionary.common?.minutes==="分钟"?"选择日期":"Choose date"}</span>
+              <input aria-label={dictionary.common?.minutes==="分钟"?"选择工作日期":"Choose work date"} type="date"
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0" value={sessionStart.slice(0,10)}
+                onChange={e=>{const day=e.target.value;if(!day)return;setSessionStart(day+"T"+(sessionStart.slice(11)||"14:00"));setSessionEnd((crossDay?sessionEnd.slice(0,10):day)+"T"+(sessionEnd.slice(11)||"16:00"));}}
+                disabled={busy}/>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {([{key:"start",label:dictionary.common?.minutes==="分钟"?"开始":"Start",value:sessionStart},{key:"end",label:dictionary.common?.minutes==="分钟"?"结束":"End",value:sessionEnd}] as const).map(item=>
+              <label key={item.key} className="min-w-0">
+                <span className="mb-2 block text-xs font-semibold text-ink-soft">{item.label}</span>
+                <span className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
+                  <Clock3 className="h-4 w-4 shrink-0 text-sage-700"/>
+                  <input type="time" step={300} value={item.value.slice(11)} disabled={busy}
+                    onChange={e=>{const date=item.key==="start"?sessionStart.slice(0,10):crossDay?sessionEnd.slice(0,10):sessionStart.slice(0,10);
+                      if(item.key==="start")setSessionStart(date+"T"+e.target.value);else setSessionEnd(date+"T"+e.target.value);
+                    }}
+                    className="w-full min-w-0 bg-transparent text-base font-medium text-ink outline-none"/>
+                </span>
+              </label>)}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-ink-soft">
+            <input type="checkbox" checked={crossDay} disabled={busy} onChange={e=>{setCrossDay(e.target.checked);if(!e.target.checked&&sessionStart)setSessionEnd(sessionStart.slice(0,10)+"T"+(sessionEnd.slice(11)||"16:00"));}}/>
+            {dictionary.common?.minutes==="分钟"?"跨天结束":"Ends on another day"}
+          </label>
+          {crossDay && <label className="block text-xs font-medium text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"结束日期":"End date"}
+            <input type="date" min={sessionStart.slice(0,10)||undefined} value={sessionEnd.slice(0,10)} disabled={busy}
+              onChange={e=>setSessionEnd(e.target.value+"T"+(sessionEnd.slice(11)||"16:00"))}
+              className="input mt-2 w-full"/>
+          </label>}
+          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"仅安排这一次；以后可以在 Calendar 中拖动或新增时段。":"One session only; adjust or add sessions in Calendar later."}</p>
+        </div>:<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"先创建任务，不占用日历时间；以后再手动安排。":"Create the task without booking time; schedule it later."}</p>}
       </div>
 
       <div className="rounded-2xl border border-line bg-paper/40 p-4">
         <label className="flex items-center gap-2 text-sm font-medium text-ink">
           <input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy} />
-          {dictionary.common?.minutes === "分钟" ? "这是长期任务（开启成长旅程）" : "Long-term task (enable Journey)"}
+          {dictionary.common?.minutes === "分钟" ? "开启成长旅程（可选）" : "Enable growth Journey (optional)"}
         </label>
         {longTerm && <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "开始日期" : "Start date"}
