@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
@@ -9,6 +9,17 @@ import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
 } from "@/components/DurationInput";
+
+function formatWorkDate(value: string, chinese: boolean): string {
+  const day = value.slice(0,10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return chinese ? "选择日期" : "Choose date";
+  const [year, month, date] = day.split("-").map(Number);
+  const parsed = new Date(year,month-1,date);
+  if (Number.isNaN(parsed.getTime())) return chinese ? "选择日期" : "Choose date";
+  return new Intl.DateTimeFormat(chinese?"zh-CN":"en-US", {
+    year:"numeric",month:"short",day:"numeric",weekday:"short"
+  }).format(parsed);
+}
 
 type Category =
   | "work"
@@ -38,6 +49,7 @@ export default function AddTodoForm({
   activeSpaceName: string;
   taskDate: string;
 }) {
+  const workDateRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { dictionary } = useI18n();
   const t = dictionary.todo;
@@ -411,15 +423,19 @@ export default function AddTodoForm({
         {planMode==="fixed" ? <div className="mt-5 space-y-4">
           <div>
             <label className="mb-2 block text-xs font-semibold text-ink-soft">{dictionary.common?.minutes==="分钟"?"工作日期":"Work date"}</label>
-            <div className="relative flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-4 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
-              <CalendarDays className="h-4 w-4 text-sage-700"/>
-              <span className="text-sm font-medium text-ink">{sessionStart
-                ? new Intl.DateTimeFormat(dictionary.common?.minutes==="分钟"?"zh-CN":"en-US",{year:"numeric",month:"short",day:"numeric",weekday:"short"}).format(new Date(Number(sessionStart.slice(0,4)),Number(sessionStart.slice(5,7))-1,Number(sessionStart.slice(8,10))))
-                : dictionary.common?.minutes==="分钟"?"选择日期":"Choose date"}</span>
-              <input aria-label={dictionary.common?.minutes==="分钟"?"选择工作日期":"Choose work date"} type="date"
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0" value={sessionStart.slice(0,10)}
-                onChange={e=>{const day=e.target.value;if(!day)return;setSessionStart(day+"T"+(sessionStart.slice(11)||"14:00"));setSessionEnd((crossDay?sessionEnd.slice(0,10):day)+"T"+(sessionEnd.slice(11)||"16:00"));}}
-                disabled={busy}/>
+            <div className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
+              <CalendarDays className="h-4 w-4 shrink-0 text-sage-700"/>
+              <button type="button" disabled={busy} onClick={() => {
+                const input=workDateRef.current;
+                if (!input) return;
+                try { input.showPicker(); } catch { input.focus(); input.click(); }
+              }} className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink">
+                {formatWorkDate(sessionStart,dictionary.common?.minutes==="分钟")}
+              </button>
+              <input ref={workDateRef} aria-label={dictionary.common?.minutes==="分钟"?"选择工作日期":"Choose work date"}
+                type="date" value={sessionStart.slice(0,10)} disabled={busy}
+                onChange={e=>{const day=e.target.value;if(!day)return;setSessionStart(day+"T"+(sessionStart.slice(11)||"14:00"));setSessionEnd((crossDay?sessionEnd.slice(0,10)||day:day)+"T"+(sessionEnd.slice(11)||"16:00"));}}
+                className="h-9 w-10 shrink-0 cursor-pointer text-transparent outline-none [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer"/>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
