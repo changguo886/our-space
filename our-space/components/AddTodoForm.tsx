@@ -172,11 +172,12 @@ export default function AddTodoForm({
       if (cadence==="weekly_days" && weekdays.length===0) {
         setError("请选择至少一天 / Select at least one weekday"); return;
       }
+      if (goalPeriod==="week" && (!Number.isInteger(Number(goalValue)) || Number(goalValue)<1 || Number(goalValue)>7)) {setError("当前每周习惯支持 1–7 次。");return;}
       if (repeatEnd && repeatEnd < taskDate) {
         setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
       }
     }
-    if (goalEnabled && taskType === "habit") {
+    if (taskType === "habit") {
       const required = Number(goalValue);
       const optional = [extraCount, extraPeriodMinutes, perSessionMinutes, totalMinutes];
       if (!Number.isSafeInteger(required) || required <= 0 ||
@@ -249,7 +250,7 @@ export default function AddTodoForm({
       }
     }
 
-    if (!error && created && goalEnabled && taskType === "habit") {
+    if (!error && created && taskType === "habit") {
       const { error: goalError } = await supabase.from("task_goal_settings").insert({
         todo_id: created.id,
         primary_metric: goalMetric,
@@ -361,27 +362,15 @@ export default function AddTodoForm({
             <p className="text-xs text-ink-faint">{zh?"输入开始时间和预计时长可自动推算结束；也可以自行调整。":"Start and estimate can suggest an end; you can adjust it."}</p>
           </div>}
         </section>
-      ):taskType==="habit"?(
-        <section className="space-y-3 rounded-xl bg-paper/40 p-3">
-          <label className="block text-xs font-medium text-ink-soft">{zh?"多久做一次？":"How often?"}
-            <select className={field+" mt-1"} value={cadence} disabled={busy} onChange={e=>setCadence(e.target.value as typeof cadence)}>
-              <option value="daily">{zh?"每天":"Daily"}</option>
-              <option value="weekly_days">{zh?"每周指定星期":"Selected weekdays"}</option>
-              <option value="weekly_quota">{zh?"每周若干次":"Times per week"}</option>
-            </select>
-          </label>
-          {cadence==="weekly_days"&&<div className="flex flex-wrap gap-1.5">{["一","二","三","四","五","六","日"].map((d,i)=><button key={d} type="button" disabled={busy} aria-pressed={weekdays.includes(i+1)} onClick={()=>setWeekdays(v=>v.includes(i+1)?v.filter(x=>x!==i+1):[...v,i+1].sort())} className={`h-9 w-9 rounded-lg border text-xs ${weekdays.includes(i+1)?"border-sage-400 bg-sage-100 text-sage-800":"border-line bg-white"}`}>{d}</button>)}</div>}
-          {cadence==="weekly_quota"&&<label className="block text-xs text-ink-soft">{zh?"每周次数":"Weekly count"}<select className={field+" mt-1"} disabled={busy} value={timesPerWeek} onChange={e=>setTimesPerWeek(Number(e.target.value))}>{[1,2,3,4,5,6,7].map(n=><option key={n}>{n}</option>)}</select></label>}
-          <p className="text-xs text-sage-700">{zh?`执行目标自动参考：${cadence==="daily"?"每天 1 次":`每周 ${countFromPattern} 次`}`:`Suggested frequency: ${countFromPattern}`}</p>
-        </section>
       ):(
         <section className="space-y-3 rounded-xl bg-paper/40 p-3">
-          <p className="text-xs font-medium text-ink-soft">{zh?"希望坚持多少？":"Your habit goal"}</p>
+          <p className="text-xs font-medium text-ink-soft">{zh?"习惯目标":"Habit goal"}</p>
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-ink-soft">{zh?"统计周期":"Period"}<select className={field+" mt-1"} value={goalPeriod} onChange={e=>setGoalPeriod(e.target.value as typeof goalPeriod)} disabled={busy}><option value="day">{zh?"每天":"Day"}</option><option value="week">{zh?"每周":"Week"}</option><option value="month">{zh?"每月":"Month"}</option></select></label>
+            <label className="text-xs text-ink-soft">{zh?"统计周期":"Period"}<select className={field+" mt-1"} value={goalPeriod} onChange={e=>{setGoalPeriod(e.target.value as typeof goalPeriod);setCadence(e.target.value==="day"?"daily":"weekly_quota");}} disabled={busy}><option value="day">{zh?"每天":"Day"}</option><option value="week">{zh?"每周":"Week"}</option><option value="month" disabled>{zh?"每月（待数据扩展）":"Month (coming later)"}</option></select></label>
             <label className="text-xs text-ink-soft">{zh?"目标次数":"Target count"}<input className={field+" mt-1"} type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e=>{setGoalValue(e.target.value);setTimesPerWeek(Math.min(7,Math.max(1,Number(e.target.value)||1)));}}/></label>
           </div>
-          <p className="text-xs text-ink-faint">{zh?"默认灵活进行，不自动预约日历时段。":"Flexible by default; no booked slots."}</p>
+          {goalPeriod==="week"&&Number(goalValue)>7&&<p className="text-xs text-amber-700">每周超过 7 次尚不支持，请改为 1–7 次。</p>}
+          <p className="text-xs text-ink-faint">{zh?"默认灵活进行，不自动预约日历时段。目标只输入一次。":"Flexible by default; goal is entered once."}</p>
         </section>
       )}
       <details className="rounded-xl border border-line px-3 py-3">
@@ -392,7 +381,7 @@ export default function AddTodoForm({
           {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
           <label className="block text-xs text-ink-soft">{zh?"预计投入（非必须连续完成）":"Effort estimate"}<DurationInput value={minutes} unit={durationUnit} onValueChange={setMinutes} onUnitChange={setDurationUnit} disabled={busy}/></label>
           {taskType==="habit"&&<label className="block text-xs text-ink-soft">{zh?"重复结束日期":"Repeat until"}<input type="date" className={field+" mt-1"} min={taskDate} value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)} disabled={busy}/></label>}
-          {taskType==="habit"&&<label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={goalEnabled} onChange={e=>setGoalEnabled(e.target.checked)} disabled={busy}/>{zh?"额外保存周期目标":"Save period target"}</label>}
+          
           {goalEnabled&&taskType==="habit"&&<div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-ink-soft">{zh?"主要指标":"Metric"}<select className={field+" mt-1"} value={goalMetric} onChange={e=>setGoalMetric(e.target.value as typeof goalMetric)} disabled={busy}><option value="count">{zh?"次数":"Count"}</option><option value="duration">{zh?"分钟":"Minutes"}</option></select></label>
             {goalMetric==="duration"&&<label className="text-xs text-ink-soft">{zh?"目标分钟":"Target minutes"}<input className={field+" mt-1"} type="number" min="1" value={goalValue} onChange={e=>setGoalValue(e.target.value)} disabled={busy}/></label>}
