@@ -17,6 +17,7 @@ import {
 } from "@/lib/preferences";
 
 import AddTodoForm from "@/components/AddTodoForm";
+import QuickCaptureTodo from "@/components/QuickCaptureTodo";
 
 import TodoList, {
   type Todo,
@@ -250,6 +251,12 @@ export default async function TodoPage() {
         </div>
 
 
+        <QuickCaptureTodo userId={user.id} taskDate={today} />
+        <details className="mt-4 rounded-2xl border border-line p-3">
+          <summary className="cursor-pointer text-sm font-medium text-ink-soft">
+            更多规划 · 重复任务 / 习惯 / 日期 / Journey
+          </summary>
+          <div className="mt-4">
         <AddTodoForm
           userId={
             user.id
@@ -264,6 +271,8 @@ export default async function TodoPage() {
             today
           }
         />
+          </div>
+        </details>
       </section>
 
 
