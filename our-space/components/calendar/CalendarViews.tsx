@@ -10,7 +10,8 @@ import Link from "next/link";
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
 type CalendarTask = { id:string; title:string; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
 type RepeatRule = { id:string; todo_id:string; cadence:"daily"|"weekly_days"|"weekly_quota"; weekdays:number[]; times_per_week:number|null; starts_on:string; ends_on:string|null; timezone:string; status:string };
-type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string };
+type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
+const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
 type Mode = "day"|"week"|"month"|"journey";
 const modes: { key:Mode; title:string }[]=[{key:"day",title:"日"},{key:"week",title:"周"},{key:"month",title:"月"},{key:"journey",title:"旅程"}];
@@ -40,8 +41,8 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const [selectedTodo,setSelectedTodo]=useState(params.get("todoId")??"");
   const [loadError,setLoadError]=useState("");
   useEffect(()=>{setMode(requested);if(params.get("todoId"))setSelectedTodo(params.get("todoId")??"");},[requested,params]);
-  useEffect(()=>{if(mode!=="journey")return;let alive=true;
-    void createClient().from("goal_journeys").select("id,todo_id,start_date,target_date,animal_type,journey_type,status")
+  useEffect(()=>{if(mode!=="journey"&&mode!=="month"&&mode!=="week")return;let alive=true;
+    void createClient().from("goal_journeys").select("id,todo_id,start_date,target_date,animal_type,journey_type,status,color_key")
       .order("start_date",{ascending:false}).then(({data,error})=>{
       if(!alive)return;if(error)setLoadError(error.message);else{setJourneys((data??[]) as JourneyRow[]);setLoadError("");}
     });return()=>{alive=false;};
@@ -111,6 +112,8 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
                 <div key={e.todoId+j} className="truncate rounded bg-sage-50 px-1 py-0.5 text-[10px] text-sage-700">{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
                 {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
+                {journeys.filter(j=>j.start_date<=d && j.target_date>=d).map(j=>
+                  <div key={j.id} title={taskTitle.get(j.todo_id)??"Journey"} aria-label={(taskTitle.get(j.todo_id)??"Journey")+" journey"} className="h-1.5 w-full rounded-full" style={{backgroundColor:JOURNEY_PALETTE[j.color_key]??JOURNEY_PALETTE.blue}} />)}
                 {rulesOn(d).slice(0,2).map(r=><div key={r.id} className="truncate rounded bg-paper px-1 py-0.5 text-[10px] text-ink-soft">↻ {taskTitle.get(r.todo_id)}</div>)}
                 {rulesOn(d).length>2&&<span className="text-[10px] text-ink-faint">+{rulesOn(d).length-2} repeats</span>}</>}
             </button>)}
