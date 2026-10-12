@@ -1,10 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import { CalendarDays, Clock3 } from "lucide-react";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -51,7 +50,6 @@ export default function AddTodoForm({
   taskDate: string;
   onCreated?: () => void;
 }) {
-  const workDateRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { dictionary } = useI18n();
   const t = dictionary.todo;
@@ -312,399 +310,86 @@ export default function AddTodoForm({
     router.refresh();
   }
 
+
+  const zh = dictionary.common?.minutes === "分钟";
+  const field = "w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-sage-300 focus:ring-2 focus:ring-sage-100";
+  const countFromPattern = cadence==="daily" ? 1 : cadence==="weekly_days" ? weekdays.length : timesPerWeek;
   return (
-    <form
-      onSubmit={submit}
-      className="space-y-4"
-    >
-      <div className="rounded-2xl border border-line bg-white/80 p-4">
-        <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"任务类型":"Task type"}</p>
+    <form onSubmit={submit} className="space-y-5 pb-4">
+      <div>
+        <label className="mb-2 block text-xs font-medium text-ink-soft">{zh?"任务名称":"Task name"} *</label>
+        <input className={field} value={title} onChange={e=>setTitle(e.target.value)} placeholder={zh?"例如：完成论文":"e.g. Finish paper"} disabled={busy} autoFocus/>
+      </div>
+      <div>
+        <p className="mb-2 text-xs font-medium text-ink-soft">{zh?"任务类型":"Task type"}</p>
         <div className="grid grid-cols-3 gap-2">
-          {([
-            {value:"one_time",zh:"单次任务",en:"One-time"},
-            {value:"recurring",zh:"定期任务",en:"Regular"},
-            {value:"habit",zh:"习惯养成",en:"Habit"},
-          ] as const).map(item=>(
-            <button key={item.value} type="button" disabled={busy}
-              aria-pressed={taskType===item.value}
-              onClick={()=>setTaskType(item.value)}
-              className={`rounded-xl border px-2 py-3 text-center text-xs transition-colors duration-200 ${taskType===item.value?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft hover:bg-white"}`}>
-              {dictionary.common?.minutes==="分钟"?item.zh:item.en}
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-ink-faint">
-          {taskType==="habit"
-            ? (dictionary.common?.minutes==="分钟"?"追踪持续行为与目标频率；打卡将在后续 Habit 工作区完成。":"Track ongoing behavior and target frequency; check-ins come in the Habit workspace.")
-            : taskType==="recurring"
-              ? (dictionary.common?.minutes==="分钟"?"每次发生有独立的完成状态。":"Each occurrence has its own completion outcome.")
-              : (dictionary.common?.minutes==="分钟"?"完成一次后任务结束，可选择灵活或指定时段。":"Complete once, with flexible or specific-time scheduling.")}
-        </p>
-      </div>
-      {/* 任务名称 */}
-      <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.task}
-        </label>
-
-        <input
-          className="input"
-          placeholder={t.taskPlaceholder}
-          value={title}
-          onChange={(e) =>
-            setTitle(
-              e.target.value
-            )
-          }
-          disabled={busy}
-        />
-      </div>
-
-      {/* 任务细节 */}
-      <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.taskDetails}
-        </label>
-
-        <textarea
-          className="input min-h-[96px] w-full resize-y"
-          placeholder={t.detailsPlaceholder}
-          value={description}
-          onChange={(e) =>
-            setDescription(
-              e.target.value
-            )
-          }
-          disabled={busy}
-        />
-
-        <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-          {t.detailsHelp}
-        </p>
-      </div>
-
-      {/* 分类 */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs text-ink-faint">
-            {t.category}
-          </label>
-
-          {category && (
-            <button
-              type="button"
-              onClick={() =>
-                setCategory(null)
-              }
-              className="text-[11px] text-ink-faint transition hover:text-ink-soft"
-            >
-              {dictionary.common.clear}
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map(
-            (item) => {
-              const selected =
-                category ===
-                item.value;
-
-              return (
-                <button
-                  key={
-                    item.value
-                  }
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setCategory(
-                      item.value
-                    );
-
-                    /*
-                     * 如果切换到非 other，
-                     * 自动清掉之前的自定义标签。
-                     */
-                    if (
-                      item.value !==
-                      "other"
-                    ) {
-                      setCustomTag(
-                        ""
-                      );
-                    }
-                  }}
-                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                    selected
-                      ? "border-sage-300 bg-sage-100 font-medium text-sage-700"
-                      : "border-line bg-white/70 text-ink-soft hover:bg-white"
-                  }`}
-                >
-                  {t.categories[item.value]}
-                </button>
-              );
-            }
-          )}
+          {([{value:"one_time",label:zh?"单次任务":"One-time",help:zh?"做完即结束":"Finish once"},{value:"recurring",label:zh?"定期任务":"Regular",help:zh?"每次独立完成":"Each occurrence"},{value:"habit",label:zh?"习惯养成":"Habit",help:zh?"长期记录":"Build a habit"}] as const).map(item=>
+            <button key={item.value} type="button" disabled={busy} aria-pressed={taskType===item.value} onClick={()=>{setTaskType(item.value);if(item.value==="habit"){setCadence("weekly_quota");setGoalEnabled(true);setGoalPeriod("week");setGoalMetric("count");setGoalValue("3");setTimesPerWeek(3);}else if(item.value==="recurring"){setCadence("weekly_days");setGoalEnabled(false);}else{setGoalEnabled(false);}}}
+              className={`min-w-0 rounded-xl border px-2 py-3 text-center transition ${taskType===item.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line bg-white text-ink-soft hover:bg-paper"}`}>
+              <span className="block text-sm font-semibold">{item.label}</span><span className="mt-1 block text-[10px] opacity-70">{item.help}</span>
+            </button>)}
         </div>
       </div>
-
-      {/* 其他分类自定义标签 */}
-      {category === "other" && (
-        <div>
-          <label className="mb-1.5 block text-xs text-ink-faint">
-            {t.customTag}
-          </label>
-
-          <input
-            className="input"
-            placeholder={t.customTagPlaceholder}
-            value={customTag}
-            onChange={(e) =>
-              setCustomTag(
-                e.target.value
-              )
-            }
-            disabled={busy}
-          />
-        </div>
-      )}
-
-      {/* 预计时间 */}
-      <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.estimatedTime}
-        </label>
-
-        <DurationInput
-          value={minutes}
-          unit={durationUnit}
-          onValueChange={
-            setMinutes
-          }
-          onUnitChange={
-            setDurationUnit
-          }
-          disabled={busy}
-        />
-
-        <p className="mt-1.5 text-[11px] text-ink-faint">
-          {t.durationHelp}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-line bg-white/80 p-4">
-        <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"安排时间":"Schedule time"}</p>
-        {taskType==="one_time" && <div className="grid grid-cols-2 gap-2">
-          {(["flexible","fixed"] as const).map(mode=><button key={mode} type="button" disabled={busy}
-            aria-pressed={planMode===mode} onClick={()=>setPlanMode(mode)}
-            className={`rounded-xl border px-3 py-3 text-left text-sm transition ${planMode===mode?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft"}`}>
-            {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):mode==="fixed"?(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time"):(dictionary.common?.minutes==="分钟"?"重复计划":"Repeat")}
-          </button>)}
-        </div>}
-        {taskType!=="one_time" && <div className="mt-4 space-y-3">
-          <label className="block text-xs font-medium text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"重复方式":"Repeat pattern"}
-            <select className="input mt-1 w-full" value={cadence} disabled={busy}
-              onChange={e=>setCadence(e.target.value as typeof cadence)}>
-              <option value="daily">{dictionary.common?.minutes==="分钟"?"每天":"Every day"}</option>
-              <option value="weekly_days">{dictionary.common?.minutes==="分钟"?"每周指定日期":"Specific weekdays"}</option>
-              <option value="weekly_quota">{dictionary.common?.minutes==="分钟"?"每周目标次数":"Times per week"}</option>
-            </select>
-          </label>
-          {cadence==="weekly_days" && <div>
-            <p className="mb-2 text-xs text-ink-soft">{dictionary.common?.minutes==="分钟"?"选择星期（周一至周日）":"Choose weekdays (Monday to Sunday)"}</p>
-            <div className="flex flex-wrap gap-2">
-              {(dictionary.common?.minutes==="分钟"?["一","二","三","四","五","六","日"]:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]).map((day,i)=>
-                <button key={i} type="button" disabled={busy} aria-pressed={weekdays.includes(i+1)}
-                  onClick={()=>setWeekdays(current=>current.includes(i+1)?current.filter(x=>x!==i+1):[...current,i+1].sort())}
-                  className={`rounded-lg border px-3 py-2 text-xs ${weekdays.includes(i+1)?"border-sage-400 bg-sage-100 text-sage-800":"border-line bg-white text-ink-soft"}`}>{day}</button>)}
-            </div>
+      {taskType==="one_time" ? (
+        <section className="space-y-3">
+          <p className="text-xs font-medium text-ink-soft">{zh?"什么时候处理？（可选）":"When? (optional)"}</p>
+          <div className="grid grid-cols-2 gap-2">
+            {([{value:"flexible",label:zh?"灵活安排":"Flexible"},{value:"fixed",label:zh?"固定时段":"Booked time"}] as const).map(item=>
+              <button type="button" key={item.value} onClick={()=>setPlanMode(item.value)} aria-pressed={planMode===item.value} disabled={busy} className={`rounded-xl border px-3 py-2 text-sm ${planMode===item.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{item.label}</button>)}
+          </div>
+          {planMode==="fixed"&&<div className="space-y-3 rounded-xl bg-paper/40 p-3">
+            <label className="block text-xs text-ink-soft">{zh?"开始":"Start"}<input className={field+" mt-1"} type="datetime-local" value={sessionStart} disabled={busy} onChange={e=>{setSessionStart(e.target.value);if(minutes&&Number(minutes)>0){const d=new Date(e.target.value);if(!Number.isNaN(d.getTime())){d.setMinutes(d.getMinutes()+Number(minutes)*(durationUnit==="hour"?60:1));const local=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);setSessionEnd(local);}}}}/></label>
+            <label className="block text-xs text-ink-soft">{zh?"结束":"End"}<input className={field+" mt-1"} type="datetime-local" value={sessionEnd} disabled={busy} min={sessionStart||undefined} onChange={e=>setSessionEnd(e.target.value)}/></label>
+            <p className="text-xs text-ink-faint">{zh?"输入开始时间和预计时长可自动推算结束；也可以自行调整。":"Start and estimate can suggest an end; you can adjust it."}</p>
           </div>}
-          {cadence==="weekly_quota" && <label className="block text-xs text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"每周次数":"Times per week"}
-            <select className="input mt-1 w-full" disabled={busy} value={timesPerWeek}
-              onChange={e=>setTimesPerWeek(Number(e.target.value))}>
-              {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
+        </section>
+      ):taskType==="recurring"?(
+        <section className="space-y-3 rounded-xl bg-paper/40 p-3">
+          <label className="block text-xs font-medium text-ink-soft">{zh?"多久做一次？":"How often?"}
+            <select className={field+" mt-1"} value={cadence} disabled={busy} onChange={e=>setCadence(e.target.value as typeof cadence)}>
+              <option value="daily">{zh?"每天":"Daily"}</option>
+              <option value="weekly_days">{zh?"每周指定星期":"Selected weekdays"}</option>
+              <option value="weekly_quota">{zh?"每周若干次":"Times per week"}</option>
             </select>
-          </label>}
-          <label className="block text-xs text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"结束日期（可选）":"End date (optional)"}
-            <input className="input mt-1 w-full" type="date" disabled={busy} min={taskDate}
-              value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)}/>
           </label>
-          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"保存重复规则，不会自动创建未来日历时段。":"Save a repeat rule without auto-booking calendar sessions."}</p>
-        </div>}
-        {taskType==="one_time" && planMode==="fixed" ? <div className="mt-5 space-y-4">
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-ink-soft">{dictionary.common?.minutes==="分钟"?"工作日期":"Work date"}</label>
-            <div className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
-              <CalendarDays className="h-4 w-4 shrink-0 text-sage-700"/>
-              <button type="button" disabled={busy} onClick={() => {
-                const input=workDateRef.current;
-                if (!input) return;
-                try { input.showPicker(); } catch { input.focus(); input.click(); }
-              }} className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink">
-                {formatWorkDate(sessionStart,dictionary.common?.minutes==="分钟")}
-              </button>
-              <input ref={workDateRef} aria-label={dictionary.common?.minutes==="分钟"?"选择工作日期":"Choose work date"}
-                type="date" value={sessionStart.slice(0,10)} disabled={busy}
-                onChange={e=>{const day=e.target.value;if(!day)return;setSessionStart(day+"T"+(sessionStart.slice(11)||"14:00"));setSessionEnd((crossDay?sessionEnd.slice(0,10)||day:day)+"T"+(sessionEnd.slice(11)||"16:00"));}}
-                className="h-9 w-10 shrink-0 cursor-pointer text-transparent outline-none [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer"/>
-            </div>
+          {cadence==="weekly_days"&&<div className="flex flex-wrap gap-1.5">{["一","二","三","四","五","六","日"].map((d,i)=><button key={d} type="button" disabled={busy} aria-pressed={weekdays.includes(i+1)} onClick={()=>setWeekdays(v=>v.includes(i+1)?v.filter(x=>x!==i+1):[...v,i+1].sort())} className={`h-9 w-9 rounded-lg border text-xs ${weekdays.includes(i+1)?"border-sage-400 bg-sage-100 text-sage-800":"border-line bg-white"}`}>{d}</button>)}</div>}
+          {cadence==="weekly_quota"&&<label className="block text-xs text-ink-soft">{zh?"每周次数":"Weekly count"}<select className={field+" mt-1"} disabled={busy} value={timesPerWeek} onChange={e=>setTimesPerWeek(Number(e.target.value))}>{[1,2,3,4,5,6,7].map(n=><option key={n}>{n}</option>)}</select></label>}
+          <p className="text-xs text-sage-700">{zh?`执行目标自动参考：${cadence==="daily"?"每天 1 次":`每周 ${countFromPattern} 次`}`:`Suggested frequency: ${countFromPattern}`}</p>
+        </section>
+      ):(
+        <section className="space-y-3 rounded-xl bg-paper/40 p-3">
+          <p className="text-xs font-medium text-ink-soft">{zh?"希望坚持多少？":"Your habit goal"}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-ink-soft">{zh?"统计周期":"Period"}<select className={field+" mt-1"} value={goalPeriod} onChange={e=>setGoalPeriod(e.target.value as typeof goalPeriod)} disabled={busy}><option value="day">{zh?"每天":"Day"}</option><option value="week">{zh?"每周":"Week"}</option><option value="month">{zh?"每月":"Month"}</option></select></label>
+            <label className="text-xs text-ink-soft">{zh?"目标次数":"Target count"}<input className={field+" mt-1"} type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e=>{setGoalValue(e.target.value);setTimesPerWeek(Math.min(7,Math.max(1,Number(e.target.value)||1)));}}/></label>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            {([{key:"start",label:dictionary.common?.minutes==="分钟"?"开始":"Start",value:sessionStart},{key:"end",label:dictionary.common?.minutes==="分钟"?"结束":"End",value:sessionEnd}] as const).map(item=>
-              <label key={item.key} className="min-w-0">
-                <span className="mb-2 block text-xs font-semibold text-ink-soft">{item.label}</span>
-                <span className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
-                  <Clock3 className="h-4 w-4 shrink-0 text-sage-700"/>
-                  <input type="time" step={300} value={item.value.slice(11)} disabled={busy}
-                    onChange={e=>{const date=item.key==="start"?sessionStart.slice(0,10):crossDay?sessionEnd.slice(0,10):sessionStart.slice(0,10);
-                      if(item.key==="start")setSessionStart(date+"T"+e.target.value);else setSessionEnd(date+"T"+e.target.value);
-                    }}
-                    className="w-full min-w-0 bg-transparent text-base font-medium text-ink outline-none"/>
-                </span>
-              </label>)}
-          </div>
-          <label className="flex items-center gap-2 text-xs text-ink-soft">
-            <input type="checkbox" checked={crossDay} disabled={busy} onChange={e=>{setCrossDay(e.target.checked);if(!e.target.checked&&sessionStart)setSessionEnd(sessionStart.slice(0,10)+"T"+(sessionEnd.slice(11)||"16:00"));}}/>
-            {dictionary.common?.minutes==="分钟"?"跨天结束":"Ends on another day"}
-          </label>
-          {crossDay && <label className="block text-xs font-medium text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"结束日期":"End date"}
-            <input type="date" min={sessionStart.slice(0,10)||undefined} value={sessionEnd.slice(0,10)} disabled={busy}
-              onChange={e=>setSessionEnd(e.target.value+"T"+(sessionEnd.slice(11)||"16:00"))}
-              className="input mt-2 w-full"/>
-          </label>}
-          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"仅安排这一次；以后可以在 Calendar 中拖动或新增时段。":"One session only; adjust or add sessions in Calendar later."}</p>
-        </div>:taskType==="one_time"?<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"先创建任务，不占用日历时间；以后再手动安排。":"Create the task without booking time; schedule it later."}</p>:null}
-      </div>
-
-      {taskType !== "one_time" && (
-        <section className="rounded-2xl border border-line bg-white/80 p-4 space-y-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-ink">
-            <input type="checkbox" checked={goalEnabled} onChange={e => setGoalEnabled(e.target.checked)} disabled={busy} />
-            {dictionary.common?.minutes === "分钟" ? "执行目标（可选）" : "Progress goals (optional)"}
-          </label>
-          <p className="text-xs text-ink-faint">{dictionary.common?.minutes === "分钟" ? "重复方式决定何时执行；执行目标决定希望完成多少。" : "Schedule defines when; goals define how much."}</p>
-          {goalEnabled && (
-            <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs text-ink-soft">主要目标 / Primary metric
-                  <select className="input mt-1 w-full" value={goalMetric} disabled={busy} onChange={e => setGoalMetric(e.target.value as "count" | "duration")}>
-                    <option value="count">完成次数 / Count</option>
-                    <option value="duration">累计分钟 / Minutes</option>
-                  </select>
-                </label>
-                <label className="text-xs text-ink-soft">统计周期 / Period
-                  <select className="input mt-1 w-full" value={goalPeriod} disabled={busy} onChange={e => setGoalPeriod(e.target.value as "day" | "week" | "month")}>
-                    <option value="day">每天 / Day</option>
-                    <option value="week">每周 / Week</option>
-                    <option value="month">每月 / Month</option>
-                  </select>
-                </label>
-              </div>
-              {cadence === "weekly_quota" && goalPeriod === "week" && goalMetric === "count" ?
-                <p className="rounded-xl bg-sage-50 p-3 text-sm text-sage-700">每周 {timesPerWeek} 次（与上方重复规则同步）</p> :
-                <label className="block text-xs text-ink-soft">{goalMetric === "count" ? "周期目标次数 / Target count" : "周期目标分钟数 / Target minutes"}
-                  <input className="input mt-1 w-full" type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e => setGoalValue(e.target.value)} />
-                </label>}
-              <details className="rounded-xl bg-paper/50 p-3">
-                <summary className="cursor-pointer text-xs font-medium text-ink-soft">额外目标 / Advanced goals</summary>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {goalMetric === "count" ? (
-                    <label className="text-xs text-ink-soft">周期累计分钟 / Period minutes
-                      <input className="input mt-1 w-full" type="number" min="1" step="1" value={extraPeriodMinutes} onChange={e => setExtraPeriodMinutes(e.target.value)} disabled={busy}/>
-                    </label>
-                  ) : (
-                    <label className="text-xs text-ink-soft">周期次数 / Period count
-                      <input className="input mt-1 w-full" type="number" min="1" step="1" value={extraCount} onChange={e => setExtraCount(e.target.value)} disabled={busy}/>
-                    </label>
-                  )}
-                  <label className="text-xs text-ink-soft">单次目标分钟 / Per-session minutes
-                    <input className="input mt-1 w-full" type="number" min="1" step="1" value={perSessionMinutes} onChange={e => setPerSessionMinutes(e.target.value)} disabled={busy}/>
-                  </label>
-                  <label className="text-xs text-ink-soft">整个项目累计分钟 / Total minutes
-                    <input className="input mt-1 w-full" type="number" min="1" step="1" value={totalMinutes} onChange={e => setTotalMinutes(e.target.value)} disabled={busy}/>
-                  </label>
-                </div>
-              </details>
-              <p className="text-xs text-ink-faint">目标是计划值，真实专注时间由 Focus 记录自动统计。</p>
-            </div>
-          )}
+          <p className="text-xs text-ink-faint">{zh?"默认灵活进行，不自动预约日历时段。":"Flexible by default; no booked slots."}</p>
         </section>
       )}
-
-      <div className="rounded-2xl border border-line bg-paper/40 p-4">
-        <label className="flex items-center gap-2 text-sm font-medium text-ink">
-          <input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy} />
-          {dictionary.common?.minutes === "分钟" ? "开启成长旅程（可选）" : "Enable growth Journey (optional)"}
-        </label>
-        {longTerm && <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "开始日期" : "Start date"}
-            <input className="input mt-1 w-full" type="date" value={startDate} onChange={e=>{setStartDate(e.target.value);if(endDate<e.target.value)setEndDate(e.target.value);}} disabled={busy}/>
-          </label>
-          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "目标结束日期" : "Target end date"}
-            <input className="input mt-1 w-full" type="date" min={startDate} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/>
-          </label>
-          <div className="sm:col-span-2">
-            <p className="mb-2 text-xs text-ink-soft">旅程颜色 / Journey color</p>
-            <div className="flex flex-wrap gap-2">
-              {([{key:"blue",hex:"#4B83D1"},{key:"green",hex:"#38A179"},{key:"purple",hex:"#9268C5"},{key:"orange",hex:"#DE9144"},{key:"pink",hex:"#D9769B"},{key:"teal",hex:"#329B9C"}] as const).map(c=>
-                <button key={c.key} type="button" disabled={busy} onClick={()=>setJourneyColor(c.key)} aria-pressed={journeyColor===c.key}
-                  aria-label={c.key} title={c.key} className={`h-9 w-9 rounded-full border-4 transition-transform ${journeyColor===c.key?"border-ink scale-110":"border-white hover:scale-105"}`}
-                  style={{backgroundColor:c.hex}} />
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes === "分钟" ? "创建后可在 Calendar 的旅程视图中调整日期。" : "Adjust journey dates later in Calendar."}</p>
-        </div>}
-      </div>
-
-      {/* 可见范围 */}
-      <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.visibility}
-        </label>
-
-        <select
-          className="input"
-          value={visibility}
-          onChange={(e) =>
-            setVisibility(
-              e.target.value as
-                | "private"
-                | "space"
-            )
-          }
-          disabled={busy}
-        >
-          <option value="private">
-            {t.privateVisibility}
-          </option>
-
-          <option value="space">
-            {t.shareToSpace.replace("{space}", activeSpaceName)}
-          </option>
-        </select>
-      </div>
-
-      <button
-        type="submit"
-        className="btn-primary w-full"
-        disabled={busy}
-      >
-        {busy
-          ? t.adding
-          : t.addTask}
-      </button>
-
-      {error && (
-        <p className="text-sm text-blush-500">
-          {error}
-        </p>
-      )}
+      <details className="rounded-xl border border-line px-3 py-3">
+        <summary className="cursor-pointer text-xs font-medium text-ink-soft">{zh?"更多选项（可选）":"More options (optional)"}</summary>
+        <div className="mt-4 space-y-4">
+          <label className="block text-xs text-ink-soft">{zh?"描述":"Description"}<textarea className={field+" mt-1 min-h-20"} value={description} onChange={e=>setDescription(e.target.value)} disabled={busy}/></label>
+          <label className="block text-xs text-ink-soft">{zh?"分类":"Category"}<select className={field+" mt-1"} value={category??""} onChange={e=>setCategory(e.target.value as Category||null)} disabled={busy}><option value="">{zh?"不分类":"None"}</option>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{t.categories[c.value]}</option>)}</select></label>
+          {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
+          <label className="block text-xs text-ink-soft">{zh?"预计投入（非必须连续完成）":"Effort estimate"}<DurationInput value={minutes} unit={durationUnit} onValueChange={setMinutes} onUnitChange={setDurationUnit} disabled={busy}/></label>
+          {taskType!=="one_time"&&<label className="block text-xs text-ink-soft">{zh?"重复结束日期":"Repeat until"}<input type="date" className={field+" mt-1"} min={taskDate} value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)} disabled={busy}/></label>}
+          {taskType!=="one_time"&&<label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={goalEnabled} onChange={e=>setGoalEnabled(e.target.checked)} disabled={busy}/>{zh?"额外保存周期目标":"Save period target"}</label>}
+          {goalEnabled&&taskType!=="one_time"&&<div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-ink-soft">{zh?"主要指标":"Metric"}<select className={field+" mt-1"} value={goalMetric} onChange={e=>setGoalMetric(e.target.value as typeof goalMetric)} disabled={busy}><option value="count">{zh?"次数":"Count"}</option><option value="duration">{zh?"分钟":"Minutes"}</option></select></label>
+            {goalMetric==="duration"&&<label className="text-xs text-ink-soft">{zh?"目标分钟":"Target minutes"}<input className={field+" mt-1"} type="number" min="1" value={goalValue} onChange={e=>setGoalValue(e.target.value)} disabled={busy}/></label>}
+          </div>}
+          <label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy}/>{zh?"开启成长旅程":"Enable Journey"}</label>
+          {longTerm&&<div className="space-y-2">
+            <label className="block text-xs text-ink-soft">{zh?"旅程开始":"Journey start"}<input type="date" className={field+" mt-1"} value={startDate} onChange={e=>setStartDate(e.target.value)} disabled={busy}/></label>
+            <label className="block text-xs text-ink-soft">{zh?"旅程结束":"Journey end"}<input type="date" min={startDate} className={field+" mt-1"} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/></label>
+            <div className="flex flex-wrap gap-2">{([{id:"blue",hex:"#4B83D1"},{id:"green",hex:"#38A179"},{id:"purple",hex:"#9268C5"},{id:"orange",hex:"#DE9144"},{id:"pink",hex:"#D9769B"},{id:"teal",hex:"#329B9C"}] as const).map(c=><button type="button" key={c.id} aria-label={c.id} aria-pressed={journeyColor===c.id} onClick={()=>setJourneyColor(c.id)} className={`h-8 w-8 rounded-full border-4 ${journeyColor===c.id?"border-ink":"border-white"}`} style={{backgroundColor:c.hex}}/>)}</div>
+          </div>}
+          <label className="block text-xs text-ink-soft">{zh?"可见范围":"Visibility"}<select className={field+" mt-1"} value={visibility} onChange={e=>setVisibility(e.target.value as typeof visibility)} disabled={busy}><option value="private">{zh?"仅自己":"Private"}</option><option value="space">{activeSpaceName}</option></select></label>
+        </div>
+      </details>
+      <button className="btn-primary w-full" type="submit" disabled={busy||!title.trim()}>{busy?(zh?"保存中…":"Saving..."):(zh?"创建任务":"Create task")}</button>
+      {error&&<p role="alert" className="text-sm text-blush-500">{error}</p>}
     </form>
   );
 }
