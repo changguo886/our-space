@@ -32,15 +32,19 @@ ORDER BY table_name, c.conname;
 SELECT task_type, status, count(*)::int AS row_count
 FROM public.todos GROUP BY task_type, status ORDER BY task_type, status;
 
--- 4. Row counts in each related table; safe against absent optional tables
-SELECT t.table_name,
-       CASE WHEN to_regclass('public.'||t.table_name) IS NOT NULL
-         THEN (xpath('/row/n/text()', query_to_xml(
-           format('SELECT count(*) AS n FROM public.%I', t.table_name),false,true,'')))[1]::text::bigint
-         ELSE NULL END AS row_count
-FROM (VALUES ('todos'),('todo_subtasks'),('todo_sessions'),('quick_notes'),
- ('schedule_rules'),('task_occurrences'),('habit_logs'),('task_goal_settings'),
- ('focus_entries'),('goal_journeys'),('goal_journey_days')) t(table_name);
+-- 4. Exact row counts for the known installed core tables
+SELECT 'todos' AS table_name,count(*)::bigint AS row_count FROM public.todos
+UNION ALL SELECT 'todo_subtasks',count(*) FROM public.todo_subtasks
+UNION ALL SELECT 'todo_sessions',count(*) FROM public.todo_sessions
+UNION ALL SELECT 'quick_notes',count(*) FROM public.quick_notes
+UNION ALL SELECT 'schedule_rules',count(*) FROM public.schedule_rules
+UNION ALL SELECT 'task_occurrences',count(*) FROM public.task_occurrences
+UNION ALL SELECT 'habit_logs',count(*) FROM public.habit_logs
+UNION ALL SELECT 'task_goal_settings',count(*) FROM public.task_goal_settings
+UNION ALL SELECT 'focus_entries',count(*) FROM public.focus_entries
+UNION ALL SELECT 'goal_journeys',count(*) FROM public.goal_journeys
+UNION ALL SELECT 'goal_journey_days',count(*) FROM public.goal_journey_days
+ORDER BY table_name;
 
 -- 5. Distinguish recurrence-bearing tasks and stored planned/actual data
 SELECT
