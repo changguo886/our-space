@@ -94,7 +94,11 @@ export default function AddTodoForm({
       "private" | "space"
     >("private");
 
-  const [planMode,setPlanMode]=useState<"flexible"|"fixed">("flexible");
+  const [planMode,setPlanMode]=useState<"flexible"|"fixed"|"recurring">("flexible");
+  const [cadence,setCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
+  const [weekdays,setWeekdays]=useState<number[]>([]);
+  const [timesPerWeek,setTimesPerWeek]=useState(3);
+  const [repeatEnd,setRepeatEnd]=useState("");
   const [sessionStart,setSessionStart]=useState("");
   const [sessionEnd,setSessionEnd]=useState("");
   const [crossDay,setCrossDay]=useState(false);
@@ -150,6 +154,14 @@ export default function AddTodoForm({
       const from=new Date(sessionStart).getTime(),to=new Date(sessionEnd).getTime();
       if(!sessionStart||!sessionEnd||!Number.isFinite(from)||!Number.isFinite(to)||to<=from){
         setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
+      }
+    }
+    if (planMode==="recurring") {
+      if (cadence==="weekly_days" && weekdays.length===0) {
+        setError("请选择至少一天 / Select at least one weekday"); return;
+      }
+      if (repeatEnd && repeatEnd < taskDate) {
+        setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
       }
     }
     if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
@@ -217,6 +229,29 @@ export default function AddTodoForm({
       }
     }
 
+    if (!error && created && planMode === "recurring") {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const { error: ruleError } = await supabase.from("schedule_rules").insert({
+        todo_id: created.id,
+        cadence,
+        weekdays: cadence === "weekly_days" ? weekdays : [],
+        times_per_week: cadence === "weekly_quota" ? timesPerWeek : null,
+        target_minutes: parsedMinutes,
+        local_start_time: null,
+        local_end_time: null,
+        timezone,
+        starts_on: taskDate,
+        ends_on: repeatEnd || null,
+        status: "active",
+      });
+      if (ruleError) {
+        setError("任务已创建，但重复规则未保存 / Recurrence failed: " + ruleError.message);
+        setBusy(false);
+        router.refresh();
+        return;
+      }
+    }
+
     if (!error && created && longTerm) {
       const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim"});
       if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
@@ -240,6 +275,7 @@ export default function AddTodoForm({
     setCustomTag("");
     setLongTerm(false);
     setPlanMode("flexible");
+    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");
     setSessionStart("");setSessionEnd("");setCrossDay(false);
     setStartDate(taskDate);
     setEndDate(taskDate);
@@ -413,13 +449,46 @@ export default function AddTodoForm({
 
       <div className="rounded-2xl border border-line bg-white/80 p-4">
         <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"安排时间":"Schedule time"}</p>
-        <div className="grid grid-cols-2 gap-2">
-          {(["flexible","fixed"] as const).map(mode=><button key={mode} type="button" disabled={busy}
+        <div className="grid grid-cols-3 gap-2">
+          {(["flexible","fixed","recurring"] as const).map(mode=><button key={mode} type="button" disabled={busy}
             aria-pressed={planMode===mode} onClick={()=>setPlanMode(mode)}
             className={`rounded-xl border px-3 py-3 text-left text-sm transition ${planMode===mode?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft"}`}>
-            {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time")}
+            {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):mode==="fixed"?(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time"):(dictionary.common?.minutes==="分钟"?"重复计划":"Repeat")}
           </button>)}
         </div>
+        {planMode==="recurring" && <div className="mt-4 space-y-3">
+          <label className="block text-xs font-medium text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"重复方式":"Repeat pattern"}
+            <select className="input mt-1 w-full" value={cadence} disabled={busy}
+              onChange={e=>setCadence(e.target.value as typeof cadence)}>
+              <option value="daily">{dictionary.common?.minutes==="分钟"?"每天":"Every day"}</option>
+              <option value="weekly_days">{dictionary.common?.minutes==="分钟"?"每周指定日期":"Specific weekdays"}</option>
+              <option value="weekly_quota">{dictionary.common?.minutes==="分钟"?"每周目标次数":"Times per week"}</option>
+            </select>
+          </label>
+          {cadence==="weekly_days" && <div>
+            <p className="mb-2 text-xs text-ink-soft">{dictionary.common?.minutes==="分钟"?"选择星期（周一至周日）":"Choose weekdays (Monday to Sunday)"}</p>
+            <div className="flex flex-wrap gap-2">
+              {(dictionary.common?.minutes==="分钟"?["一","二","三","四","五","六","日"]:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]).map((day,i)=>
+                <button key={i} type="button" disabled={busy} aria-pressed={weekdays.includes(i+1)}
+                  onClick={()=>setWeekdays(current=>current.includes(i+1)?current.filter(x=>x!==i+1):[...current,i+1].sort())}
+                  className={`rounded-lg border px-3 py-2 text-xs ${weekdays.includes(i+1)?"border-sage-400 bg-sage-100 text-sage-800":"border-line bg-white text-ink-soft"}`}>{day}</button>)}
+            </div>
+          </div>}
+          {cadence==="weekly_quota" && <label className="block text-xs text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"每周次数":"Times per week"}
+            <select className="input mt-1 w-full" disabled={busy} value={timesPerWeek}
+              onChange={e=>setTimesPerWeek(Number(e.target.value))}>
+              {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>}
+          <label className="block text-xs text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"结束日期（可选）":"End date (optional)"}
+            <input className="input mt-1 w-full" type="date" disabled={busy} min={taskDate}
+              value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)}/>
+          </label>
+          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"保存重复规则，不会自动创建未来日历时段。":"Save a repeat rule without auto-booking calendar sessions."}</p>
+        </div>}
         {planMode==="fixed" ? <div className="mt-5 space-y-4">
           <div>
             <label className="mb-2 block text-xs font-semibold text-ink-soft">{dictionary.common?.minutes==="分钟"?"工作日期":"Work date"}</label>
