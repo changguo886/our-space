@@ -40,6 +40,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   const categories: {key:string;label:string}[] = [{key:"work",label:"工作"},{key:"study",label:"学习"},{key:"life",label:"生活"},{key:"rest",label:"休息"},{key:"other",label:"其他"},{key:"none",label:"未分类"}];
   const grouped = categories.map(c=>({ ...c, items:visible.filter(t=>(t.category??"none")===c.key) })).filter(c=>c.items.length>0);
   const selected = todos.find(t=>t.id===selectedId)??null;
+  const displayType = (todo:Todo) => todo.task_type==="one_time" && todo.target_finish_date ? "定期任务" : typeLabel[todo.task_type??"one_time"];
   const tabs: {key:Filter;label:string}[] = [
     {key:"today",label:"今天"},
     {key:"backlog",label:"待安排 / 过期"},
@@ -81,7 +82,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
               <div className="space-y-1.5">{group.items.map(todo=><button key={todo.id} type="button" onClick={()=>setSelectedId(todo.id)} aria-pressed={selectedId===todo.id}
                 className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${selectedId===todo.id?"border-sage-300 bg-sage-50":"border-line/70 bg-white hover:bg-paper/50"}`}>
                 {todo.status==="completed"?<CheckCircle2 className="h-4 w-4 shrink-0 text-sage-600"/>:<span className={`h-2 w-2 shrink-0 rounded-full ${todo.task_type==="habit"?"bg-emerald-400":todo.task_type==="recurring"?"bg-amber-400":"bg-mist-300"}`}/>}
-                <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-medium ${todo.status==="completed"?"text-ink-faint line-through":"text-ink"}`}>{todo.title}</span><span className="block text-[10px] text-ink-faint">{typeLabel[todo.task_type??"one_time"]} · {todo.task_date||"待安排"}</span></span>
+                <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-medium ${todo.status==="completed"?"text-ink-faint line-through":"text-ink"}`}>{todo.title}</span><span className="block text-[10px] text-ink-faint">{displayType(todo)} · {todo.task_date||"待安排"}</span></span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint"/>
               </button>)}</div>
             </div>)}
@@ -96,7 +97,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
           </div>
           <TodayTodoWorkspace key={selected.id} todayTodos={selected.status==="completed"?[]:[selected]}
             todayCompleted={selected.status==="completed"?[selected]:[]}
-            title={selected.title} description={typeLabel[selected.task_type??"one_time"]} showProgress={false}/>
+            title={selected.title} description={displayType(selected)} showProgress={false}/>
         </section>}
       </div>
 
