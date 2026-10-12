@@ -43,11 +43,13 @@ export default function AddTodoForm({
   activeSpaceId,
   activeSpaceName,
   taskDate,
+  onCreated,
 }: {
   userId: string;
   activeSpaceId: string;
   activeSpaceName: string;
   taskDate: string;
+  onCreated?: () => void;
 }) {
   const workDateRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -306,6 +308,7 @@ export default function AddTodoForm({
      * 连续创建任务时，
      * 不需要每次重新选择。
      */
+    onCreated?.();
     router.refresh();
   }
 
