@@ -204,24 +204,22 @@ export default function AddTodoForm({
 
     let created: { id: string } | null = null;
     let createError: { message: string } | null = null;
-    if (taskType === "habit" && goalPeriod==="week") {
-      const { data, error: rpcError } = await supabase.rpc("create_scheduled_todo_v2", {
-        p_task_type: taskType,
-        p_title: cleanTitle,
-        p_description: description.trim() || null,
-        p_estimated_minutes: parsedMinutes,
-        p_task_date: taskDate,
-        p_category: category,
-        p_custom_tag: customTag.trim() || null,
-        p_group_id: visibility === "space" ? activeSpaceId : null,
-        p_cadence: cadence,
-        p_weekdays: cadence === "weekly_days" ? weekdays : [],
-        p_times_per_week: cadence === "weekly_quota" ? timesPerWeek : null,
-        p_ends_on: repeatEnd || null,
-        p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    if (taskType === "habit") {
+      const fixedWeek = goalPeriod==="week" && cadence==="weekly_days";
+      const fixedMonth = goalPeriod==="month" && habitArrangement==="fixed";
+      const target = fixedWeek ? weekdays.length : fixedMonth ? monthDays.length+(includeMonthEnd?1:0) : Number(goalValue);
+      const {data,error:rpcError}=await supabase.rpc("save_habit_v3",{
+        payload:{
+          title:cleanTitle,description:description.trim()||null,estimated_minutes:parsedMinutes,
+          task_date:taskDate,category,custom_tag:category==="other"?customTag.trim()||null:null,
+          group_id:visibility==="space"?activeSpaceId:null,
+          period:goalPeriod,arrangement:fixedWeek||fixedMonth?"fixed":"flexible",
+          target_count:target,weekdays:fixedWeek?weekdays:[],month_days:fixedMonth?monthDays:[],
+          include_month_end:fixedMonth&&includeMonthEnd,
+        },
       });
-      createError = rpcError;
-      if (!rpcError && data) created = { id: data as string };
+      createError=rpcError;
+      if(!rpcError&&data)created={id:data as string};
     } else {
       const { data, error } = await supabase.from("todos").insert({
         user_id: userId,
@@ -254,34 +252,10 @@ export default function AddTodoForm({
       }
     }
 
-    if (!error && created && taskType==="habit") {
-      const selectedDays=habitArrangement==="fixed" && goalPeriod==="month" ? monthDays : [];
-      const target=goalPeriod==="week" && cadence==="weekly_days" ? weekdays.length : goalPeriod==="month" && habitArrangement==="fixed" ? monthDays.length+(includeMonthEnd?1:0) : Number(goalValue);
-      const {error:patternError}=await supabase.from("habit_patterns_v3").insert({
-        todo_id:created.id, period:goalPeriod, arrangement:goalPeriod==="day"?"flexible":goalPeriod==="week"?(cadence==="weekly_days"?"fixed":"flexible"):habitArrangement,
-        target_count:target, weekdays:goalPeriod==="week"&&cadence==="weekly_days"?weekdays:[],
-        month_days:selectedDays,include_month_end:goalPeriod==="month"&&habitArrangement==="fixed"&&includeMonthEnd,
-      });
-      if(patternError){setError("任务已创建，但重复规则保存失败："+patternError.message);setBusy(false);router.refresh();return;}
-    }
-    if (!error && created && taskType === "habit") {
-      const { error: goalError } = await supabase.from("task_goal_settings").insert({
-        todo_id: created.id,
-        primary_metric: goalMetric,
-        period: goalPeriod,
-        target_value: goalPeriod==="week"&&cadence==="weekly_days"?weekdays.length:goalPeriod==="month"&&habitArrangement==="fixed"?monthDays.length+(includeMonthEnd?1:0):goalPeriod==="week"&&cadence==="weekly_quota"?timesPerWeek:Number(goalValue),
-        frequency_target: goalMetric === "duration" ? (cadence === "weekly_quota" && goalPeriod === "week" ? timesPerWeek : extraCount.trim() ? Number(extraCount) : null) : null,
-        period_duration_target_minutes: goalMetric === "count" && extraPeriodMinutes.trim() ? Number(extraPeriodMinutes) : null,
-        per_session_target_minutes: perSessionMinutes.trim() ? Number(perSessionMinutes) : null,
-        total_target_minutes: totalMinutes.trim() ? Number(totalMinutes) : null,
-      });
-      if (goalError) {
-        setError("任务已创建，但目标保存失败 / Task created, goal failed: " + goalError.message);
-        setBusy(false);
-        router.refresh();
-        return;
-      }
-    }
+    // Habit recurrence is persisted atomically by save_habit_v3.
+    // Do not write habit_patterns_v3 or duplicate the frequency in
+    // task_goal_settings from this form. Optional performance-goal
+    // persistence will be reinstated via a separate atomic RPC revision.
 
     if (!error && created && taskType==="planned") {
       const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:journeyColor});
