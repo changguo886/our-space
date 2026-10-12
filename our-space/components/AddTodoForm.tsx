@@ -331,6 +331,18 @@ export default function AddTodoForm({
         <label className="mb-2 block text-xs font-medium text-ink-soft">{zh?"任务名称":"Task name"} *</label>
         <input className={field} value={title} onChange={e=>setTitle(e.target.value)} placeholder={zh?"例如：完成论文":"e.g. Finish paper"} disabled={busy} autoFocus/>
       </div>
+      <div className="space-y-3">
+        <label className="block text-xs font-medium text-ink-soft">{zh?"任务描述（可选）":"Description (optional)"}
+          <textarea className={field+" mt-1 min-h-16"} rows={2} value={description} onChange={e=>setDescription(e.target.value)} placeholder={zh?"简要说明任务要求；工作笔记请使用 Quick Notes":"Brief task requirements; use Quick Notes for working notes"} disabled={busy}/>
+        </label>
+        <label className="block text-xs font-medium text-ink-soft">{zh?"分类":"Category"}
+          <select className={field+" mt-1"} value={category??""} onChange={e=>setCategory(e.target.value as Category||null)} disabled={busy}>
+            <option value="">{zh?"不分类":"None"}</option>
+            {CATEGORIES.map(c=><option key={c.value} value={c.value}>{t.categories[c.value]}</option>)}
+          </select>
+        </label>
+        {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
+      </div>
       <div>
         <p className="mb-2 text-xs font-medium text-ink-soft">{zh?"任务类型":"Task type"}</p>
         <div className="grid grid-cols-3 gap-2">
@@ -381,9 +393,6 @@ export default function AddTodoForm({
       <details className="rounded-xl border border-line px-3 py-3">
         <summary className="cursor-pointer text-xs font-medium text-ink-soft">{zh?"更多选项（可选）":"More options (optional)"}</summary>
         <div className="mt-4 space-y-4">
-          <label className="block text-xs text-ink-soft">{zh?"描述":"Description"}<textarea className={field+" mt-1 min-h-20"} value={description} onChange={e=>setDescription(e.target.value)} disabled={busy}/></label>
-          <label className="block text-xs text-ink-soft">{zh?"分类":"Category"}<select className={field+" mt-1"} value={category??""} onChange={e=>setCategory(e.target.value as Category||null)} disabled={busy}><option value="">{zh?"不分类":"None"}</option>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{t.categories[c.value]}</option>)}</select></label>
-          {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
           {taskType==="one_time"&&<label className="block text-xs text-ink-soft">{zh?"预计投入（可选）":"Estimated effort (optional)"}<DurationInput value={minutes} unit={durationUnit} onValueChange={setMinutes} onUnitChange={setDurationUnit} disabled={busy}/></label>}
           {taskType==="habit"&&<label className="block text-xs text-ink-soft">{zh?"重复结束日期":"Repeat until"}<input type="date" className={field+" mt-1"} min={taskDate} value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)} disabled={busy}/></label>}
           
