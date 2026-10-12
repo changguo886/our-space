@@ -178,8 +178,7 @@ export default function AddTodoForm({
           task_date:
             taskDate,
 
-          scheduled_start: planMode==="fixed"?new Date(sessionStart).toISOString():null,
-          scheduled_end: planMode==="fixed"?new Date(sessionEnd).toISOString():null,
+          // Plan slots live in todo_sessions, never duplicate into todos.scheduled_*.
 
           category:
             category,
@@ -189,6 +188,20 @@ export default function AddTodoForm({
               ? customTag.trim()
               : null,
         }).select("id").single();
+
+    if (!error && created && planMode === "fixed") {
+      const { error: sessionError } = await supabase.from("todo_sessions").insert({
+        todo_id: created.id,
+        scheduled_start: new Date(sessionStart).toISOString(),
+        scheduled_end: new Date(sessionEnd).toISOString(),
+      });
+      if (sessionError) {
+        setError("任务已创建，但时间安排未保存 / Task created but schedule failed: " + sessionError.message);
+        setBusy(false);
+        router.refresh();
+        return;
+      }
+    }
 
     if (!error && created && longTerm) {
       const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim"});
