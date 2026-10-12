@@ -592,13 +592,6 @@ export default function TodoList({
       return;
     }
 
-    if(Boolean(editScheduledStart)!==Boolean(editScheduledEnd)){
-      setError("请同时填写开始和结束时间。");return;
-    }
-    if(editScheduledStart && new Date(editScheduledEnd).getTime()<=new Date(editScheduledStart).getTime()){
-      setError(t.endAfterStart);return;
-    }
-
     const original=todos.find(item=>item.id===todoId);
     const originalType=original?.task_type==="habit"?"habit":original?.target_finish_date?"planned":"one_time";
     if(editType==="habit"&&originalType!=="habit"){setError("转换为习惯需要同时建立目标和规则，当前请先使用完整创建入口；原任务与历史记录不会被删除。");return;}
@@ -651,26 +644,6 @@ export default function TodoList({
       return;
     }
 
-    const todoForEdit=todos.find(item=>item.id===todoId);
-    // A single existing Session is editable here. Multiple Sessions are managed in Calendar.
-    if(editingSessionId && editScheduledStart && editScheduledEnd){
-      const {error:sessionError}=await supabase.from("todo_sessions").update({
-        scheduled_start:new Date(editScheduledStart).toISOString(),
-        scheduled_end:new Date(editScheduledEnd).toISOString(),
-      }).eq("id",editingSessionId).eq("todo_id",todoId);
-      if(sessionError){setBusyId(null);setError("任务已更新，但时间安排保存失败："+sessionError.message);return;}
-    } else if(!editingSessionId && editScheduledStart && editScheduledEnd){
-      const {error:sessionError}=await supabase.from("todo_sessions").insert({
-        todo_id:todoId,scheduled_start:new Date(editScheduledStart).toISOString(),
-        scheduled_end:new Date(editScheduledEnd).toISOString(),
-      });
-      if(sessionError){setBusyId(null);setError("任务已更新，但新增时间安排失败："+sessionError.message);return;}
-    }
-    // Clear the legacy fields only after the matching Session is saved.
-    if(editScheduledStart && editScheduledEnd && (todoForEdit?.scheduled_start||todoForEdit?.scheduled_end)){
-      const {error:clearError}=await supabase.from("todos").update({scheduled_start:null,scheduled_end:null}).eq("id",todoId);
-      if(clearError){setBusyId(null);setError("安排已保存，但旧时间字段未能清理："+clearError.message);return;}
-    }
     if(editRuleId){
       if(editRuleCadence==="weekly_days" && editRuleWeekdays.length===0){
         setBusyId(null);setError("请选择至少一个星期 / Select a weekday");return;
