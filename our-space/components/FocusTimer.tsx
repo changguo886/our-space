@@ -916,61 +916,32 @@ export default function FocusTimer({
     }
   }
 
+  async function persistFocusAction(action: "pause" | "end" | "complete") {
+    const { data, error } = await createClient().rpc("finish_focus_session", {
+      p_todo_id: todo.id,
+      p_action: action,
+      p_expected_started_at: status === "running" ? startedAt : null,
+    });
+    if (error) throw error;
+    return data as number;
+  }
+
   /*
    * 暂停
    */
   async function pauseTimer() {
-    if (
-      busy ||
-      status !== "running"
-    ) {
-      return;
-    }
-
+    if (busy || status !== "running") return;
     setBusy(true);
-
-    const newElapsed =
-      currentElapsed;
-
-    const supabase =
-      createClient();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "paused",
-
-          started_at:
-            null,
-
-          elapsed_seconds:
-            newElapsed,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.pauseFailed +
-          error.message
-      );
-
-      return;
+    try {
+      const savedElapsed = await persistFocusAction("pause");
+      setElapsedSeconds(savedElapsed);
+      setStartedAt(null);
+      setStatus("paused");
+    } catch (error) {
+      alert(focusText.pauseFailed + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
     }
-
-    setElapsedSeconds(
-      newElapsed
-    );
-
-    setStartedAt(null);
-
-    setStatus("paused");
   }
 
   /*
@@ -981,26 +952,19 @@ export default function FocusTimer({
   async function endFocusOnly() {
     if (busy || status === "completed") return;
     setBusy(true);
-    const savedElapsed = currentElapsed;
-    const { error } = await createClient()
-      .from("todos")
-      .update({
-        status: "paused",
-        started_at: null,
-        elapsed_seconds: savedElapsed,
-      })
-      .eq("id", todo.id);
-    setBusy(false);
-    if (error) {
-      alert("结束本次专注失败 / Failed to end focus: " + error.message);
-      return;
+    try {
+      const savedElapsed = await persistFocusAction("end");
+      setElapsedSeconds(savedElapsed);
+      setStartedAt(null);
+      setStatus("paused");
+      setTimeUp(false);
+      setCompactFinishConfirm(false);
+      closeFloatingTimer();
+    } catch (error) {
+      alert("结束本次专注失败 / Failed to end focus: " + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
     }
-    setElapsedSeconds(savedElapsed);
-    setStartedAt(null);
-    setStatus("paused");
-    setTimeUp(false);
-    setCompactFinishConfirm(false);
-    closeFloatingTimer();
   }
 
   function confirmWholeTask() {
@@ -1028,43 +992,15 @@ export default function FocusTimer({
 
     setBusy(true);
 
-    const actualElapsed =
-      currentElapsed;
-
-    const supabase =
-      createClient();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "completed",
-
-          started_at:
-            null,
-
-          elapsed_seconds:
-            actualElapsed,
-
-          completed_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.completeFailed +
-          error.message
-      );
-
+    let actualElapsed: number;
+    try {
+      actualElapsed = await persistFocusAction("complete");
+    } catch (error) {
+      setBusy(false);
+      alert(focusText.completeFailed + (error instanceof Error ? error.message : String(error)));
       return;
     }
+    setBusy(false);
 
     if (
       !alarmPlayedRef.current

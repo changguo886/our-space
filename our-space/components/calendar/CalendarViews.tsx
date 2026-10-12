@@ -9,6 +9,7 @@ import Link from "next/link";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
 type CalendarTask = { id:string; title:string; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
+type RepeatRule = { id:string; todo_id:string; cadence:"daily"|"weekly_days"|"weekly_quota"; weekdays:number[]; times_per_week:number|null; starts_on:string; ends_on:string|null; timezone:string; status:string };
 type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string };
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
 type Mode = "day"|"week"|"month"|"journey";
@@ -23,6 +24,19 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const [mode,setMode]=useState<Mode>(requested);
   const [date,setDate]=useState(params.get("date")?.match(/^\d{4}-\d{2}-\d{2}$/)?.[0]??initialDate);
   const [journeys,setJourneys]=useState<JourneyRow[]>([]);
+  const [repeatRules,setRepeatRules]=useState<RepeatRule[]>([]);
+  const [repeatError,setRepeatError]=useState("");
+  useEffect(()=>{
+    let alive=true;
+    void createClient().from("schedule_rules")
+      .select("id,todo_id,cadence,weekdays,times_per_week,starts_on,ends_on,timezone,status")
+      .eq("status","active").then(({data,error})=>{
+        if(!alive)return;
+        if(error)setRepeatError(error.message);
+        else {setRepeatRules((data??[]) as RepeatRule[]);setRepeatError("");}
+      });
+    return()=>{alive=false;};
+  },[]);
   const [selectedTodo,setSelectedTodo]=useState(params.get("todoId")??"");
   const [loadError,setLoadError]=useState("");
   useEffect(()=>{setMode(requested);if(params.get("todoId"))setSelectedTodo(params.get("todoId")??"");},[requested,params]);
@@ -39,6 +53,14 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
     ...(todo.todo_sessions?.length?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function eventsOn(d:string){return sessions.filter(s=>inDay(s.start,d));}
+  const taskTitle = new Map(tasks.map(t=>[t.id,t.title]));
+  // This is a date-only recurring plan indicator, not a booked calendar session.
+  // ISO day 1 = Monday, 7 = Sunday. Quotas are weekly targets without fixed dates.
+  function rulesOn(d:string) {
+    const weekday=((new Date(d+"T12:00:00").getDay()+6)%7)+1;
+    return repeatRules.filter(r=>taskTitle.has(r.todo_id) && d>=r.starts_on && (!r.ends_on||d<=r.ends_on)
+      && (r.cadence==="daily"||(r.cadence==="weekly_days"&&r.weekdays.includes(weekday))));
+  }
   const activeJourney=journeys.find(j=>j.todo_id===selectedTodo)??journeys[0];
   return <div className="mt-6">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -49,7 +71,15 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
           className={`rounded-lg px-3 py-2 text-sm ${mode===x.key?"bg-sage-100 font-medium text-sage-700":"text-ink-soft hover:bg-paper"}`}>{x.title}</button>)}
       </div>
     </div>
-    {mode==="day" ? <CalendarPlanner initialTodos={initialTodos} initialDate={date}/> :
+    {repeatError&&<p role="alert" className="mb-3 text-xs text-blush-500">重复计划读取失败 / Repeat rules unavailable: {repeatError}</p>}
+    {mode==="day" ? <div className="space-y-3">
+      {rulesOn(date).length>0&&<div className="rounded-2xl border border-line bg-white p-3">
+        <p className="mb-2 text-xs font-semibold text-ink-soft">当天重复计划 / Recurring plans (not booked sessions)</p>
+        <div className="flex flex-wrap gap-2">{rulesOn(date).map(r=>
+          <span key={r.id} className="rounded-lg bg-sage-50 px-2 py-1 text-xs text-sage-700">{taskTitle.get(r.todo_id)}</span>)}</div>
+      </div>}
+      <CalendarPlanner initialTodos={initialTodos} initialDate={date}/>
+    </div> :
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm font-medium text-ink">{mode==="week"?"本周":month+" 月"}</div>
@@ -80,10 +110,16 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
                 <div key={e.todoId+j} className="truncate rounded bg-sage-50 px-1 py-0.5 text-[10px] text-sage-700">{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
-                {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}</>}
+                {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
+                {rulesOn(d).slice(0,2).map(r=><div key={r.id} className="truncate rounded bg-paper px-1 py-0.5 text-[10px] text-ink-soft">↻ {taskTitle.get(r.todo_id)}</div>)}
+                {rulesOn(d).length>2&&<span className="text-[10px] text-ink-faint">+{rulesOn(d).length-2} repeats</span>}</>}
             </button>)}
         </div>
-        <p className="mt-3 text-xs text-ink-faint">点击日期进入日视图。日视图继续使用原有拖拽规划器。</p>
+        <p className="mt-3 text-xs text-ink-faint">↻ 为重复计划（非已预约时段）。每周次数目标不分配到特定日期。点击日期进入日视图。</p>
+        {repeatRules.some(r=>r.cadence==="weekly_quota"&&taskTitle.has(r.todo_id))&&<div className="mt-3 rounded-lg bg-paper p-2 text-xs text-ink-soft">
+          每周次数目标 / Weekly targets: {repeatRules.filter(r=>r.cadence==="weekly_quota"&&taskTitle.has(r.todo_id)
+            &&date>=r.starts_on&&(!r.ends_on||date<=r.ends_on)).map(r=>`${taskTitle.get(r.todo_id)} (${r.times_per_week}/week)`).join(" · ")||"—"}
+        </div>}
       </div>}
     </div>}
   </div>;
