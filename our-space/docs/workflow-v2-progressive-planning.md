@@ -3,6 +3,21 @@
 Status: **Product workflow accepted; incremental implementation underway**. This document is the source of truth for Todo / Calendar / Focus / History semantics. It supersedes earlier assumptions that every Todo must be fully specified at creation. Existing architecture and production migration safety documents remain in force.
 
 
+## V3 CANONICAL FIELD DICTIONARY — 2026-10-12
+
+The complete field ownership/deprecation registry is at [Todo V3 Field Contract](./todo-v3-field-contract.md). This registry is binding for future Todo/Calendar/Focus code reviews. **Do not add fields to solve a UI-only problem**; first identify the canonical owner.
+
+- `todos`: task identity, title, description, category, type, date, and finite-project start/target/deadline. No habit cadence here.
+- `habit_patterns_v3`: authoritative habit frequency (`period`, `arrangement`, `target_count`, `weekdays`, `month_days`, `include_month_end`). Compute valid fixed-month dates and effective count dynamically.
+- `todo_execution_plans`: non-booked flexible effort/window; `todo_execution_templates`: repeating fixed-clock defaults; `todo_execution_overrides`: occurrence-specific change; `todo_sessions`: actual persisted one-off fixed slots.
+- `task_occurrences`: occurrence outcome state; `habit_logs`: real habit check-in; existing Focus tables: actual measured time.
+- `todo_subtasks`, `quick_notes`, `goal_journeys`: independent child data, never merge to reduce table count.
+- **Deprecated, not yet safe to DROP**: `schedule_rules` and legacy RPC, frequency-like fields in `task_goal_settings`, `todos.scheduled_start/end`. Existing TodoList/Calendar still use some of these. No CASCADE or destructive cleanup until all Web/Tauri readers and writers are migrated and audited.
+
+**Cleanup order**: new habit create (M5) -> shared edit and canonical reading -> Calendar expansion/overrides -> Mini Focus regressions -> read-only DB dependency audit -> targeted forward-only removal migration. Empty legacy table does *not* mean it is unused by code.
+
+---
+
 ## V3 LOCKED CONTRACT — Recurrence, Scheduling, Editing, and Data Ownership (2026-10-12)
 
 This section overrides conflicting older planning notes below. Approved conceptual behavior; NOT a claim that the Web/Calendar implementation or Production verification is complete.
