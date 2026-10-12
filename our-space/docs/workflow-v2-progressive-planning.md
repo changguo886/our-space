@@ -21,6 +21,29 @@ Approved UI: desktop Task List by category / status + selected task Workspace + 
 
 **Migration gates:** inspect current Production and Staging schema, row counts and policy/function definitions, confirm deployment refs, then choose lowest-risk additive design or reviewed replacement. SQL files committed to GitHub are NOT executed automatically. The priority is updating the creation UX and preserving Todo/Calendar/Focus/Quick Notes mappings, not prematurely minimizing table count.
 
+## CONFIRMED IMPLEMENTATION STRATEGY — 2026-10-12 (latest, overrides earlier Calendar alternatives)
+
+**Primary interaction:** Create outcome first; arrange execution later. Keep the approved three-column desktop layout: categorized task list / selected task workspace / optional Todo-level Quick Notes ~380px. Right-side creation drawer short, no obligatory "advanced planning" form. Description (short task requirements) and category are visible before type-specific settings; Quick Notes are working notes, NOT a second description/remarks field.
+
+**Three creation paths:**
+- **单次任务:** title only required; optional short description/category, no forced "Today" execution. "Today" is only a view, not a task type or recurrence rule.
+- **定期任务:** one deliverable within a finite period, NOT automatic recurrence. Default plan_start_date to user's local **today**, editable. User picks target_finish_date; optional independent deadline_date. Creation stores a single Todo with plan dates (currently database task_type=one_time plus plan fields), not new task series. Detailed steps and scheduling happen in workspace. Planned task automatically receives optional-system Journey visualization with identical plan start/target finish dates; no extra "Enable Journey" checkbox or second date range. Color token persisted in goal_journeys.color_key.
+- **习惯养成:** sustained behavior, target per day/week/month entered ONCE, count or suitable metric. If choosing **fixed weekdays** within a week, weekday selection **determines and auto-saves** weekly count, never ask for a redundant number. If choosing flexible weekly count, user enters N and picks no fixed weekdays. Missing check-ins do not auto-fail. Underlying legacy RPC currently restricts daily and weekly quota; day-many/month must not silently claim support prior to migration.
+
+**Creation vs execution scheduling are separate:** After creation select the new Todo in Task Workspace; no forced second wizard. Within Workspace / Schedule tab, **Arrange execution** with modes:
+1. **Flexible**: optional planned effort (e.g. 45m); no specific date/time booking.
+2. **Time window**: preferred execution window (e.g. 18:00–22:00) plus intended 45m effort, not a 4-hour reservation or actual time.
+3. **Fixed time slot**: explicit start/end datetime, a real booked Todo Session.
+Optional Steps are linked to the same Todo; any mode may be associated with a subtask as appropriate. Focus logs actual time; estimates and window sizes must NEVER inflate actual focus totals.
+
+**FINAL CALENDAR RULE:** Calendar **hourly grid renders ONLY fixed booked time slots** from todo_sessions (with legacy todos.scheduled_start/end compatibility during migration). **Flexible tasks and time-window preferences do NOT display in the Calendar hourly grid OR all-day row.** Fixed weekdays for habits alone must NOT place bookings on Calendar; need explicit start/end time. Journey coloring in its separate Journey mode is independent from hourly Calendar session filtering. Today / task list can surface relevant to-dos without creating events. Remove old virtual recurring/calendar rule indicators from hourly grid once dependencies are verified.
+
+**Task Workspace:** Steps | Schedule | Stats | Details tabs. Quick Notes optional third column stays Todo-level grouped Unsorted and steps. Performance/Stats computed from habit_logs/focus_entries/real outcomes; users don't manually enter performance at creation. Journey and date settings in Details, not duplicate advanced creation fields.
+
+**Data contract/migration sequence:** Preserve todos, todo_subtasks, todo_sessions, quick_notes, focus_entries, habit_logs, task_goal_settings, goal_journeys; audit schedule_rules/task_occurrences and legacy readers/RPC before removing anything. Production and Staging V3 M1 plan_start_date/target_finish_date/deadline_date have reportedly been successfully applied by user; verify actual schema before deploying further changes. Do not invent a "flexible calendar event" or store 18:00–22:00 as a 4h booked todo_session. Prefer one minimal execution-plan table keyed to Todo (and optional subtask) for flexible/window metadata if needed, with strict modes and date/window constraints, rather than stretching todo_sessions semantics. No change to Production without independently tested and approved migration.
+
+**Execution order:** (1) Workflow source of truth, (2) read actual schema/code dependency and minimal migration proposal, (3) implement Workspace arrange-execution UI+data on feature branch, (4) build and Staging E2E, (5) user approves Production.
+
 ## Product promise
 **Plan lightly. Progress freely.** Capture immediately; plan in proportion to complexity; never punish unfinished work. Missing a scheduled slot does not delete, fail, or automatically complete a Todo. Reminders are gentle, opt-in, and eventually state-aware.
 
