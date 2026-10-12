@@ -498,7 +498,7 @@ export default function TodoList({
     const {data,error:sessionError}=await createClient().from("todo_sessions")
       .select("id,scheduled_start,scheduled_end").eq("todo_id",todo.id)
       .order("scheduled_start",{ascending:true});
-    if(editingId!==todo.id && sessionError){setError("读取安排失败："+sessionError.message);return;}
+    if(sessionError){setError("读取安排失败："+sessionError.message);return;}
     if(data?.length){
       setEditingSessionId(data.length===1?data[0].id:null);
       if(data.length===1){
@@ -625,9 +625,10 @@ export default function TodoList({
       });
       if(sessionError){setError("任务已更新，但新增时间安排失败："+sessionError.message);return;}
     }
-    // Clear a legacy-only schedule only after a Session is successfully saved.
+    // Clear the legacy fields only after the matching Session is saved.
     if(editScheduledStart && editScheduledEnd && (todoForEdit?.scheduled_start||todoForEdit?.scheduled_end)){
-      await supabase.from("todos").update({scheduled_start:null,scheduled_end:null}).eq("id",todoId);
+      const {error:clearError}=await supabase.from("todos").update({scheduled_start:null,scheduled_end:null}).eq("id",todoId);
+      if(clearError){setError("安排已保存，但旧时间字段未能清理："+clearError.message);return;}
     }
     cancelEditing();
     router.refresh();
