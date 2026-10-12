@@ -94,7 +94,8 @@ export default function AddTodoForm({
       "private" | "space"
     >("private");
 
-  const [planMode,setPlanMode]=useState<"flexible"|"fixed"|"recurring">("flexible");
+  const [taskType,setTaskType]=useState<"one_time"|"recurring"|"habit">("one_time");
+  const [planMode,setPlanMode]=useState<"flexible"|"fixed">("flexible");
   const [cadence,setCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
   const [weekdays,setWeekdays]=useState<number[]>([]);
   const [timesPerWeek,setTimesPerWeek]=useState(3);
@@ -150,13 +151,13 @@ export default function AddTodoForm({
       return;
     }
 
-    if(planMode==="fixed"){
+    if(taskType==="one_time" && planMode==="fixed"){
       const from=new Date(sessionStart).getTime(),to=new Date(sessionEnd).getTime();
       if(!sessionStart||!sessionEnd||!Number.isFinite(from)||!Number.isFinite(to)||to<=from){
         setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
       }
     }
-    if (planMode==="recurring") {
+    if (taskType!=="one_time") {
       if (cadence==="weekly_days" && weekdays.length===0) {
         setError("请选择至少一天 / Select at least one weekday"); return;
       }
@@ -173,8 +174,9 @@ export default function AddTodoForm({
 
     let created: { id: string } | null = null;
     let createError: { message: string } | null = null;
-    if (planMode === "recurring") {
-      const { data, error: rpcError } = await supabase.rpc("create_recurring_todo", {
+    if (taskType !== "one_time") {
+      const { data, error: rpcError } = await supabase.rpc("create_scheduled_todo_v2", {
+        p_task_type: taskType,
         p_title: cleanTitle,
         p_description: description.trim() || null,
         p_estimated_minutes: parsedMinutes,
@@ -200,13 +202,14 @@ export default function AddTodoForm({
         task_date: taskDate,
         category,
         custom_tag: customTag.trim() || null,
+        task_type: "one_time",
       }).select("id").single();
       created = data;
       createError = error;
     }
     const error = createError;
 
-    if (!error && created && planMode === "fixed") {
+    if (!error && created && taskType === "one_time" && planMode === "fixed") {
       const { error: sessionError } = await supabase.from("todo_sessions").insert({
         todo_id: created.id,
         scheduled_start: new Date(sessionStart).toISOString(),
@@ -242,6 +245,7 @@ export default function AddTodoForm({
     setMinutes("");
     setCustomTag("");
     setLongTerm(false);
+    setTaskType("one_time");
     setPlanMode("flexible");
     setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");
     setSessionStart("");setSessionEnd("");setCrossDay(false);
@@ -263,6 +267,30 @@ export default function AddTodoForm({
       onSubmit={submit}
       className="space-y-4"
     >
+      <div className="rounded-2xl border border-line bg-white/80 p-4">
+        <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"任务类型":"Task type"}</p>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            {value:"one_time",zh:"单次任务",en:"One-time"},
+            {value:"recurring",zh:"重复任务",en:"Recurring"},
+            {value:"habit",zh:"维持习惯",en:"Habit"},
+          ] as const).map(item=>(
+            <button key={item.value} type="button" disabled={busy}
+              aria-pressed={taskType===item.value}
+              onClick={()=>setTaskType(item.value)}
+              className={`rounded-xl border px-2 py-3 text-center text-xs transition-colors duration-200 ${taskType===item.value?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft hover:bg-white"}`}>
+              {dictionary.common?.minutes==="分钟"?item.zh:item.en}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-ink-faint">
+          {taskType==="habit"
+            ? (dictionary.common?.minutes==="分钟"?"追踪持续行为与目标频率；打卡将在后续 Habit 工作区完成。":"Track ongoing behavior and target frequency; check-ins come in the Habit workspace.")
+            : taskType==="recurring"
+              ? (dictionary.common?.minutes==="分钟"?"每次发生有独立的完成状态。":"Each occurrence has its own completion outcome.")
+              : (dictionary.common?.minutes==="分钟"?"完成一次后任务结束，可选择灵活或指定时段。":"Complete once, with flexible or specific-time scheduling.")}
+        </p>
+      </div>
       {/* 任务名称 */}
       <div>
         <label className="mb-1.5 block text-xs text-ink-faint">
@@ -417,14 +445,14 @@ export default function AddTodoForm({
 
       <div className="rounded-2xl border border-line bg-white/80 p-4">
         <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"安排时间":"Schedule time"}</p>
-        <div className="grid grid-cols-3 gap-2">
-          {(["flexible","fixed","recurring"] as const).map(mode=><button key={mode} type="button" disabled={busy}
+        {taskType==="one_time" && <div className="grid grid-cols-2 gap-2">
+          {(["flexible","fixed"] as const).map(mode=><button key={mode} type="button" disabled={busy}
             aria-pressed={planMode===mode} onClick={()=>setPlanMode(mode)}
             className={`rounded-xl border px-3 py-3 text-left text-sm transition ${planMode===mode?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft"}`}>
             {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):mode==="fixed"?(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time"):(dictionary.common?.minutes==="分钟"?"重复计划":"Repeat")}
           </button>)}
-        </div>
-        {planMode==="recurring" && <div className="mt-4 space-y-3">
+        </div>}
+        {taskType!=="one_time" && <div className="mt-4 space-y-3">
           <label className="block text-xs font-medium text-ink-soft">
             {dictionary.common?.minutes==="分钟"?"重复方式":"Repeat pattern"}
             <select className="input mt-1 w-full" value={cadence} disabled={busy}
@@ -457,7 +485,7 @@ export default function AddTodoForm({
           </label>
           <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"保存重复规则，不会自动创建未来日历时段。":"Save a repeat rule without auto-booking calendar sessions."}</p>
         </div>}
-        {planMode==="fixed" ? <div className="mt-5 space-y-4">
+        {taskType==="one_time" && planMode==="fixed" ? <div className="mt-5 space-y-4">
           <div>
             <label className="mb-2 block text-xs font-semibold text-ink-soft">{dictionary.common?.minutes==="分钟"?"工作日期":"Work date"}</label>
             <div className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
@@ -500,7 +528,7 @@ export default function AddTodoForm({
               className="input mt-2 w-full"/>
           </label>}
           <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"仅安排这一次；以后可以在 Calendar 中拖动或新增时段。":"One session only; adjust or add sessions in Calendar later."}</p>
-        </div>:<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"先创建任务，不占用日历时间；以后再手动安排。":"Create the task without booking time; schedule it later."}</p>}
+        </div>:taskType==="one_time"?<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"先创建任务，不占用日历时间；以后再手动安排。":"Create the task without booking time; schedule it later."}</p>:null}
       </div>
 
       <div className="rounded-2xl border border-line bg-paper/40 p-4">
