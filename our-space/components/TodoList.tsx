@@ -358,6 +358,10 @@ export default function TodoList({
     setEditScheduledEnd,
   ] = useState("");
 
+  const [editType,setEditType]=useState<"one_time"|"planned"|"habit">("one_time");
+  const [editPlanStart,setEditPlanStart]=useState("");
+  const [editTargetFinish,setEditTargetFinish]=useState("");
+  const [editDeadline,setEditDeadline]=useState("");
   const [editingSessionId,setEditingSessionId]=useState<string|null>(null);
   const [editRuleId,setEditRuleId]=useState<string|null>(null);
   const [editRuleCadence,setEditRuleCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
@@ -467,6 +471,10 @@ export default function TodoList({
     setEditingSessionId(null);
     setEditingId(todo.id);
     setEditTitle(todo.title);
+    setEditType(todo.task_type==="habit"?"habit":todo.target_finish_date?"planned":"one_time");
+    setEditPlanStart(todo.plan_start_date??todo.task_date??"");
+    setEditTargetFinish(todo.target_finish_date??"");
+    setEditDeadline(todo.deadline_date??"");
 
     setEditDescription(
       todo.description ?? ""
@@ -591,6 +599,12 @@ export default function TodoList({
       setError(t.endAfterStart);return;
     }
 
+    const original=todos.find(item=>item.id===todoId);
+    const originalType=original?.task_type==="habit"?"habit":original?.target_finish_date?"planned":"one_time";
+    if(editType==="habit"&&originalType!=="habit"){setError("转换为习惯需要同时建立目标和规则，当前请先使用完整创建入口；原任务与历史记录不会被删除。");return;}
+    if(originalType==="habit"&&editType!=="habit"){setError("已有习惯日志与规则，暂不能直接转换为其他类型，以免历史记录含义发生变化。");return;}
+    if(editType==="planned"&&(!editPlanStart||!editTargetFinish||editTargetFinish<editPlanStart||(editDeadline&&editDeadline<editTargetFinish))){setError("请填写有效的计划开始日期与目标完成日期。");return;}
+    if(originalType==="planned"&&editType==="one_time"&&!window.confirm("改为单次任务将清除计划日期，但不会删除笔记、步骤、Focus 或 Journey 历史。确认继续？"))return;
     setBusyId(todoId);
     setError(null);
 
@@ -620,7 +634,11 @@ export default function TodoList({
             editCustomTag.trim()
               ? editCustomTag.trim()
               : null,
-
+          ...(originalType!=="habit"?{
+            plan_start_date:editType==="planned"?editPlanStart:null,
+            target_finish_date:editType==="planned"?editTargetFinish:null,
+            deadline_date:editType==="planned"?(editDeadline||null):null,
+          }:{}),
         })
         .eq("id", todoId);
 
@@ -815,6 +833,14 @@ export default function TodoList({
                   />
                 </div>
 
+
+                <section className="space-y-3 rounded-xl border border-line p-3">
+                  <p className="text-xs font-medium text-ink-soft">任务类型</p>
+                  <div className="grid grid-cols-3 gap-2">{([{id:"one_time",label:"单次任务"},{id:"planned",label:"定期任务"},{id:"habit",label:"习惯养成"}] as const).map(option=><button type="button" key={option.id} onClick={()=>setEditType(option.id)} aria-pressed={editType===option.id} className={`rounded-lg border px-2 py-2 text-xs ${editType===option.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
+                  {editType==="planned"&&<div className="space-y-2"><label className="block text-xs text-ink-soft">计划开始<input type="date" className="input mt-1 w-full" value={editPlanStart} onChange={e=>setEditPlanStart(e.target.value)}/></label><label className="block text-xs text-ink-soft">目标完成<input type="date" className="input mt-1 w-full" value={editTargetFinish} min={editPlanStart} onChange={e=>setEditTargetFinish(e.target.value)}/></label><label className="block text-xs text-ink-soft">正式截止（可选）<input type="date" className="input mt-1 w-full" value={editDeadline} min={editTargetFinish} onChange={e=>setEditDeadline(e.target.value)}/></label></div>}
+                  {editType==="habit"&&todo.task_type!=="habit"&&<p className="text-xs text-amber-700">切换为习惯需要建立习惯规则和目标，此次暂不允许保存该转换。</p>}
+                  {todo.task_type==="habit"&&editType!=="habit"&&<p className="text-xs text-amber-700">已有习惯记录不会被删除。此转换暂不可保存。</p>}
+                </section>
 
                 <details className="rounded-xl border border-line p-3">
                   <summary className="cursor-pointer text-sm font-medium text-ink-soft">描述与分类（可选）</summary>
