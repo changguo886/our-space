@@ -182,10 +182,7 @@ export default function AddTodoForm({
         setError("目标必须是正整数（时间以分钟计） / Goals must be positive integers (minutes for duration).");
         return;
       }
-      if (cadence === "weekly_quota" && goalPeriod === "week" && goalMetric === "count" && required !== timesPerWeek) {
-        setError("每周次数目标应与重复规则一致 / Weekly frequency must match the repeat rule.");
-        return;
-      }
+      // Weekly quota already defines its frequency. The goal uses the same value.
     }
     if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
     setBusy(true);
@@ -250,8 +247,8 @@ export default function AddTodoForm({
         todo_id: created.id,
         primary_metric: goalMetric,
         period: goalPeriod,
-        target_value: Number(goalValue),
-        frequency_target: goalMetric === "duration" && extraCount.trim() ? Number(extraCount) : null,
+        target_value: cadence === "weekly_quota" && goalPeriod === "week" && goalMetric === "count" ? timesPerWeek : Number(goalValue),
+        frequency_target: goalMetric === "duration" ? (cadence === "weekly_quota" && goalPeriod === "week" ? timesPerWeek : extraCount.trim() ? Number(extraCount) : null) : null,
         period_duration_target_minutes: goalMetric === "count" && extraPeriodMinutes.trim() ? Number(extraPeriodMinutes) : null,
         per_session_target_minutes: perSessionMinutes.trim() ? Number(perSessionMinutes) : null,
         total_target_minutes: totalMinutes.trim() ? Number(totalMinutes) : null,
@@ -585,8 +582,9 @@ export default function AddTodoForm({
         <section className="rounded-2xl border border-line bg-white/80 p-4 space-y-3">
           <label className="flex items-center gap-2 text-sm font-medium text-ink">
             <input type="checkbox" checked={goalEnabled} onChange={e => setGoalEnabled(e.target.checked)} disabled={busy} />
-            设置执行目标 / Set progress goals (optional)
+            {dictionary.common?.minutes === "分钟" ? "执行目标（可选）" : "Progress goals (optional)"}
           </label>
+          <p className="text-xs text-ink-faint">{dictionary.common?.minutes === "分钟" ? "重复方式决定何时执行；执行目标决定希望完成多少。" : "Schedule defines when; goals define how much."}</p>
           {goalEnabled && (
             <div className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -604,9 +602,11 @@ export default function AddTodoForm({
                   </select>
                 </label>
               </div>
-              <label className="block text-xs text-ink-soft">{goalMetric === "count" ? "周期目标次数 / Target count" : "周期目标分钟数 / Target minutes"}
-                <input className="input mt-1 w-full" type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e => setGoalValue(e.target.value)} />
-              </label>
+              {cadence === "weekly_quota" && goalPeriod === "week" && goalMetric === "count" ?
+                <p className="rounded-xl bg-sage-50 p-3 text-sm text-sage-700">每周 {timesPerWeek} 次（与上方重复规则同步）</p> :
+                <label className="block text-xs text-ink-soft">{goalMetric === "count" ? "周期目标次数 / Target count" : "周期目标分钟数 / Target minutes"}
+                  <input className="input mt-1 w-full" type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e => setGoalValue(e.target.value)} />
+                </label>}
               <details className="rounded-xl bg-paper/50 p-3">
                 <summary className="cursor-pointer text-xs font-medium text-ink-soft">额外目标 / Advanced goals</summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -645,11 +645,16 @@ export default function AddTodoForm({
           <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "目标结束日期" : "Target end date"}
             <input className="input mt-1 w-full" type="date" min={startDate} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/>
           </label>
-          <label className="text-xs text-ink-soft sm:col-span-2">旅程颜色 / Journey color
-            <select className="input mt-1 w-full" value={journeyColor} onChange={e=>setJourneyColor(e.target.value)} disabled={busy}>
-              {["blue","green","purple","orange","pink","teal"].map(color=><option key={color} value={color}>{color}</option>)}
-            </select>
-          </label>
+          <div className="sm:col-span-2">
+            <p className="mb-2 text-xs text-ink-soft">旅程颜色 / Journey color</p>
+            <div className="flex flex-wrap gap-2">
+              {([{key:"blue",hex:"#4B83D1"},{key:"green",hex:"#38A179"},{key:"purple",hex:"#9268C5"},{key:"orange",hex:"#DE9144"},{key:"pink",hex:"#D9769B"},{key:"teal",hex:"#329B9C"}] as const).map(c=>
+                <button key={c.key} type="button" disabled={busy} onClick={()=>setJourneyColor(c.key)} aria-pressed={journeyColor===c.key}
+                  aria-label={c.key} title={c.key} className={`h-9 w-9 rounded-full border-4 transition-transform ${journeyColor===c.key?"border-ink scale-110":"border-white hover:scale-105"}`}
+                  style={{backgroundColor:c.hex}} />
+              )}
+            </div>
+          </div>
           <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes === "分钟" ? "创建后可在 Calendar 的旅程视图中调整日期。" : "Adjust journey dates later in Calendar."}</p>
         </div>}
       </div>
