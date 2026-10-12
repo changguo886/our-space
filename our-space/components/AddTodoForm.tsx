@@ -94,7 +94,7 @@ export default function AddTodoForm({
       "private" | "space"
     >("private");
 
-  const [taskType,setTaskType]=useState<"one_time"|"recurring"|"habit">("one_time");
+  const [taskType,setTaskType]=useState<"one_time"|"planned"|"habit">("one_time");
   const [planMode,setPlanMode]=useState<"flexible"|"fixed">("flexible");
   const [cadence,setCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
   const [weekdays,setWeekdays]=useState<number[]>([]);
@@ -114,6 +114,8 @@ export default function AddTodoForm({
   const [perSessionMinutes, setPerSessionMinutes] = useState("");
   const [totalMinutes, setTotalMinutes] = useState("");
   const [startDate, setStartDate] = useState(taskDate);
+  const [targetFinish, setTargetFinish] = useState("");
+  const [officialDeadline, setOfficialDeadline] = useState("");
   const [endDate, setEndDate] = useState(taskDate);
 
   const [busy, setBusy] =
@@ -166,7 +168,7 @@ export default function AddTodoForm({
         setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
       }
     }
-    if (taskType!=="one_time") {
+    if (taskType==="habit") {
       if (cadence==="weekly_days" && weekdays.length===0) {
         setError("请选择至少一天 / Select at least one weekday"); return;
       }
@@ -174,7 +176,7 @@ export default function AddTodoForm({
         setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
       }
     }
-    if (goalEnabled && taskType !== "one_time") {
+    if (goalEnabled && taskType === "habit") {
       const required = Number(goalValue);
       const optional = [extraCount, extraPeriodMinutes, perSessionMinutes, totalMinutes];
       if (!Number.isSafeInteger(required) || required <= 0 ||
@@ -183,6 +185,10 @@ export default function AddTodoForm({
         return;
       }
       // Weekly quota already defines its frequency. The goal uses the same value.
+    }
+    if (taskType==="planned" && (!targetFinish || targetFinish<startDate || (officialDeadline && officialDeadline<targetFinish))) {
+      setError("请确认目标完成日期不早于开始日期，正式截止日期不早于目标完成日期。");
+      return;
     }
     if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
     setBusy(true);
@@ -193,7 +199,7 @@ export default function AddTodoForm({
 
     let created: { id: string } | null = null;
     let createError: { message: string } | null = null;
-    if (taskType !== "one_time") {
+    if (taskType === "habit") {
       const { data, error: rpcError } = await supabase.rpc("create_scheduled_todo_v2", {
         p_task_type: taskType,
         p_title: cleanTitle,
@@ -222,6 +228,7 @@ export default function AddTodoForm({
         category,
         custom_tag: customTag.trim() || null,
         task_type: "one_time",
+        ...(taskType==="planned" ? { plan_start_date:startDate, target_finish_date:targetFinish, deadline_date:officialDeadline||null } : {}),
       }).select("id").single();
       created = data;
       createError = error;
@@ -242,7 +249,7 @@ export default function AddTodoForm({
       }
     }
 
-    if (!error && created && goalEnabled && taskType !== "one_time") {
+    if (!error && created && goalEnabled && taskType === "habit") {
       const { error: goalError } = await supabase.from("task_goal_settings").insert({
         todo_id: created.id,
         primary_metric: goalMetric,
@@ -297,6 +304,8 @@ export default function AddTodoForm({
     setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");
     setSessionStart("");setSessionEnd("");setCrossDay(false);
     setStartDate(taskDate);
+    setTargetFinish("");
+    setOfficialDeadline("");
     setEndDate(taskDate);
 
     /*
@@ -323,14 +332,23 @@ export default function AddTodoForm({
       <div>
         <p className="mb-2 text-xs font-medium text-ink-soft">{zh?"任务类型":"Task type"}</p>
         <div className="grid grid-cols-3 gap-2">
-          {([{value:"one_time",label:zh?"单次任务":"One-time",help:zh?"做完即结束":"Finish once"},{value:"recurring",label:zh?"定期任务":"Regular",help:zh?"每次独立完成":"Each occurrence"},{value:"habit",label:zh?"习惯养成":"Habit",help:zh?"长期记录":"Build a habit"}] as const).map(item=>
-            <button key={item.value} type="button" disabled={busy} aria-pressed={taskType===item.value} onClick={()=>{setTaskType(item.value);if(item.value==="habit"){setCadence("weekly_quota");setGoalEnabled(true);setGoalPeriod("week");setGoalMetric("count");setGoalValue("3");setTimesPerWeek(3);}else if(item.value==="recurring"){setCadence("weekly_days");setGoalEnabled(false);}else{setGoalEnabled(false);}}}
+          {([{value:"one_time",label:zh?"单次任务":"One-time",help:zh?"做完即结束":"Finish once"},{value:"planned",label:zh?"定期任务":"Planned",help:zh?"按期限完成":"Target finish"},{value:"habit",label:zh?"习惯养成":"Habit",help:zh?"长期记录":"Build a habit"}] as const).map(item=>
+            <button key={item.value} type="button" disabled={busy} aria-pressed={taskType===item.value} onClick={()=>{setTaskType(item.value);if(item.value==="habit"){setCadence("weekly_quota");setGoalEnabled(true);setGoalPeriod("week");setGoalMetric("count");setGoalValue("3");setTimesPerWeek(3);}else if(item.value==="planned"){setGoalEnabled(false);}else{setGoalEnabled(false);}}}
               className={`min-w-0 rounded-xl border px-2 py-3 text-center transition ${taskType===item.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line bg-white text-ink-soft hover:bg-paper"}`}>
               <span className="block text-sm font-semibold">{item.label}</span><span className="mt-1 block text-[10px] opacity-70">{item.help}</span>
             </button>)}
         </div>
       </div>
-      {taskType==="one_time" ? (
+      {taskType==="planned" ? (
+        <section className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
+          <p className="text-xs text-ink-faint">{zh?"围绕一个成果制定计划，不是重复打卡。具体步骤与时间可创建后再安排。":"Plan toward one outcome, not recurring check-ins."}</p>
+          <label className="block text-xs text-ink-soft">{zh?"计划开始":"Plan start"}<input type="date" className={field+" mt-1"} value={startDate} onChange={e=>setStartDate(e.target.value)} disabled={busy}/></label>
+          <label className="block text-xs text-ink-soft">{zh?"目标完成":"Target finish"}<input type="date" className={field+" mt-1"} min={startDate} value={targetFinish} onChange={e=>setTargetFinish(e.target.value)} disabled={busy} required/></label>
+          <details><summary className="cursor-pointer text-xs text-ink-soft">{zh?"正式截止日期（可选）":"Official deadline (optional)"}</summary>
+            <input type="date" className={field+" mt-2"} min={targetFinish||startDate} value={officialDeadline} onChange={e=>setOfficialDeadline(e.target.value)} disabled={busy}/>
+          </details>
+        </section>
+      ):taskType==="one_time" ? (
         <section className="space-y-3">
           <p className="text-xs font-medium text-ink-soft">{zh?"什么时候处理？（可选）":"When? (optional)"}</p>
           <div className="grid grid-cols-2 gap-2">
@@ -343,7 +361,7 @@ export default function AddTodoForm({
             <p className="text-xs text-ink-faint">{zh?"输入开始时间和预计时长可自动推算结束；也可以自行调整。":"Start and estimate can suggest an end; you can adjust it."}</p>
           </div>}
         </section>
-      ):taskType==="recurring"?(
+      ):taskType==="habit"?(
         <section className="space-y-3 rounded-xl bg-paper/40 p-3">
           <label className="block text-xs font-medium text-ink-soft">{zh?"多久做一次？":"How often?"}
             <select className={field+" mt-1"} value={cadence} disabled={busy} onChange={e=>setCadence(e.target.value as typeof cadence)}>
@@ -373,9 +391,9 @@ export default function AddTodoForm({
           <label className="block text-xs text-ink-soft">{zh?"分类":"Category"}<select className={field+" mt-1"} value={category??""} onChange={e=>setCategory(e.target.value as Category||null)} disabled={busy}><option value="">{zh?"不分类":"None"}</option>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{t.categories[c.value]}</option>)}</select></label>
           {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
           <label className="block text-xs text-ink-soft">{zh?"预计投入（非必须连续完成）":"Effort estimate"}<DurationInput value={minutes} unit={durationUnit} onValueChange={setMinutes} onUnitChange={setDurationUnit} disabled={busy}/></label>
-          {taskType!=="one_time"&&<label className="block text-xs text-ink-soft">{zh?"重复结束日期":"Repeat until"}<input type="date" className={field+" mt-1"} min={taskDate} value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)} disabled={busy}/></label>}
-          {taskType!=="one_time"&&<label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={goalEnabled} onChange={e=>setGoalEnabled(e.target.checked)} disabled={busy}/>{zh?"额外保存周期目标":"Save period target"}</label>}
-          {goalEnabled&&taskType!=="one_time"&&<div className="grid grid-cols-2 gap-2">
+          {taskType==="habit"&&<label className="block text-xs text-ink-soft">{zh?"重复结束日期":"Repeat until"}<input type="date" className={field+" mt-1"} min={taskDate} value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)} disabled={busy}/></label>}
+          {taskType==="habit"&&<label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={goalEnabled} onChange={e=>setGoalEnabled(e.target.checked)} disabled={busy}/>{zh?"额外保存周期目标":"Save period target"}</label>}
+          {goalEnabled&&taskType==="habit"&&<div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-ink-soft">{zh?"主要指标":"Metric"}<select className={field+" mt-1"} value={goalMetric} onChange={e=>setGoalMetric(e.target.value as typeof goalMetric)} disabled={busy}><option value="count">{zh?"次数":"Count"}</option><option value="duration">{zh?"分钟":"Minutes"}</option></select></label>
             {goalMetric==="duration"&&<label className="text-xs text-ink-soft">{zh?"目标分钟":"Target minutes"}<input className={field+" mt-1"} type="number" min="1" value={goalValue} onChange={e=>setGoalValue(e.target.value)} disabled={busy}/></label>}
           </div>}
