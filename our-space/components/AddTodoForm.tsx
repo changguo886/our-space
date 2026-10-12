@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
+import ScheduleDateTimeField from "@/components/ScheduleDateTimeField";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -407,13 +408,9 @@ export default function AddTodoForm({
           </button>)}
         </div>
         {planMode==="fixed"?<div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="block text-xs font-medium text-ink-soft">{dictionary.common?.minutes==="分钟"?"开始时间":"Start time"}
-            <input type="datetime-local" lang={dictionary.common?.minutes==="分钟"?"zh-CN":"en"} className="mt-2 block min-h-[52px] w-full rounded-xl border border-line bg-white px-3 text-sm text-ink outline-none focus:border-sage-300 focus:ring-2 focus:ring-sage-100" value={sessionStart} onChange={e=>setSessionStart(e.target.value)} disabled={busy}/>
-          </label>
-          <label className="block text-xs font-medium text-ink-soft">{dictionary.common?.minutes==="分钟"?"结束时间":"End time"}
-            <input type="datetime-local" lang={dictionary.common?.minutes==="分钟"?"zh-CN":"en"} className="mt-2 block min-h-[52px] w-full rounded-xl border border-line bg-white px-3 text-sm text-ink outline-none focus:border-sage-300 focus:ring-2 focus:ring-sage-100" min={sessionStart||undefined} value={sessionEnd} onChange={e=>setSessionEnd(e.target.value)} disabled={busy}/>
-          </label>
-          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes==="分钟"?"只安排这一次；之后仍可在 Calendar 中拖动。每天/每周重复安排稍后支持。":"Schedule this occurrence; you can still drag it in Calendar. Recurrence comes later."}</p>
+          <ScheduleDateTimeField label={dictionary.common?.minutes==="分钟"?"开始时间":"Start"} chinese={dictionary.common?.minutes==="分钟"} value={sessionStart} onChange={v=>{setSessionStart(v);if(sessionEnd && sessionEnd<v)setSessionEnd(v);}} disabled={busy}/>
+          <ScheduleDateTimeField label={dictionary.common?.minutes==="分钟"?"结束时间":"End"} chinese={dictionary.common?.minutes==="分钟"} value={sessionEnd} min={sessionStart} onChange={setSessionEnd} disabled={busy}/>
+          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes==="分钟"?"日期和时刻分别选择；本次安排后仍可在 Calendar 拖动。":"Pick date and time separately; edit later in Calendar."}</p>
         </div>:<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"不占用具体日历时段；以后可在 Calendar 自由安排。":"No time slot booked yet. Schedule it later in Calendar."}</p>}
       </div>
 
