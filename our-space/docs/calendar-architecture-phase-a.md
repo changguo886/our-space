@@ -123,3 +123,13 @@ Phase A UX patch: **End current focus** stores the latest cumulative elapsed tim
 **Known gap:** the existing Reset operation clears `todos.elapsed_seconds`; avoid using Reset when preserving accumulated work matters. Future focus_entries ledger must capture intervals idempotently, including pauses/resumes and timeouts, before showing per-day actual work totals. Plan and actual execution must stay separate. No unreviewed schema migration in this patch.
 
 Manual validation: start -> pause -> resume -> end focus -> refresh -> resume; ensure elapsed seconds persist and Todo is not completed; separately verify Complete Todo. Test main Focus, normal PiP, compact PiP, and time-up overlay. Build before merging.
+
+
+## Decision: multi-Journey in-cell calendar ranges and user-selected colors (2026-10-12)
+
+- Multiple long-term task ranges appear **directly inside Calendar month date cells**, not in an additional timeline panel.
+- **Current V2 default: color-coded solid range lines, like Google Calendar.** Users choose a color for each Journey; keep a stable color for that Journey across dates, month navigation, and reloads. Provide an accessible task-name legend and accessible labels/tooltips.
+- **Do not implement different line patterns now.** In a future accessibility feature, Settings may offer a **color-vision accommodation toggle**. When enabled, Journey lines may be distinguished using patterns or additional non-color cues instead of relying on color. That is a separately scoped feature, not part of initial V2 implementation.
+- A day may contain several aligned Journey lines; selected line opens the corresponding animal/route display. Start/end boundary editing uses preview and Confirm/Cancel, with mobile/keyboard date-entry fallback.
+- Journey ranges indicate active long-term plan dates, **not** booked Sessions or a requirement to work that day. Differentiate active Journeys from due occurrences and scheduled work in counts and labels.
+- Keep existing `goal_journeys` and Calendar architecture intact. Before adding a persisted user-selected Journey color, audit current schema and choose a small additive migration; do not mistake a frontend-only derived color for the user's saved choice.
