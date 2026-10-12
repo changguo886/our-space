@@ -16,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
+import ScheduleDateTimeField from "@/components/ScheduleDateTimeField";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -354,6 +355,14 @@ export default function TodoList({
     setEditScheduledEnd,
   ] = useState("");
 
+  const [editingSessionId,setEditingSessionId]=useState<string|null>(null);
+  const [editRuleId,setEditRuleId]=useState<string|null>(null);
+  const [editRuleCadence,setEditRuleCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
+  const [editRuleWeekdays,setEditRuleWeekdays]=useState<number[]>([]);
+  const [editRuleQuota,setEditRuleQuota]=useState(3);
+  const [editRuleEnd,setEditRuleEnd]=useState("");
+  const [editRuleStatus,setEditRuleStatus]=useState<"active"|"paused"|"stopped">("active");
+
   const [
     busyId,
     setBusyId,
@@ -449,9 +458,10 @@ export default function TodoList({
      Todo edit
   ======================================================= */
 
-  function startEditing(
+  async function startEditing(
     todo: Todo
   ) {
+    setEditingSessionId(null);
     setEditingId(todo.id);
     setEditTitle(todo.title);
 
@@ -492,6 +502,33 @@ export default function TodoList({
     );
 
     setError(null);
+    setEditRuleId(null);setEditRuleCadence("daily");setEditRuleWeekdays([]);
+    setEditRuleQuota(3);setEditRuleEnd("");setEditRuleStatus("active");
+    const {data:rules,error:rulesError}=await createClient().from("schedule_rules")
+      .select("id,cadence,weekdays,times_per_week,ends_on,status")
+      .eq("todo_id",todo.id).order("created_at",{ascending:false}).limit(1);
+    if(rulesError){setError("读取重复规则失败 / Cannot load repeat rule: "+rulesError.message);return;}
+    if(rules?.length){
+      const rule=rules[0];
+      setEditRuleId(rule.id);setEditRuleCadence(rule.cadence);
+      setEditRuleWeekdays(rule.weekdays??[]);
+      setEditRuleQuota(rule.times_per_week??3);setEditRuleEnd(rule.ends_on??"");
+      setEditRuleStatus(rule.status);
+    }
+    const {data,error:sessionError}=await createClient().from("todo_sessions")
+      .select("id,scheduled_start,scheduled_end").eq("todo_id",todo.id)
+      .order("scheduled_start",{ascending:true});
+    if(sessionError){setError("读取安排失败："+sessionError.message);return;}
+    if(data?.length){
+      setEditingSessionId(data.length===1?data[0].id:null);
+      if(data.length===1){
+        setEditScheduledStart(toLocalInputValue(data[0].scheduled_start));
+        setEditScheduledEnd(toLocalInputValue(data[0].scheduled_end));
+      } else {
+        setEditScheduledStart("");
+        setEditScheduledEnd("");
+      }
+    }
   }
 
 
@@ -507,6 +544,8 @@ export default function TodoList({
     setEditCustomTag("");
     setEditScheduledStart("");
     setEditScheduledEnd("");
+    setEditingSessionId(null);
+    setEditRuleId(null);
     setError(null);
   }
 
@@ -542,26 +581,11 @@ export default function TodoList({
       return;
     }
 
-    if (
-      editScheduledStart &&
-      editScheduledEnd
-    ) {
-      const start =
-        new Date(
-          editScheduledStart
-        );
-
-      const end =
-        new Date(
-          editScheduledEnd
-        );
-
-      if (end <= start) {
-        setError(
-          t.endAfterStart
-        );
-        return;
-      }
+    if(Boolean(editScheduledStart)!==Boolean(editScheduledEnd)){
+      setError("请同时填写开始和结束时间。");return;
+    }
+    if(editScheduledStart && new Date(editScheduledEnd).getTime()<=new Date(editScheduledStart).getTime()){
+      setError(t.endAfterStart);return;
     }
 
     setBusyId(todoId);
@@ -594,25 +618,11 @@ export default function TodoList({
               ? editCustomTag.trim()
               : null,
 
-          scheduled_start:
-            editScheduledStart
-              ? new Date(
-                  editScheduledStart
-                ).toISOString()
-              : null,
-
-          scheduled_end:
-            editScheduledEnd
-              ? new Date(
-                  editScheduledEnd
-                ).toISOString()
-              : null,
         })
         .eq("id", todoId);
 
-    setBusyId(null);
-
     if (error) {
+      setBusyId(null);
       setError(
         t.saveFailed +
           error.message
@@ -620,6 +630,40 @@ export default function TodoList({
       return;
     }
 
+    const todoForEdit=todos.find(item=>item.id===todoId);
+    // A single existing Session is editable here. Multiple Sessions are managed in Calendar.
+    if(editingSessionId && editScheduledStart && editScheduledEnd){
+      const {error:sessionError}=await supabase.from("todo_sessions").update({
+        scheduled_start:new Date(editScheduledStart).toISOString(),
+        scheduled_end:new Date(editScheduledEnd).toISOString(),
+      }).eq("id",editingSessionId).eq("todo_id",todoId);
+      if(sessionError){setBusyId(null);setError("任务已更新，但时间安排保存失败："+sessionError.message);return;}
+    } else if(!editingSessionId && editScheduledStart && editScheduledEnd){
+      const {error:sessionError}=await supabase.from("todo_sessions").insert({
+        todo_id:todoId,scheduled_start:new Date(editScheduledStart).toISOString(),
+        scheduled_end:new Date(editScheduledEnd).toISOString(),
+      });
+      if(sessionError){setBusyId(null);setError("任务已更新，但新增时间安排失败："+sessionError.message);return;}
+    }
+    // Clear the legacy fields only after the matching Session is saved.
+    if(editScheduledStart && editScheduledEnd && (todoForEdit?.scheduled_start||todoForEdit?.scheduled_end)){
+      const {error:clearError}=await supabase.from("todos").update({scheduled_start:null,scheduled_end:null}).eq("id",todoId);
+      if(clearError){setBusyId(null);setError("安排已保存，但旧时间字段未能清理："+clearError.message);return;}
+    }
+    if(editRuleId){
+      if(editRuleCadence==="weekly_days" && editRuleWeekdays.length===0){
+        setBusyId(null);setError("请选择至少一个星期 / Select a weekday");return;
+      }
+      const {error:ruleError}=await supabase.from("schedule_rules").update({
+        cadence:editRuleCadence,
+        weekdays:editRuleCadence==="weekly_days"?editRuleWeekdays:[],
+        times_per_week:editRuleCadence==="weekly_quota"?editRuleQuota:null,
+        ends_on:editRuleEnd||null,
+        status:editRuleStatus,
+      }).eq("id",editRuleId).eq("todo_id",todoId);
+      if(ruleError){setBusyId(null);setError("重复规则保存失败 / Repeat rule save failed: "+ruleError.message);return;}
+    }
+    setBusyId(null);
     cancelEditing();
     router.refresh();
   }
@@ -897,55 +941,51 @@ export default function TodoList({
                 </div>
 
 
-                <div>
-                  <p className="mb-2 text-xs text-ink-faint">
-                    {t.schedule}
-                  </p>
-
+                <div className="space-y-3 rounded-2xl border border-line bg-paper/30 p-4">
+                  <p className="text-xs font-medium text-ink-soft">{t.schedule}</p>
+                  <p className="text-[11px] text-ink-faint">多次安排请到 Calendar 管理；这里可修改单次安排，或新增一次。</p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-[11px] text-ink-faint">
-                        {t.start}
-                      </label>
-
-                      <input
-                        className="input"
-                        type="datetime-local"
-                        value={
-                          editScheduledStart
-                        }
-                        onChange={(e) =>
-                          setEditScheduledStart(
-                            e.target.value
-                          )
-                        }
-                        disabled={busy}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-[11px] text-ink-faint">
-                        {t.end}
-                      </label>
-
-                      <input
-                        className="input"
-                        type="datetime-local"
-                        value={
-                          editScheduledEnd
-                        }
-                        onChange={(e) =>
-                          setEditScheduledEnd(
-                            e.target.value
-                          )
-                        }
-                        disabled={busy}
-                      />
-                    </div>
+                    <ScheduleDateTimeField label={t.start} chinese={language==="zh-CN"} value={editScheduledStart} onChange={setEditScheduledStart} disabled={busy}/>
+                    <ScheduleDateTimeField label={t.end} chinese={language==="zh-CN"} value={editScheduledEnd} onChange={setEditScheduledEnd} min={editScheduledStart} disabled={busy}/>
                   </div>
                 </div>
 
 
+                {editRuleId && <div className="space-y-3 rounded-2xl border border-line bg-paper/30 p-4">
+                  <p className="text-xs font-medium text-ink-soft">重复规则 / Repeat rule</p>
+                  <label className="block text-xs text-ink-soft">方式 / Pattern
+                    <select className="input mt-1 w-full" value={editRuleCadence} disabled={busy}
+                      onChange={e=>setEditRuleCadence(e.target.value as typeof editRuleCadence)}>
+                      <option value="daily">每天 / Daily</option>
+                      <option value="weekly_days">每周指定日期 / Weekdays</option>
+                      <option value="weekly_quota">每周目标次数 / Weekly quota</option>
+                    </select>
+                  </label>
+                  {editRuleCadence==="weekly_days" && <div className="flex flex-wrap gap-2">
+                    {["一","二","三","四","五","六","日"].map((day,i)=>
+                      <button type="button" key={i} aria-pressed={editRuleWeekdays.includes(i+1)} disabled={busy}
+                        onClick={()=>setEditRuleWeekdays(v=>v.includes(i+1)?v.filter(d=>d!==i+1):[...v,i+1].sort())}
+                        className={`rounded-lg border px-3 py-2 text-xs ${editRuleWeekdays.includes(i+1)?"bg-sage-100 border-sage-400":"bg-white border-line"}`}>{day}</button>)}
+                  </div>}
+                  {editRuleCadence==="weekly_quota" && <label className="block text-xs text-ink-soft">每周次数 / Times per week
+                    <select className="input mt-1 w-full" value={editRuleQuota} disabled={busy}
+                      onChange={e=>setEditRuleQuota(Number(e.target.value))}>
+                      {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>}
+                  <label className="block text-xs text-ink-soft">结束日期 / End date
+                    <input type="date" className="input mt-1 w-full" value={editRuleEnd} disabled={busy}
+                      onChange={e=>setEditRuleEnd(e.target.value)}/>
+                  </label>
+                  <label className="block text-xs text-ink-soft">状态 / Status
+                    <select className="input mt-1 w-full" value={editRuleStatus} disabled={busy}
+                      onChange={e=>setEditRuleStatus(e.target.value as typeof editRuleStatus)}>
+                      <option value="active">启用 / Active</option>
+                      <option value="paused">暂停 / Paused</option>
+                      <option value="stopped">停止 / Stopped</option>
+                    </select>
+                  </label>
+                </div>}
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
@@ -1092,6 +1132,10 @@ export default function TodoList({
                     todo.id
                       ? t.collapseSteps
                       : t.splitTask}
+                  </button>
+                  <button type="button" onClick={() => router.push("/calendar?view=journey&todoId=" + encodeURIComponent(todo.id))}
+                    className="ml-4 text-xs font-medium text-sage-700 transition hover:text-sage-500">
+                    🐾 查看成长旅程 ↗
                   </button>
                 </div>
               </div>

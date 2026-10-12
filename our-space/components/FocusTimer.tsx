@@ -92,6 +92,19 @@ export default function FocusTimer({
   const router = useRouter();
   const { dictionary } = useI18n();
   const focusText = dictionary.focus;
+  const [focusEncouragement] = useState(() => {
+    const phrases = [
+      "慢慢来，也是在向前走。",
+      "每一小段专注，都值得被珍惜。",
+      "不用急着抵达，认真走好眼前这一步。",
+      "今天的努力，正在悄悄积累。",
+      "把注意力交给当下，剩下的交给时间。",
+      "做一点，也比停在原地更接近目标。",
+      "重要的不是速度，而是继续前行。",
+      "让这一刻的专注，成为小小的收获。",
+    ];
+    return phrases[Math.floor(Math.random() * phrases.length)];
+  });
   const common = dictionary.common;
 
   const [
@@ -152,6 +165,7 @@ export default function FocusTimer({
   const [pinnedMode, setPinnedMode] = useState<"compact" | "workspace" | null>(null);
   const [preferredWorkspaceOpen, setPreferredWorkspaceOpen] = useState(false);
   const [compactFinishConfirm, setCompactFinishConfirm] = useState(false);
+  const [finishConfirm, setFinishConfirm] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   useEffect(() => {
@@ -902,61 +916,60 @@ export default function FocusTimer({
     }
   }
 
+  async function persistFocusAction(action: "pause" | "end" | "complete") {
+    const { data, error } = await createClient().rpc("finish_focus_session", {
+      p_todo_id: todo.id,
+      p_action: action,
+      p_expected_started_at: status === "running" ? startedAt : null,
+    });
+    if (error) throw error;
+    return data as number;
+  }
+
   /*
    * 暂停
    */
   async function pauseTimer() {
-    if (
-      busy ||
-      status !== "running"
-    ) {
-      return;
-    }
-
+    if (busy || status !== "running") return;
     setBusy(true);
-
-    const newElapsed =
-      currentElapsed;
-
-    const supabase =
-      createClient();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "paused",
-
-          started_at:
-            null,
-
-          elapsed_seconds:
-            newElapsed,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.pauseFailed +
-          error.message
-      );
-
-      return;
+    try {
+      const savedElapsed = await persistFocusAction("pause");
+      setElapsedSeconds(savedElapsed);
+      setStartedAt(null);
+      setStatus("paused");
+    } catch (error) {
+      alert(focusText.pauseFailed + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
     }
+  }
 
-    setElapsedSeconds(
-      newElapsed
-    );
+  /*
+   * End this focus, not the parent Todo.
+   * Preserve all accrued seconds so the task can be resumed later.
+   * This is not yet a per-occurrence focus history record.
+   */
+  async function endFocusOnly() {
+    if (busy || status === "completed") return;
+    setBusy(true);
+    try {
+      const savedElapsed = await persistFocusAction("end");
+      setElapsedSeconds(savedElapsed);
+      setStartedAt(null);
+      setStatus("paused");
+      setTimeUp(false);
+      setCompactFinishConfirm(false);
+      closeFloatingTimer();
+    } catch (error) {
+      alert("结束本次专注失败 / Failed to end focus: " + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    setStartedAt(null);
-
-    setStatus("paused");
+  function confirmWholeTask() {
+    if (busy || status === "completed") return;
+    setFinishConfirm(true);
   }
 
   /*
@@ -979,43 +992,15 @@ export default function FocusTimer({
 
     setBusy(true);
 
-    const actualElapsed =
-      currentElapsed;
-
-    const supabase =
-      createClient();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "completed",
-
-          started_at:
-            null,
-
-          elapsed_seconds:
-            actualElapsed,
-
-          completed_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.completeFailed +
-          error.message
-      );
-
+    let actualElapsed: number;
+    try {
+      actualElapsed = await persistFocusAction("complete");
+    } catch (error) {
+      setBusy(false);
+      alert(focusText.completeFailed + (error instanceof Error ? error.message : String(error)));
       return;
     }
+    setBusy(false);
 
     if (
       !alarmPlayedRef.current
@@ -1257,8 +1242,11 @@ export default function FocusTimer({
           </div>
           {compactFinishConfirm ? (
             <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>结束计时并完成整个任务？</span>
+              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>结束这次专注，还是完成整个任务？</span>
               <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+                <button type="button" disabled={busy} onClick={() => void endFocusOnly()}
+                  style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#E4F0E6",
+                    color: "#376649", fontSize: 11, fontWeight: 600 }}>结束本次</button>
                 <button type="button" disabled={busy} onClick={() => void completeTimer()}
                   style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#F5E2DF",
                     color: "#9B514C", fontSize: 11, fontWeight: 600 }}>确认完成</button>
@@ -1281,10 +1269,10 @@ export default function FocusTimer({
               </button>
               <button type="button" disabled={busy || status === "completed"}
                 onClick={() => setCompactFinishConfirm(true)}
-                title="结束计时并完成任务" aria-label="结束计时并完成任务"
+                title="结束本次或完成任务（点击选择）" aria-label="结束本次或完成任务（点击选择）"
                 style={{ ...buttonBase, width: 44, height: 44, display: "inline-flex",
                   justifyContent: "center", alignItems: "center", borderRadius: "50%",
-                  background: "#F8ECE9", color: "#A66D67",
+                  background: "#EFF4EE", color: "#587361",
                   opacity: busy ? 0.5 : 1 }}>
                 <Square size={17} fill="currentColor" />
               </button>
@@ -1830,12 +1818,20 @@ export default function FocusTimer({
               </button>
             )}
 
+            <button type="button" disabled={busy || status === "completed"}
+              onClick={() => void endFocusOnly()}
+              title="结束本次专注（Todo 保持未完成）"
+              aria-label="结束本次专注（Todo 保持未完成）"
+              style={{ ...buttonBase, height: "34px", minWidth: "72px", padding: "0 10px",
+                borderRadius: "12px", background: "#E8F1E8", color: "#43694B",
+                fontSize: "11px", fontWeight: 600 }}>
+              结束本次
+            </button>
+
             <button
               type="button"
               disabled={busy}
-              onClick={
-                completeTimer
-              }
+              onClick={() => { if (window.confirm("确定完成整个 Todo 吗？如果只是结束本次专注，请选择「结束本次」。")) void completeTimer(); }}
               title={focusText.completeTask}
               style={{
                 ...buttonBase,
@@ -2120,6 +2116,18 @@ export default function FocusTimer({
       <h1 className="mt-3 max-w-lg text-center text-2xl font-semibold">
         {todo.title}
       </h1>
+      <div className="mt-5 flex flex-col items-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 rounded-full border border-[#E4EAE3] bg-[#FCFDFB] px-5 py-2.5 text-center shadow-sm sm:gap-x-7">
+          <div><span className="block text-[10px] tracking-wide text-ink-faint">预计</span><strong className="block text-sm font-medium tabular-nums text-ink">{todo.estimated_minutes != null ? `${todo.estimated_minutes} 分钟` : "未设定"}</strong></div>
+          <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
+          <div><span className="block text-[10px] tracking-wide text-ink-faint">已专注</span><strong className="block text-sm font-semibold tabular-nums text-sage-700">{Math.floor(currentElapsed / 60)} 分钟</strong></div>
+          {todo.estimated_minutes != null && <>
+            <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
+            <div><span className="block text-[10px] tracking-wide text-ink-faint">参考剩余</span><strong className="block text-sm font-medium tabular-nums text-ink">{Math.max(0, todo.estimated_minutes - Math.floor(currentElapsed / 60))} 分钟</strong></div>
+          </>}
+        </div>
+        <p className="text-center text-xs leading-relaxed text-[#7D9181]">{focusEncouragement}</p>
+      </div>
 
       {/*
        * Main Timer
@@ -2195,6 +2203,12 @@ export default function FocusTimer({
             {focusText.timeUpHint}
           </p>
 
+          <div className="mt-3 flex justify-center">
+            <button type="button" onClick={() => void endFocusOnly()} disabled={busy}
+              className="rounded-xl border border-sage-300 bg-white px-4 py-2 text-sm font-medium text-sage-700">
+              结束本次专注（保留任务）
+            </button>
+          </div>
           <div className="mt-5 flex justify-center gap-3">
             <button
               type="button"
@@ -2209,9 +2223,7 @@ export default function FocusTimer({
 
             <button
               type="button"
-              onClick={
-                completeTimer
-              }
+              onClick={confirmWholeTask}
               disabled={busy}
               className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
             >
@@ -2225,63 +2237,47 @@ export default function FocusTimer({
        * 普通控制
        */}
       {!timeUp && (
-        <div className="mt-10 flex items-center gap-5">
-          {status ===
-          "running" ? (
-            <button
-              type="button"
-              onClick={
-                pauseTimer
-              }
-              disabled={busy}
-              className="flex h-14 w-14 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-amber-700 shadow-soft transition hover:bg-amber-100"
-              title={focusText.pause}
-            >
-              <Pause className="h-5 w-5" />
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button type="button" onClick={status === "running" ? () => void pauseTimer() : () => void startTimer(true)}
+              disabled={busy || status === "completed"}
+              className="inline-flex min-h-12 items-center gap-2 rounded-2xl bg-sage-100 px-5 py-3 text-sm font-semibold text-sage-700 shadow-sm transition hover:bg-sage-200/70 disabled:opacity-50">
+              {status === "running" ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {status === "running" ? focusText.pause : focusText.startOrContinue}
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() =>
-                startTimer(true)
-              }
-              disabled={
-                busy ||
-                status ===
-                  "completed"
-              }
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-sage-100 text-sage-700 shadow-soft transition hover:bg-sage-300/70"
-              title={focusText.startOrContinue}
-            >
-              <Play className="ml-0.5 h-5 w-5 fill-current" />
+            <button type="button" onClick={() => void endFocusOnly()}
+              disabled={busy || status === "completed"}
+              className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-[#D9E4D9] bg-[#F8FAF7] px-4 py-3 text-sm font-medium text-[#597461] transition hover:border-[#B5CBB8] hover:bg-[#EEF5EE] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#71987A] disabled:opacity-50">
+              <Square className="h-4 w-4" />
+              结束本次
             </button>
-          )}
-
-          <button
-            type="button"
-            onClick={
-              completeTimer
-            }
-            disabled={busy}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-blush-100 text-blush-500 shadow-soft transition hover:bg-blush-50"
-            title={focusText.completeTask}
-          >
-            <Square className="h-5 w-5 fill-current" />
-          </button>
-
-          <button
-            type="button"
-            onClick={
-              resetTimer
-            }
-            disabled={busy}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-mist-100 text-mist-500 shadow-soft transition hover:bg-mist-50"
-            title={focusText.reset}
-          >
-            <RotateCcw className="h-5 w-5" />
-          </button>
+          </div>
+          <div className="flex items-center justify-center gap-4">
+            <button type="button" onClick={confirmWholeTask} disabled={busy || status === "completed"}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50 hover:text-sage-700 disabled:opacity-50">
+              <Check className="h-4 w-4" /> 完成整个任务
+            </button>
+            <button type="button" onClick={() => {
+              if(window.confirm("重置会清零本任务累计的专注时间，确定继续吗？")) void resetTimer();
+            }} disabled={busy}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-xs text-ink-faint transition hover:bg-mist-50"
+              title={focusText.reset}>
+              <RotateCcw className="h-3.5 w-3.5" /> 重置
+            </button>
+          </div>
         </div>
       )}
+      {finishConfirm && <div role="dialog" aria-modal="true" aria-label="确认完成整个任务"
+        className="mt-4 w-full max-w-sm rounded-2xl border border-line bg-white p-4 text-center shadow-soft">
+        <p className="text-sm font-semibold text-ink">确定完成整个任务吗？</p>
+        <p className="mt-1 text-xs text-ink-soft">这会将 Todo 标记为已完成，不只是结束本次专注。</p>
+        <div className="mt-3 flex justify-center gap-2">
+          <button type="button" disabled={busy} onClick={() => {setFinishConfirm(false);void completeTimer();}}
+            className="rounded-xl bg-sage-700 px-4 py-2 text-sm font-medium text-white">确认完成</button>
+          <button type="button" onClick={() => setFinishConfirm(false)}
+            className="rounded-xl border border-line px-4 py-2 text-sm text-ink-soft">取消</button>
+        </div>
+      </div>}
 
       {/*
        * Floating window control

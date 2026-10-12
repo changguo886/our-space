@@ -1,13 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
+import { CalendarDays, Clock3 } from "lucide-react";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
 } from "@/components/DurationInput";
+
+function formatWorkDate(value: string, chinese: boolean): string {
+  const day = value.slice(0,10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return chinese ? "选择日期" : "Choose date";
+  const [year, month, date] = day.split("-").map(Number);
+  const parsed = new Date(year,month-1,date);
+  if (Number.isNaN(parsed.getTime())) return chinese ? "选择日期" : "Choose date";
+  return new Intl.DateTimeFormat(chinese?"zh-CN":"en-US", {
+    year:"numeric",month:"short",day:"numeric",weekday:"short"
+  }).format(parsed);
+}
 
 type Category =
   | "work"
@@ -37,6 +49,7 @@ export default function AddTodoForm({
   activeSpaceName: string;
   taskDate: string;
 }) {
+  const workDateRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { dictionary } = useI18n();
   const t = dictionary.todo;
@@ -80,6 +93,18 @@ export default function AddTodoForm({
     useState<
       "private" | "space"
     >("private");
+
+  const [planMode,setPlanMode]=useState<"flexible"|"fixed"|"recurring">("flexible");
+  const [cadence,setCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
+  const [weekdays,setWeekdays]=useState<number[]>([]);
+  const [timesPerWeek,setTimesPerWeek]=useState(3);
+  const [repeatEnd,setRepeatEnd]=useState("");
+  const [sessionStart,setSessionStart]=useState("");
+  const [sessionEnd,setSessionEnd]=useState("");
+  const [crossDay,setCrossDay]=useState(false);
+  const [longTerm, setLongTerm] = useState(false);
+  const [startDate, setStartDate] = useState(taskDate);
+  const [endDate, setEndDate] = useState(taskDate);
 
   const [busy, setBusy] =
     useState(false);
@@ -125,54 +150,80 @@ export default function AddTodoForm({
       return;
     }
 
+    if(planMode==="fixed"){
+      const from=new Date(sessionStart).getTime(),to=new Date(sessionEnd).getTime();
+      if(!sessionStart||!sessionEnd||!Number.isFinite(from)||!Number.isFinite(to)||to<=from){
+        setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
+      }
+    }
+    if (planMode==="recurring") {
+      if (cadence==="weekly_days" && weekdays.length===0) {
+        setError("请选择至少一天 / Select at least one weekday"); return;
+      }
+      if (repeatEnd && repeatEnd < taskDate) {
+        setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
+      }
+    }
+    if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
     setBusy(true);
     setError(null);
 
     const supabase =
       createClient();
 
-    const { error } =
-      await supabase
-        .from("todos")
-        .insert({
-          user_id: userId,
+    let created: { id: string } | null = null;
+    let createError: { message: string } | null = null;
+    if (planMode === "recurring") {
+      const { data, error: rpcError } = await supabase.rpc("create_recurring_todo", {
+        p_title: cleanTitle,
+        p_description: description.trim() || null,
+        p_estimated_minutes: parsedMinutes,
+        p_task_date: taskDate,
+        p_category: category,
+        p_custom_tag: customTag.trim() || null,
+        p_group_id: visibility === "space" ? activeSpaceId : null,
+        p_cadence: cadence,
+        p_weekdays: cadence === "weekly_days" ? weekdays : [],
+        p_times_per_week: cadence === "weekly_quota" ? timesPerWeek : null,
+        p_ends_on: repeatEnd || null,
+        p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
+      createError = rpcError;
+      if (!rpcError && data) created = { id: data as string };
+    } else {
+      const { data, error } = await supabase.from("todos").insert({
+        user_id: userId,
+        group_id: visibility === "space" ? activeSpaceId : null,
+        title: cleanTitle,
+        description: description.trim() || null,
+        estimated_minutes: parsedMinutes,
+        task_date: taskDate,
+        category,
+        custom_tag: customTag.trim() || null,
+      }).select("id").single();
+      created = data;
+      createError = error;
+    }
+    const error = createError;
 
-          /*
-           * null = 私人任务
-           * 当前 Space ID = 分享到当前空间
-           */
-          group_id:
-            visibility ===
-            "space"
-              ? activeSpaceId
-              : null,
+    if (!error && created && planMode === "fixed") {
+      const { error: sessionError } = await supabase.from("todo_sessions").insert({
+        todo_id: created.id,
+        scheduled_start: new Date(sessionStart).toISOString(),
+        scheduled_end: new Date(sessionEnd).toISOString(),
+      });
+      if (sessionError) {
+        setError("任务已创建，但时间安排未保存 / Task created but schedule failed: " + sessionError.message);
+        setBusy(false);
+        router.refresh();
+        return;
+      }
+    }
 
-          title:
-            cleanTitle,
-
-          /*
-           * 任务细节 / 描述
-           */
-          description:
-            description.trim()
-              ? description.trim()
-              : null,
-
-          estimated_minutes:
-            parsedMinutes,
-
-          task_date:
-            taskDate,
-
-          category:
-            category,
-
-          custom_tag:
-            customTag.trim()
-              ? customTag.trim()
-              : null,
-        });
-
+    if (!error && created && longTerm) {
+      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim"});
+      if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
+    }
     setBusy(false);
 
     if (error) {
@@ -190,6 +241,12 @@ export default function AddTodoForm({
     setDescription("");
     setMinutes("");
     setCustomTag("");
+    setLongTerm(false);
+    setPlanMode("flexible");
+    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");
+    setSessionStart("");setSessionEnd("");setCrossDay(false);
+    setStartDate(taskDate);
+    setEndDate(taskDate);
 
     /*
      * category 和 visibility
@@ -356,6 +413,110 @@ export default function AddTodoForm({
         <p className="mt-1.5 text-[11px] text-ink-faint">
           {t.durationHelp}
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-line bg-white/80 p-4">
+        <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"安排时间":"Schedule time"}</p>
+        <div className="grid grid-cols-3 gap-2">
+          {(["flexible","fixed","recurring"] as const).map(mode=><button key={mode} type="button" disabled={busy}
+            aria-pressed={planMode===mode} onClick={()=>setPlanMode(mode)}
+            className={`rounded-xl border px-3 py-3 text-left text-sm transition ${planMode===mode?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft"}`}>
+            {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):mode==="fixed"?(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time"):(dictionary.common?.minutes==="分钟"?"重复计划":"Repeat")}
+          </button>)}
+        </div>
+        {planMode==="recurring" && <div className="mt-4 space-y-3">
+          <label className="block text-xs font-medium text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"重复方式":"Repeat pattern"}
+            <select className="input mt-1 w-full" value={cadence} disabled={busy}
+              onChange={e=>setCadence(e.target.value as typeof cadence)}>
+              <option value="daily">{dictionary.common?.minutes==="分钟"?"每天":"Every day"}</option>
+              <option value="weekly_days">{dictionary.common?.minutes==="分钟"?"每周指定日期":"Specific weekdays"}</option>
+              <option value="weekly_quota">{dictionary.common?.minutes==="分钟"?"每周目标次数":"Times per week"}</option>
+            </select>
+          </label>
+          {cadence==="weekly_days" && <div>
+            <p className="mb-2 text-xs text-ink-soft">{dictionary.common?.minutes==="分钟"?"选择星期（周一至周日）":"Choose weekdays (Monday to Sunday)"}</p>
+            <div className="flex flex-wrap gap-2">
+              {(dictionary.common?.minutes==="分钟"?["一","二","三","四","五","六","日"]:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]).map((day,i)=>
+                <button key={i} type="button" disabled={busy} aria-pressed={weekdays.includes(i+1)}
+                  onClick={()=>setWeekdays(current=>current.includes(i+1)?current.filter(x=>x!==i+1):[...current,i+1].sort())}
+                  className={`rounded-lg border px-3 py-2 text-xs ${weekdays.includes(i+1)?"border-sage-400 bg-sage-100 text-sage-800":"border-line bg-white text-ink-soft"}`}>{day}</button>)}
+            </div>
+          </div>}
+          {cadence==="weekly_quota" && <label className="block text-xs text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"每周次数":"Times per week"}
+            <select className="input mt-1 w-full" disabled={busy} value={timesPerWeek}
+              onChange={e=>setTimesPerWeek(Number(e.target.value))}>
+              {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>}
+          <label className="block text-xs text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"结束日期（可选）":"End date (optional)"}
+            <input className="input mt-1 w-full" type="date" disabled={busy} min={taskDate}
+              value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)}/>
+          </label>
+          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"保存重复规则，不会自动创建未来日历时段。":"Save a repeat rule without auto-booking calendar sessions."}</p>
+        </div>}
+        {planMode==="fixed" ? <div className="mt-5 space-y-4">
+          <div>
+            <label className="mb-2 block text-xs font-semibold text-ink-soft">{dictionary.common?.minutes==="分钟"?"工作日期":"Work date"}</label>
+            <div className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
+              <CalendarDays className="h-4 w-4 shrink-0 text-sage-700"/>
+              <button type="button" disabled={busy} onClick={() => {
+                const input=workDateRef.current;
+                if (!input) return;
+                try { input.showPicker(); } catch { input.focus(); input.click(); }
+              }} className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink">
+                {formatWorkDate(sessionStart,dictionary.common?.minutes==="分钟")}
+              </button>
+              <input ref={workDateRef} aria-label={dictionary.common?.minutes==="分钟"?"选择工作日期":"Choose work date"}
+                type="date" value={sessionStart.slice(0,10)} disabled={busy}
+                onChange={e=>{const day=e.target.value;if(!day)return;setSessionStart(day+"T"+(sessionStart.slice(11)||"14:00"));setSessionEnd((crossDay?sessionEnd.slice(0,10)||day:day)+"T"+(sessionEnd.slice(11)||"16:00"));}}
+                className="h-9 w-10 shrink-0 cursor-pointer text-transparent outline-none [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer"/>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {([{key:"start",label:dictionary.common?.minutes==="分钟"?"开始":"Start",value:sessionStart},{key:"end",label:dictionary.common?.minutes==="分钟"?"结束":"End",value:sessionEnd}] as const).map(item=>
+              <label key={item.key} className="min-w-0">
+                <span className="mb-2 block text-xs font-semibold text-ink-soft">{item.label}</span>
+                <span className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
+                  <Clock3 className="h-4 w-4 shrink-0 text-sage-700"/>
+                  <input type="time" step={300} value={item.value.slice(11)} disabled={busy}
+                    onChange={e=>{const date=item.key==="start"?sessionStart.slice(0,10):crossDay?sessionEnd.slice(0,10):sessionStart.slice(0,10);
+                      if(item.key==="start")setSessionStart(date+"T"+e.target.value);else setSessionEnd(date+"T"+e.target.value);
+                    }}
+                    className="w-full min-w-0 bg-transparent text-base font-medium text-ink outline-none"/>
+                </span>
+              </label>)}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-ink-soft">
+            <input type="checkbox" checked={crossDay} disabled={busy} onChange={e=>{setCrossDay(e.target.checked);if(!e.target.checked&&sessionStart)setSessionEnd(sessionStart.slice(0,10)+"T"+(sessionEnd.slice(11)||"16:00"));}}/>
+            {dictionary.common?.minutes==="分钟"?"跨天结束":"Ends on another day"}
+          </label>
+          {crossDay && <label className="block text-xs font-medium text-ink-soft">
+            {dictionary.common?.minutes==="分钟"?"结束日期":"End date"}
+            <input type="date" min={sessionStart.slice(0,10)||undefined} value={sessionEnd.slice(0,10)} disabled={busy}
+              onChange={e=>setSessionEnd(e.target.value+"T"+(sessionEnd.slice(11)||"16:00"))}
+              className="input mt-2 w-full"/>
+          </label>}
+          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"仅安排这一次；以后可以在 Calendar 中拖动或新增时段。":"One session only; adjust or add sessions in Calendar later."}</p>
+        </div>:<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"先创建任务，不占用日历时间；以后再手动安排。":"Create the task without booking time; schedule it later."}</p>}
+      </div>
+
+      <div className="rounded-2xl border border-line bg-paper/40 p-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-ink">
+          <input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy} />
+          {dictionary.common?.minutes === "分钟" ? "开启成长旅程（可选）" : "Enable growth Journey (optional)"}
+        </label>
+        {longTerm && <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "开始日期" : "Start date"}
+            <input className="input mt-1 w-full" type="date" value={startDate} onChange={e=>{setStartDate(e.target.value);if(endDate<e.target.value)setEndDate(e.target.value);}} disabled={busy}/>
+          </label>
+          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "目标结束日期" : "Target end date"}
+            <input className="input mt-1 w-full" type="date" min={startDate} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/>
+          </label>
+          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes === "分钟" ? "创建后可在 Calendar 的旅程视图中调整日期。" : "Adjust journey dates later in Calendar."}</p>
+        </div>}
       </div>
 
       {/* 可见范围 */}
