@@ -172,6 +172,7 @@ export default function AddTodoForm({
       if (cadence==="weekly_days" && weekdays.length===0) {
         setError("请选择至少一天 / Select at least one weekday"); return;
       }
+      if (goalPeriod==="day" && Number(goalValue)!==1) {setError("当前每日习惯只支持 1 次；每日多次将在后续规则扩展中支持。");return;}
       if (goalPeriod==="week" && (!Number.isInteger(Number(goalValue)) || Number(goalValue)<1 || Number(goalValue)>7)) {setError("当前每周习惯支持 1–7 次。");return;}
       if (repeatEnd && repeatEnd < taskDate) {
         setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
