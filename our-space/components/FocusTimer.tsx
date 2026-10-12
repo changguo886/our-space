@@ -134,6 +134,9 @@ export default function FocusTimer({
   const [now, setNow] =
     useState(Date.now());
 
+  // Visible focus duration is separate from the lifetime Todo counter.
+  const [sessionSeconds, setSessionSeconds] = useState(0);
+
   const [busy, setBusy] =
     useState(false);
 
@@ -377,6 +380,11 @@ export default function FocusTimer({
       now,
     ]);
 
+  const activeIntervalSeconds = status === "running" && startedAt
+    ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000))
+    : 0;
+  const currentSessionSeconds = sessionSeconds + activeIntervalSeconds;
+
   /*
    * 预计时间
    */
@@ -393,7 +401,7 @@ export default function FocusTimer({
     targetSeconds !== null
       ? Math.max(
           targetSeconds -
-            currentElapsed,
+            currentSessionSeconds,
           0
         )
       : null;
@@ -405,7 +413,7 @@ export default function FocusTimer({
     targetSeconds &&
     targetSeconds > 0
       ? Math.min(
-          currentElapsed /
+          currentSessionSeconds /
             targetSeconds,
           1
         )
@@ -466,17 +474,17 @@ export default function FocusTimer({
    */
   const floatingDisplayTime =
     targetSeconds !== null
-      ? currentElapsed >
+      ? currentSessionSeconds >
         targetSeconds
         ? `+${formatTime(
-            currentElapsed -
+            currentSessionSeconds -
               targetSeconds
           )}`
         : formatTime(
             remainingSeconds ?? 0
           )
       : formatTime(
-          currentElapsed
+          currentSessionSeconds
         );
 
   const floatingStatusText =
@@ -871,6 +879,42 @@ export default function FocusTimer({
     }
   }
 
+  async function restartFocus() {
+    if (busy || status === "completed") return;
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      if (status === "running") {
+        // Persist the old interval before starting a fresh one.
+        const { data: saved, error: finishError } = await supabase.rpc("finish_focus_session", {
+          p_todo_id: todo.id,
+          p_action: "end",
+          p_expected_started_at: startedAt,
+        });
+        if (finishError) throw finishError;
+        setElapsedSeconds(Number(saved));
+        setStartedAt(null);
+        setStatus("paused");
+      }
+      const { data: newStartedAt, error: startError } = await supabase.rpc("start_focus_session_v2", {
+        p_todo_id: todo.id,
+      });
+      if (startError) throw startError;
+      setSessionSeconds(0);
+      setStartedAt(newStartedAt as string);
+      setStatus("running");
+      setNow(Date.now());
+      setTimeUp(false);
+      alarmPlayedRef.current = false;
+    } catch (error) {
+      alert("重新开始失败；已保存的专注时间不会丢失。 / Restart failed: " +
+        (error instanceof Error ? error.message : String(error)));
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function persistFocusAction(action: "pause" | "end" | "complete") {
     const { data, error } = await createClient().rpc("finish_focus_session", {
       p_todo_id: todo.id,
@@ -889,6 +933,7 @@ export default function FocusTimer({
     setBusy(true);
     try {
       const savedElapsed = await persistFocusAction("pause");
+      setSessionSeconds(currentSessionSeconds);
       setElapsedSeconds(savedElapsed);
       setStartedAt(null);
       setStatus("paused");
@@ -909,6 +954,7 @@ export default function FocusTimer({
     setBusy(true);
     try {
       const savedElapsed = await persistFocusAction("end");
+      setSessionSeconds(currentSessionSeconds);
       setElapsedSeconds(savedElapsed);
       setStartedAt(null);
       setStatus("paused");
@@ -977,7 +1023,7 @@ export default function FocusTimer({
     );
 
     setFinalElapsed(
-      actualElapsed
+      currentSessionSeconds
     );
 
     setTimeUp(false);
@@ -1076,6 +1122,7 @@ export default function FocusTimer({
       const savedElapsed = Number(data);
       if (!Number.isFinite(savedElapsed)) throw new Error("Invalid focus total");
       setElapsedSeconds(savedElapsed);
+      setSessionSeconds(0);
       setStartedAt(null);
       setStatus("pending");
       setNow(Date.now());
@@ -1532,7 +1579,7 @@ export default function FocusTimer({
         <span>
           {focusText.focusedFor.replace(
             "{time}",
-            formatTime(currentElapsed)
+            formatTime(currentSessionSeconds)
           )}
         </span>
       </div>
@@ -2040,12 +2087,13 @@ export default function FocusTimer({
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 rounded-full border border-[#E4EAE3] bg-[#FCFDFB] px-5 py-2.5 text-center shadow-sm sm:gap-x-7">
           <div><span className="block text-[10px] tracking-wide text-ink-faint">预计</span><strong className="block text-sm font-medium tabular-nums text-ink">{todo.estimated_minutes != null ? `${todo.estimated_minutes} 分钟` : "未设定"}</strong></div>
           <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
-          <div><span className="block text-[10px] tracking-wide text-ink-faint">已专注</span><strong className="block text-sm font-semibold tabular-nums text-sage-700">{Math.floor(currentElapsed / 60)} 分钟</strong></div>
+          <div><span className="block text-[10px] tracking-wide text-ink-faint">本次专注</span><strong className="block text-sm font-semibold tabular-nums text-sage-700">{Math.floor(currentSessionSeconds / 60)} 分钟</strong></div>
           {todo.estimated_minutes != null && <>
             <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
-            <div><span className="block text-[10px] tracking-wide text-ink-faint">参考剩余</span><strong className="block text-sm font-medium tabular-nums text-ink">{Math.max(0, todo.estimated_minutes - Math.floor(currentElapsed / 60))} 分钟</strong></div>
+            <div><span className="block text-[10px] tracking-wide text-ink-faint">参考剩余</span><strong className="block text-sm font-medium tabular-nums text-ink">{Math.max(0, todo.estimated_minutes - Math.floor(currentSessionSeconds / 60))} 分钟</strong></div>
           </>}
         </div>
+        <p className="text-center text-xs text-[#7D9181]">任务累计：{formatTime(currentElapsed)}（已记录历史不会被重置）</p>
         <p className="text-center text-xs leading-relaxed text-[#7D9181]">{focusEncouragement}</p>
       </div>
 
@@ -2095,7 +2143,7 @@ export default function FocusTimer({
                   remainingSeconds
                 )
               : formatTime(
-                  currentElapsed
+                  currentSessionSeconds
                 )}
           </div>
 
@@ -2103,7 +2151,7 @@ export default function FocusTimer({
             {targetSeconds
               ? focusText.focusedFor.replace(
                   "{time}",
-                  formatTime(currentElapsed)
+                  formatTime(currentSessionSeconds)
                 )
               : focusText.focusedTime}
           </p>
@@ -2177,11 +2225,11 @@ export default function FocusTimer({
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50 hover:text-sage-700 disabled:opacity-50">
               <Check className="h-4 w-4" /> 完成整个任务
             </button>
-            <button type="button" onClick={() => void resetTimer()}
-              disabled={busy || status === "running" || status === "completed"}
+            <button type="button" onClick={() => void restartFocus()}
+              disabled={busy || status === "completed"}
               className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-xs text-ink-faint transition hover:bg-mist-50"
-              title={focusText.reset}>
-              <RotateCcw className="h-3.5 w-3.5" /> 重置
+              title="保存当前专注并从零重新开始">
+              <RotateCcw className="h-3.5 w-3.5" /> 重新开始
             </button>
           </div>
         </div>
