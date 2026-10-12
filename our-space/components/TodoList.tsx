@@ -600,9 +600,8 @@ export default function TodoList({
         })
         .eq("id", todoId);
 
-    setBusyId(null);
-
     if (error) {
+      setBusyId(null);
       setError(
         t.saveFailed +
           error.message
@@ -617,19 +616,20 @@ export default function TodoList({
         scheduled_start:new Date(editScheduledStart).toISOString(),
         scheduled_end:new Date(editScheduledEnd).toISOString(),
       }).eq("id",editingSessionId).eq("todo_id",todoId);
-      if(sessionError){setError("任务已更新，但时间安排保存失败："+sessionError.message);return;}
+      if(sessionError){setBusyId(null);setError("任务已更新，但时间安排保存失败："+sessionError.message);return;}
     } else if(!editingSessionId && editScheduledStart && editScheduledEnd){
       const {error:sessionError}=await supabase.from("todo_sessions").insert({
         todo_id:todoId,scheduled_start:new Date(editScheduledStart).toISOString(),
         scheduled_end:new Date(editScheduledEnd).toISOString(),
       });
-      if(sessionError){setError("任务已更新，但新增时间安排失败："+sessionError.message);return;}
+      if(sessionError){setBusyId(null);setError("任务已更新，但新增时间安排失败："+sessionError.message);return;}
     }
     // Clear the legacy fields only after the matching Session is saved.
     if(editScheduledStart && editScheduledEnd && (todoForEdit?.scheduled_start||todoForEdit?.scheduled_end)){
       const {error:clearError}=await supabase.from("todos").update({scheduled_start:null,scheduled_end:null}).eq("id",todoId);
-      if(clearError){setError("安排已保存，但旧时间字段未能清理："+clearError.message);return;}
+      if(clearError){setBusyId(null);setError("安排已保存，但旧时间字段未能清理："+clearError.message);return;}
     }
+    setBusyId(null);
     cancelEditing();
     router.refresh();
   }
