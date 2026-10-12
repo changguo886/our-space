@@ -230,7 +230,7 @@ export default function AddTodoForm({
         task_date: taskDate,
         category,
         custom_tag: customTag.trim() || null,
-        task_type: taskType==="habit"?"habit":"one_time",
+        task_type: "one_time",
         ...(taskType==="planned" ? { plan_start_date:startDate, target_finish_date:targetFinish, deadline_date:officialDeadline||null } : {}),
       }).select("id").single();
       created = data;
