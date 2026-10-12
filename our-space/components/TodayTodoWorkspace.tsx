@@ -9,6 +9,7 @@ import {
 import QuickNotes from "@/components/QuickNotes";
 import { useI18n } from "@/components/I18nProvider";
 
+import TodoExecutionSchedule from "@/components/TodoExecutionSchedule";
 import TodoList, {
   type Todo,
   type TodoNotesOpenPayload,
@@ -238,6 +239,7 @@ export default function TodayTodoWorkspace({
           </div>
 
 
+          {todayTodos.length===1&&<TodoExecutionSchedule key={todayTodos[0].id} todoId={todayTodos[0].id}/>}
           <div className="mt-5">
             <TodoList
               todos={todayTodos}
