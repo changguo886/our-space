@@ -104,6 +104,15 @@ export default function AddTodoForm({
   const [sessionEnd,setSessionEnd]=useState("");
   const [crossDay,setCrossDay]=useState(false);
   const [longTerm, setLongTerm] = useState(false);
+  const [journeyColor, setJourneyColor] = useState("blue");
+  const [goalEnabled, setGoalEnabled] = useState(false);
+  const [goalMetric, setGoalMetric] = useState<"count" | "duration">("count");
+  const [goalPeriod, setGoalPeriod] = useState<"day" | "week" | "month">("week");
+  const [goalValue, setGoalValue] = useState("4");
+  const [extraCount, setExtraCount] = useState("");
+  const [extraPeriodMinutes, setExtraPeriodMinutes] = useState("");
+  const [perSessionMinutes, setPerSessionMinutes] = useState("");
+  const [totalMinutes, setTotalMinutes] = useState("");
   const [startDate, setStartDate] = useState(taskDate);
   const [endDate, setEndDate] = useState(taskDate);
 
@@ -165,6 +174,19 @@ export default function AddTodoForm({
         setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
       }
     }
+    if (goalEnabled && taskType !== "one_time") {
+      const required = Number(goalValue);
+      const optional = [extraCount, extraPeriodMinutes, perSessionMinutes, totalMinutes];
+      if (!Number.isSafeInteger(required) || required <= 0 ||
+          optional.some(value => value.trim() !== "" && (!Number.isSafeInteger(Number(value)) || Number(value) <= 0))) {
+        setError("目标必须是正整数（时间以分钟计） / Goals must be positive integers (minutes for duration).");
+        return;
+      }
+      if (cadence === "weekly_quota" && goalPeriod === "week" && goalMetric === "count" && required !== timesPerWeek) {
+        setError("每周次数目标应与重复规则一致 / Weekly frequency must match the repeat rule.");
+        return;
+      }
+    }
     if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
     setBusy(true);
     setError(null);
@@ -223,8 +245,27 @@ export default function AddTodoForm({
       }
     }
 
+    if (!error && created && goalEnabled && taskType !== "one_time") {
+      const { error: goalError } = await supabase.from("task_goal_settings").insert({
+        todo_id: created.id,
+        primary_metric: goalMetric,
+        period: goalPeriod,
+        target_value: Number(goalValue),
+        frequency_target: goalMetric === "duration" && extraCount.trim() ? Number(extraCount) : null,
+        period_duration_target_minutes: goalMetric === "count" && extraPeriodMinutes.trim() ? Number(extraPeriodMinutes) : null,
+        per_session_target_minutes: perSessionMinutes.trim() ? Number(perSessionMinutes) : null,
+        total_target_minutes: totalMinutes.trim() ? Number(totalMinutes) : null,
+      });
+      if (goalError) {
+        setError("任务已创建，但目标保存失败 / Task created, goal failed: " + goalError.message);
+        setBusy(false);
+        router.refresh();
+        return;
+      }
+    }
+
     if (!error && created && longTerm) {
-      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim"});
+      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim",color_key:journeyColor});
       if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
     }
     setBusy(false);
@@ -245,6 +286,15 @@ export default function AddTodoForm({
     setMinutes("");
     setCustomTag("");
     setLongTerm(false);
+    setJourneyColor("blue");
+    setGoalEnabled(false);
+    setGoalMetric("count");
+    setGoalPeriod("week");
+    setGoalValue("4");
+    setExtraCount("");
+    setExtraPeriodMinutes("");
+    setPerSessionMinutes("");
+    setTotalMinutes("");
     setTaskType("one_time");
     setPlanMode("flexible");
     setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");
@@ -531,6 +581,58 @@ export default function AddTodoForm({
         </div>:taskType==="one_time"?<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"先创建任务，不占用日历时间；以后再手动安排。":"Create the task without booking time; schedule it later."}</p>:null}
       </div>
 
+      {taskType !== "one_time" && (
+        <section className="rounded-2xl border border-line bg-white/80 p-4 space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-ink">
+            <input type="checkbox" checked={goalEnabled} onChange={e => setGoalEnabled(e.target.checked)} disabled={busy} />
+            设置执行目标 / Set progress goals (optional)
+          </label>
+          {goalEnabled && (
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-ink-soft">主要目标 / Primary metric
+                  <select className="input mt-1 w-full" value={goalMetric} disabled={busy} onChange={e => setGoalMetric(e.target.value as "count" | "duration")}>
+                    <option value="count">完成次数 / Count</option>
+                    <option value="duration">累计分钟 / Minutes</option>
+                  </select>
+                </label>
+                <label className="text-xs text-ink-soft">统计周期 / Period
+                  <select className="input mt-1 w-full" value={goalPeriod} disabled={busy} onChange={e => setGoalPeriod(e.target.value as "day" | "week" | "month")}>
+                    <option value="day">每天 / Day</option>
+                    <option value="week">每周 / Week</option>
+                    <option value="month">每月 / Month</option>
+                  </select>
+                </label>
+              </div>
+              <label className="block text-xs text-ink-soft">{goalMetric === "count" ? "周期目标次数 / Target count" : "周期目标分钟数 / Target minutes"}
+                <input className="input mt-1 w-full" type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e => setGoalValue(e.target.value)} />
+              </label>
+              <details className="rounded-xl bg-paper/50 p-3">
+                <summary className="cursor-pointer text-xs font-medium text-ink-soft">额外目标 / Advanced goals</summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {goalMetric === "count" ? (
+                    <label className="text-xs text-ink-soft">周期累计分钟 / Period minutes
+                      <input className="input mt-1 w-full" type="number" min="1" step="1" value={extraPeriodMinutes} onChange={e => setExtraPeriodMinutes(e.target.value)} disabled={busy}/>
+                    </label>
+                  ) : (
+                    <label className="text-xs text-ink-soft">周期次数 / Period count
+                      <input className="input mt-1 w-full" type="number" min="1" step="1" value={extraCount} onChange={e => setExtraCount(e.target.value)} disabled={busy}/>
+                    </label>
+                  )}
+                  <label className="text-xs text-ink-soft">单次目标分钟 / Per-session minutes
+                    <input className="input mt-1 w-full" type="number" min="1" step="1" value={perSessionMinutes} onChange={e => setPerSessionMinutes(e.target.value)} disabled={busy}/>
+                  </label>
+                  <label className="text-xs text-ink-soft">整个项目累计分钟 / Total minutes
+                    <input className="input mt-1 w-full" type="number" min="1" step="1" value={totalMinutes} onChange={e => setTotalMinutes(e.target.value)} disabled={busy}/>
+                  </label>
+                </div>
+              </details>
+              <p className="text-xs text-ink-faint">目标是计划值，真实专注时间由 Focus 记录自动统计。</p>
+            </div>
+          )}
+        </section>
+      )}
+
       <div className="rounded-2xl border border-line bg-paper/40 p-4">
         <label className="flex items-center gap-2 text-sm font-medium text-ink">
           <input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy} />
@@ -542,6 +644,11 @@ export default function AddTodoForm({
           </label>
           <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "目标结束日期" : "Target end date"}
             <input className="input mt-1 w-full" type="date" min={startDate} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/>
+          </label>
+          <label className="text-xs text-ink-soft sm:col-span-2">旅程颜色 / Journey color
+            <select className="input mt-1 w-full" value={journeyColor} onChange={e=>setJourneyColor(e.target.value)} disabled={busy}>
+              {["blue","green","purple","orange","pink","teal"].map(color=><option key={color} value={color}>{color}</option>)}
+            </select>
           </label>
           <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes === "分钟" ? "创建后可在 Calendar 的旅程视图中调整日期。" : "Adjust journey dates later in Calendar."}</p>
         </div>}
