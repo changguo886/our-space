@@ -98,6 +98,9 @@ export default function AddTodoForm({
   const [planMode,setPlanMode]=useState<"flexible"|"fixed">("flexible");
   const [cadence,setCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
   const [weekdays,setWeekdays]=useState<number[]>([]);
+  const [habitArrangement,setHabitArrangement]=useState<"flexible"|"fixed">("flexible");
+  const [monthDays,setMonthDays]=useState<number[]>([]);
+  const [includeMonthEnd,setIncludeMonthEnd]=useState(false);
   const [timesPerWeek,setTimesPerWeek]=useState(3);
   const [repeatEnd,setRepeatEnd]=useState("");
   const [sessionStart,setSessionStart]=useState("");
@@ -172,8 +175,8 @@ export default function AddTodoForm({
       if (cadence==="weekly_days" && weekdays.length===0) {
         setError("请选择至少一天 / Select at least one weekday"); return;
       }
-      if (goalPeriod==="day" && Number(goalValue)!==1) {setError("当前每日习惯只支持 1 次；每日多次将在后续规则扩展中支持。");return;}
-      if (goalPeriod==="week" && (!Number.isInteger(Number(goalValue)) || Number(goalValue)<1 || Number(goalValue)>7)) {setError("当前每周习惯支持 1–7 次。");return;}
+      if (goalPeriod==="week" && cadence==="weekly_quota" && (!Number.isInteger(Number(goalValue)) || Number(goalValue)<1 || Number(goalValue)>7)) {setError("目前每周灵活次数为 1–7 次。");return;}
+      if (goalPeriod==="month" && habitArrangement==="fixed" && monthDays.length===0 && !includeMonthEnd){setError("请至少选择一个月度日期，或选择每月最后一天。");return;}
       if (repeatEnd && repeatEnd < taskDate) {
         setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
       }
@@ -201,7 +204,7 @@ export default function AddTodoForm({
 
     let created: { id: string } | null = null;
     let createError: { message: string } | null = null;
-    if (taskType === "habit") {
+    if (taskType === "habit" && goalPeriod==="week") {
       const { data, error: rpcError } = await supabase.rpc("create_scheduled_todo_v2", {
         p_task_type: taskType,
         p_title: cleanTitle,
@@ -229,7 +232,7 @@ export default function AddTodoForm({
         task_date: taskDate,
         category,
         custom_tag: customTag.trim() || null,
-        task_type: "one_time",
+        task_type: taskType==="habit"?"habit":"one_time",
         ...(taskType==="planned" ? { plan_start_date:startDate, target_finish_date:targetFinish, deadline_date:officialDeadline||null } : {}),
       }).select("id").single();
       created = data;
@@ -251,12 +254,22 @@ export default function AddTodoForm({
       }
     }
 
+    if (!error && created && taskType==="habit") {
+      const selectedDays=habitArrangement==="fixed" && goalPeriod==="month" ? monthDays : [];
+      const target=goalPeriod==="week" && cadence==="weekly_days" ? weekdays.length : goalPeriod==="month" && habitArrangement==="fixed" ? monthDays.length+(includeMonthEnd?1:0) : Number(goalValue);
+      const {error:patternError}=await supabase.from("habit_patterns_v3").insert({
+        todo_id:created.id, period:goalPeriod, arrangement:goalPeriod==="day"?"flexible":goalPeriod==="week"?(cadence==="weekly_days"?"fixed":"flexible"):habitArrangement,
+        target_count:target, weekdays:goalPeriod==="week"&&cadence==="weekly_days"?weekdays:[],
+        month_days:selectedDays,include_month_end:goalPeriod==="month"&&habitArrangement==="fixed"&&includeMonthEnd,
+      });
+      if(patternError){setError("任务已创建，但重复规则保存失败："+patternError.message);setBusy(false);router.refresh();return;}
+    }
     if (!error && created && taskType === "habit") {
       const { error: goalError } = await supabase.from("task_goal_settings").insert({
         todo_id: created.id,
         primary_metric: goalMetric,
         period: goalPeriod,
-        target_value: cadence === "weekly_quota" && goalPeriod === "week" && goalMetric === "count" ? timesPerWeek : Number(goalValue),
+        target_value: goalPeriod==="week"&&cadence==="weekly_days"?weekdays.length:goalPeriod==="month"&&habitArrangement==="fixed"?monthDays.length+(includeMonthEnd?1:0):goalPeriod==="week"&&cadence==="weekly_quota"?timesPerWeek:Number(goalValue),
         frequency_target: goalMetric === "duration" ? (cadence === "weekly_quota" && goalPeriod === "week" ? timesPerWeek : extraCount.trim() ? Number(extraCount) : null) : null,
         period_duration_target_minutes: goalMetric === "count" && extraPeriodMinutes.trim() ? Number(extraPeriodMinutes) : null,
         per_session_target_minutes: perSessionMinutes.trim() ? Number(perSessionMinutes) : null,
@@ -303,7 +316,7 @@ export default function AddTodoForm({
     setTotalMinutes("");
     setTaskType("one_time");
     setPlanMode("flexible");
-    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");
+    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");setHabitArrangement("flexible");setMonthDays([]);setIncludeMonthEnd(false);
     setSessionStart("");setSessionEnd("");setCrossDay(false);
     setStartDate(taskDate);
     setTargetFinish("");
@@ -383,13 +396,22 @@ export default function AddTodoForm({
         <section className="space-y-3 rounded-xl bg-paper/40 p-3">
           <p className="text-xs font-medium text-ink-soft">{zh?"习惯目标":"Habit goal"}</p>
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-ink-soft">{zh?"统计周期":"Period"}<select className={field+" mt-1"} value={goalPeriod} onChange={e=>{setGoalPeriod(e.target.value as typeof goalPeriod);setCadence(e.target.value==="day"?"daily":"weekly_quota");}} disabled={busy}><option value="day">{zh?"每天":"Day"}</option><option value="week">{zh?"每周":"Week"}</option><option value="month" disabled>{zh?"每月（待数据扩展）":"Month (coming later)"}</option></select></label>
-            {cadence!=="weekly_days"&&<label className="text-xs text-ink-soft">{zh?"目标次数":"Target count"}<input className={field+" mt-1"} type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e=>{setGoalValue(e.target.value);setTimesPerWeek(Math.min(7,Math.max(1,Number(e.target.value)||1)));}}/></label>}
+            <label className="text-xs text-ink-soft">{zh?"统计周期":"Period"}<select className={field+" mt-1"} value={goalPeriod} onChange={e=>{setGoalPeriod(e.target.value as typeof goalPeriod);setCadence(e.target.value==="day"?"daily":"weekly_quota");setHabitArrangement("flexible");setGoalValue(e.target.value==="day"?"1":"3");setTimesPerWeek(3);}} disabled={busy}><option value="day">{zh?"每天":"Day"}</option><option value="week">{zh?"每周":"Week"}</option><option value="month">{zh?"每月":"Month"}</option></select></label>
+            {!(goalPeriod==="week"&&cadence==="weekly_days")&&!(goalPeriod==="month"&&habitArrangement==="fixed")&&<label className="text-xs text-ink-soft">{zh?"目标次数":"Target count"}<input className={field+" mt-1"} type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e=>{setGoalValue(e.target.value);setTimesPerWeek(Math.min(7,Math.max(1,Number(e.target.value)||1)));}}/></label>}
           </div>
           {goalPeriod==="week"&&<div className="space-y-2 rounded-xl border border-line bg-white p-3">
             <p className="text-xs font-medium text-ink-soft">每周执行方式 / Weekly plan</p>
             <div className="grid grid-cols-2 gap-2">{([{id:"weekly_quota",label:"灵活次数"},{id:"weekly_days",label:"固定星期"}] as const).map(option=><button key={option.id} type="button" disabled={busy} aria-pressed={cadence===option.id} onClick={()=>{setCadence(option.id);if(option.id==="weekly_days"){const selected=weekdays.length?weekdays:[1,3,5];setWeekdays(selected);setGoalValue(String(selected.length));}else{setGoalValue(String(timesPerWeek));}}} className={`rounded-lg border px-2 py-2 text-xs ${cadence===option.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
             {cadence==="weekly_days"&&<><div className="grid grid-cols-7 gap-1">{["一","二","三","四","五","六","日"].map((label,index)=><button key={index} type="button" disabled={busy} aria-pressed={weekdays.includes(index+1)} onClick={()=>{const selected=weekdays.includes(index+1)?weekdays.filter(v=>v!==index+1):[...weekdays,index+1].sort((a,b)=>a-b);setWeekdays(selected);setGoalValue(String(selected.length));}} className={`rounded-lg border py-2 text-xs ${weekdays.includes(index+1)?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{label}</button>)}</div><p className="text-xs text-ink-faint">已选 {weekdays.length} 天，自动保存每周 {weekdays.length} 次；不自动占用日历。</p></>}
+          </div>}
+          {goalPeriod==="month"&&<div className="space-y-3 rounded-xl border border-line bg-white p-3">
+            <p className="text-xs font-medium text-ink-soft">每月执行方式</p>
+            <div className="grid grid-cols-2 gap-2">{([{value:"flexible",label:"灵活次数"},{value:"fixed",label:"固定日期"}] as const).map(option=><button type="button" key={option.value} disabled={busy} onClick={()=>setHabitArrangement(option.value)} aria-pressed={habitArrangement===option.value} className={`rounded-lg border p-2 text-xs ${habitArrangement===option.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
+            {habitArrangement==="fixed"&&<>
+              <div className="grid grid-cols-7 gap-1">{Array.from({length:31},(_,i)=>i+1).map(day=><button key={day} type="button" disabled={busy} onClick={()=>setMonthDays(current=>current.includes(day)?current.filter(x=>x!==day):[...current,day].sort((a,b)=>a-b))} aria-pressed={monthDays.includes(day)} className={`rounded-lg border py-2 text-xs ${monthDays.includes(day)?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{day}</button>)}</div>
+              <label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={includeMonthEnd} onChange={e=>setIncludeMonthEnd(e.target.checked)} disabled={busy}/> 每月最后一天（28/29/30/31 日自动适配）</label>
+              <p className="text-xs text-ink-faint">已选 {monthDays.length} 个日期{includeMonthEnd?"，另加当月最后一天":""}。不存在的日期当月跳过，不自动改期。</p>
+            </>}
           </div>}
           {goalPeriod==="week"&&Number(goalValue)>7&&<p className="text-xs text-amber-700">每周超过 7 次尚不支持，请改为 1–7 次。</p>}
           <p className="text-xs text-ink-faint">{zh?"默认灵活进行，不自动预约日历时段。目标只输入一次。":"Flexible by default; goal is entered once."}</p>
