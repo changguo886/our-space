@@ -39,3 +39,14 @@ Repository: `changguo886/our-space`
 ## New-chat handoff
 
 Read this file and `docs/calendar-architecture-phase-a.md`. Confirm branch, current schema, target Project URL ref, migration execution status, and any uncommitted local changes. Use the simple Production-first route for reviewed low-risk changes; alert the user and route medium/high-risk work through Staging as appropriate. Never overwrite live user data with a copied Staging database.
+
+
+## V2 release gates & feature handoff (2026-10-12)
+
+- Before further SQL, **audit existing Production versus Staging** and verify which phase migrations are applied. `npm run build` passed locally on 2026-10-12 for the feature branch; a successful build is not a functional or database/RLS test.
+- Current V2 scope: preserve original data; design goals vs actual execution ledger, origin Todo relation, persisted Journey palette, recurring-instance integrity and targeted RLS. Stage risky backfills, constraints, Focus accounting and policy changes before Production. Additive changes still require reviewed backup/recovery and explicit approval.
+- Reconcile application UI with approved product plan: the experimental `AllTasksWorkspace` is slated for removal from Todo in favor of category grouping in Today; History provides all-time task browsing/statistics. Avoid shipping experimental UI to Production before acceptance.
+- **Future AI**: document separately planned server endpoints for `/api/ai/stats-insights` and `/api/ai/task-breakdown`. Aggregates computed deterministically before AI summary; proposed subtasks require user confirmation. No provider keys in frontend/GitHub.
+- Post-completion continuing tasks: preserve original one-time record; generate a new task from it using `origin_todo_id`, with 3–4 lightweight decisions. Do not automatically book sessions or start a Journey.
+- New chat/new branch: read `docs/task-architecture-v2.md`, this workflow, and `docs/calendar-architecture-phase-a.md`. Confirm exact upstream branch and whether changes are merged; do not create a new branch from an outdated `main`. Check local uncommitted files before checkout/pull; verify the active database Project URL without publishing secrets.
+- **Operational reminder:** the assistant must warn proactively about medium/high-risk schema migrations and enumerate affected existing records, referential effects and recovery plan. Record each executed migration's target environment and verification, not only the GitHub commit.
