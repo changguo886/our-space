@@ -1104,42 +1104,6 @@ export default function FocusTimer({
   }
 
   /*
-   * 重置
-   */
-  async function resetTimer() {
-    if (busy || status === "running" || status === "completed") {
-      alert("请先结束当前专注；已完成的任务不能重置。 / End the current focus first; completed tasks cannot be reset.");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      // Reset the task's timer state, never its recorded work history.
-      const { data, error } = await createClient().rpc("reset_focus_timer_v2", {
-        p_todo_id: todo.id,
-      });
-      if (error) throw error;
-      const savedElapsed = Number(data);
-      if (!Number.isFinite(savedElapsed)) throw new Error("Invalid focus total");
-      setElapsedSeconds(savedElapsed);
-      setSessionSeconds(0);
-      setStartedAt(null);
-      setStatus("pending");
-      setNow(Date.now());
-      setTimeUp(false);
-      setCompletionLevel(null);
-      setFeedbackSaved(false);
-      setFeedbackError(null);
-      alarmPlayedRef.current = false;
-      closeFloatingTimer();
-    } catch (error) {
-      alert(focusText.resetFailed + (error instanceof Error ? error.message : String(error)));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /*
    * ==========================
    * 更新 Floating Window UI
    * ==========================
