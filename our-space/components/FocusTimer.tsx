@@ -845,74 +845,27 @@ export default function FocusTimer({
    * 浮窗内部的 Continue 使用，
    * 避免再次打开一个浮窗。
    */
-  async function startTimer(
-    openFloating = true
-  ) {
-    if (
-      busy ||
-      status === "running"
-    ) {
-      return;
-    }
+  async function startTimer(openFloating = true) {
+    if (busy || status === "running" || status === "completed") return;
 
-    /*
-     * 非常重要：
-     *
-     * requestWindow 必须尽量直接发生在
-     * 用户点击操作之后。
-     *
-     * 所以一定放在 Supabase await 之前。
-     */
-    if (
-      openFloating &&
-      !disableFloatingWindow
-    ) {
-      void openFloatingTimer();
-    }
+    // Document PiP must be requested inside the user gesture.
+    if (openFloating && !disableFloatingWindow) void openFloatingTimer();
 
     setBusy(true);
-
-    const supabase =
-      createClient();
-
-    const start =
-      new Date().toISOString();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "running",
-
-          started_at:
-            start,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.startFailed +
-          error.message
-      );
-
-      return;
-    }
-
-    setStartedAt(start);
-
-    setStatus("running");
-
-    setNow(Date.now());
-
-    if (!timeUp) {
-      alarmPlayedRef.current =
-        false;
+    try {
+      const { data, error } = await createClient().rpc("start_focus_session_v2", {
+        p_todo_id: todo.id,
+      });
+      if (error) throw error;
+      if (typeof data !== "string") throw new Error("Invalid start timestamp");
+      setStartedAt(data);
+      setStatus("running");
+      setNow(Date.now());
+      if (!timeUp) alarmPlayedRef.current = false;
+    } catch (error) {
+      alert(focusText.startFailed + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1106,70 +1059,35 @@ export default function FocusTimer({
    * 重置
    */
   async function resetTimer() {
-    if (busy) {
+    if (busy || status === "running" || status === "completed") {
+      alert("请先结束当前专注；已完成的任务不能重置。 / End the current focus first; completed tasks cannot be reset.");
       return;
     }
 
     setBusy(true);
-
-    const supabase =
-      createClient();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "pending",
-
-          started_at:
-            null,
-
-          elapsed_seconds:
-            0,
-
-          completed_at:
-            null,
-
-          completion_level:
-            null,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.resetFailed +
-          error.message
-      );
-
-      return;
+    try {
+      // Reset the task's timer state, never its recorded work history.
+      const { data, error } = await createClient().rpc("reset_focus_timer_v2", {
+        p_todo_id: todo.id,
+      });
+      if (error) throw error;
+      const savedElapsed = Number(data);
+      if (!Number.isFinite(savedElapsed)) throw new Error("Invalid focus total");
+      setElapsedSeconds(savedElapsed);
+      setStartedAt(null);
+      setStatus("pending");
+      setNow(Date.now());
+      setTimeUp(false);
+      setCompletionLevel(null);
+      setFeedbackSaved(false);
+      setFeedbackError(null);
+      alarmPlayedRef.current = false;
+      closeFloatingTimer();
+    } catch (error) {
+      alert(focusText.resetFailed + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
     }
-
-    setElapsedSeconds(0);
-
-    setStartedAt(null);
-
-    setStatus("pending");
-
-    setNow(Date.now());
-
-    setTimeUp(false);
-
-    setCompletionLevel(null);
-
-    setFeedbackSaved(false);
-
-    setFeedbackError(null);
-
-    alarmPlayedRef.current =
-      false;
-
-    closeFloatingTimer();
   }
 
   /*
