@@ -8,8 +8,8 @@ type Plan = { id:string; mode:"flexible"|"window"; plan_date:string; planned_min
 type Session = { id:string; scheduled_start:string; scheduled_end:string };
 function localDate(d:Date){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");}
 function localTime(d:Date){return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
-function validTime(value:string){if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value))return false;return true;}
-function validDate(value:string){if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(value))return false;const d=new Date(value+"T12:00:00");return !Number.isNaN(d.getTime())&&localDate(d)===value;}
+function validTime(value:string){if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(value))return false;return true;}
+function validDate(value:string){if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;const d=new Date(value+"T12:00:00");return !Number.isNaN(d.getTime())&&localDate(d)===value;}
 function toFixedDateTime(date:string,time:string){return new Date(date+"T"+time+":00");}
 const field="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink";
 
