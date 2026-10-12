@@ -56,14 +56,18 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
           <h1 className="text-2xl font-semibold text-ink">我的任务</h1>
           <p className="mt-1 text-xs text-ink-faint">先记录，再规划。任务不会因为错过计划而消失。</p>
         </div>
-        <button type="button" onClick={()=>setCreating(true)} className="btn-primary inline-flex items-center gap-2">
-          <Plus className="h-4 w-4"/> 新任务
-        </button>
+
       </div>
 
       <div className={selected?"grid min-w-0 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]":"mx-auto grid min-w-0 max-w-[780px] gap-5"}>
         <section className="min-w-0 rounded-2xl border border-line bg-white/85 p-4 shadow-soft">
-          <div className="mb-3"><QuickCaptureTodo userId={userId} taskDate={today}/></div>
+          <div className="mb-3 rounded-xl border border-line bg-paper/30 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-ink-soft">快速制定任务</p>
+              <button type="button" onClick={()=>setCreating(true)} className="inline-flex items-center gap-1 rounded-lg border border-sage-300 bg-white px-2.5 py-1.5 text-xs font-medium text-sage-700 hover:bg-sage-50"><Plus className="h-3.5 w-3.5"/> 完整制定任务</button>
+            </div>
+            <QuickCaptureTodo userId={userId} taskDate={today}/>
+          </div>
           <div className="flex flex-wrap gap-1 border-b border-line pb-3" aria-label="任务分组">
             {tabs.map(tab=><button key={tab.key} type="button" aria-pressed={filter===tab.key}
               className={`rounded-lg px-3 py-2 text-xs transition ${filter===tab.key?"bg-sage-100 font-semibold text-sage-700":"text-ink-soft hover:bg-paper"}`}
@@ -104,7 +108,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
       {creating&&<div className="fixed inset-0 z-50 flex justify-end bg-black/30" onMouseDown={event=>{if(event.target===event.currentTarget)setCreating(false);}}>
         <div role="dialog" aria-modal="true" aria-label="创建任务" className="flex h-full w-full max-w-[550px] flex-col overflow-hidden bg-[#FCFBF8] shadow-2xl">
           <div className="flex shrink-0 items-center justify-between border-b border-line px-6 py-4">
-            <div><h2 className="text-xl font-semibold text-ink">添加任务</h2><p className="mt-1 text-xs text-ink-faint">单次任务 · 定期任务 · 习惯养成</p></div>
+            <div><h2 className="text-xl font-semibold text-ink">完整制定任务</h2><p className="mt-1 text-xs text-ink-faint">单次任务 · 定期任务 · 习惯养成</p></div>
             <button type="button" onClick={()=>setCreating(false)} aria-label="关闭创建面板" className="rounded-lg p-2 hover:bg-paper"><X className="h-5 w-5"/></button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
