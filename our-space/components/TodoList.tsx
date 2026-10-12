@@ -16,7 +16,6 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import ScheduleDateTimeField from "@/components/ScheduleDateTimeField";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -936,41 +935,10 @@ export default function TodoList({
                 </details>
 
                 <details className="rounded-xl border border-line p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-ink-soft">预计投入与日历安排（可选）</summary>
-                  <div className="mt-3 space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-xs text-ink-faint">
-                    {t.estimatedTime}
-                  </label>
-
-                  <DurationInput
-                    value={
-                      editMinutes
-                    }
-                    unit={
-                      editDurationUnit
-                    }
-                    onValueChange={
-                      setEditMinutes
-                    }
-                    onUnitChange={
-                      setEditDurationUnit
-                    }
-                    disabled={busy}
-                  />
-                </div>
-
-
-                <div className="space-y-3 rounded-2xl border border-line bg-paper/30 p-4">
-                  <p className="text-xs font-medium text-ink-soft">{t.schedule}</p>
-                  <p className="text-[11px] text-ink-faint">多次安排请到 Calendar 管理；这里可修改单次安排，或新增一次。</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <ScheduleDateTimeField label={t.start} chinese={language==="zh-CN"} value={editScheduledStart} onChange={setEditScheduledStart} disabled={busy}/>
-                    <ScheduleDateTimeField label={t.end} chinese={language==="zh-CN"} value={editScheduledEnd} onChange={setEditScheduledEnd} min={editScheduledStart} disabled={busy}/>
-                  </div>
-                </div>
-
-
+                  <summary className="cursor-pointer text-sm font-medium text-ink-soft">预计投入（可选）</summary>
+                  <div className="mt-3">
+                    <DurationInput value={editMinutes} unit={editDurationUnit} onValueChange={setEditMinutes} onUnitChange={setEditDurationUnit} disabled={busy}/>
+                    <p className="mt-2 text-xs text-ink-faint">固定日历时段和灵活执行安排，请在任务工作区的「执行安排」中添加与管理。</p>
                   </div>
                 </details>
 
