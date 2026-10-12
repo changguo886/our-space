@@ -55,6 +55,9 @@ export type Todo = {
   category?: TodoCategory | null;
   custom_tag?: string | null;
   task_type?: "one_time" | "recurring" | "habit" | null;
+  plan_start_date?: string | null;
+  target_finish_date?: string | null;
+  deadline_date?: string | null;
 };
 
 
