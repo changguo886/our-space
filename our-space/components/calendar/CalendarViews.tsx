@@ -90,7 +90,6 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             </button>)}
         </div>
       </div>}
-      </div>}
     </div>}
   </div>;
 }
