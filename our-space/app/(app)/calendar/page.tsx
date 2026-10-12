@@ -53,6 +53,7 @@ export default async function CalendarPage() {
   custom_tag,
   started_at,
   elapsed_seconds,
+  task_type,
   todo_sessions (
     id,
     scheduled_start,
