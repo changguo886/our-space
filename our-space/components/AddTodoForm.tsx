@@ -103,7 +103,7 @@ export default function AddTodoForm({
   const [sessionStart,setSessionStart]=useState("");
   const [sessionEnd,setSessionEnd]=useState("");
   const [crossDay,setCrossDay]=useState(false);
-  const [longTerm, setLongTerm] = useState(false);
+
   const [journeyColor, setJourneyColor] = useState("blue");
   const [goalEnabled, setGoalEnabled] = useState(false);
   const [goalMetric, setGoalMetric] = useState<"count" | "duration">("count");
@@ -116,7 +116,7 @@ export default function AddTodoForm({
   const [startDate, setStartDate] = useState(taskDate);
   const [targetFinish, setTargetFinish] = useState("");
   const [officialDeadline, setOfficialDeadline] = useState("");
-  const [endDate, setEndDate] = useState(taskDate);
+
 
   const [busy, setBusy] =
     useState(false);
@@ -192,7 +192,7 @@ export default function AddTodoForm({
       setError("请确认目标完成日期不早于开始日期，正式截止日期不早于目标完成日期。");
       return;
     }
-    if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
+
     setBusy(true);
     setError(null);
 
@@ -270,8 +270,8 @@ export default function AddTodoForm({
       }
     }
 
-    if (!error && created && longTerm) {
-      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim",color_key:journeyColor});
+    if (!error && created && taskType==="planned") {
+      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:journeyColor});
       if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
     }
     setBusy(false);
@@ -291,7 +291,7 @@ export default function AddTodoForm({
     setDescription("");
     setMinutes("");
     setCustomTag("");
-    setLongTerm(false);
+
     setJourneyColor("blue");
     setGoalEnabled(false);
     setGoalMetric("count");
@@ -308,7 +308,7 @@ export default function AddTodoForm({
     setStartDate(taskDate);
     setTargetFinish("");
     setOfficialDeadline("");
-    setEndDate(taskDate);
+
 
     /*
      * category 和 visibility
@@ -349,6 +349,10 @@ export default function AddTodoForm({
           <details><summary className="cursor-pointer text-xs text-ink-soft">{zh?"正式截止日期（可选）":"Official deadline (optional)"}</summary>
             <input type="date" className={field+" mt-2"} min={targetFinish||startDate} value={officialDeadline} onChange={e=>setOfficialDeadline(e.target.value)} disabled={busy}/>
           </details>
+          <div className="space-y-1.5">
+            <p className="text-xs text-ink-soft">{zh?"旅程颜色（自动随计划建立）":"Journey color (created automatically)"}</p>
+            <div className="flex flex-wrap gap-2">{([{id:"blue",hex:"#4B83D1"},{id:"green",hex:"#38A179"},{id:"purple",hex:"#9268C5"},{id:"orange",hex:"#DE9144"},{id:"pink",hex:"#D9769B"},{id:"teal",hex:"#329B9C"}] as const).map(c=><button type="button" key={c.id} aria-label={c.id} aria-pressed={journeyColor===c.id} onClick={()=>setJourneyColor(c.id)} disabled={busy} className={`h-8 w-8 rounded-full border-4 ${journeyColor===c.id?"border-ink":"border-white"}`} style={{backgroundColor:c.hex}}/>)}</div>
+          </div>
         </section>
       ):taskType==="one_time" ? (
         <section className="space-y-3">
@@ -380,23 +384,17 @@ export default function AddTodoForm({
           <label className="block text-xs text-ink-soft">{zh?"描述":"Description"}<textarea className={field+" mt-1 min-h-20"} value={description} onChange={e=>setDescription(e.target.value)} disabled={busy}/></label>
           <label className="block text-xs text-ink-soft">{zh?"分类":"Category"}<select className={field+" mt-1"} value={category??""} onChange={e=>setCategory(e.target.value as Category||null)} disabled={busy}><option value="">{zh?"不分类":"None"}</option>{CATEGORIES.map(c=><option key={c.value} value={c.value}>{t.categories[c.value]}</option>)}</select></label>
           {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
-          <label className="block text-xs text-ink-soft">{zh?"预计投入（非必须连续完成）":"Effort estimate"}<DurationInput value={minutes} unit={durationUnit} onValueChange={setMinutes} onUnitChange={setDurationUnit} disabled={busy}/></label>
+          {taskType==="one_time"&&<label className="block text-xs text-ink-soft">{zh?"预计投入（可选）":"Estimated effort (optional)"}<DurationInput value={minutes} unit={durationUnit} onValueChange={setMinutes} onUnitChange={setDurationUnit} disabled={busy}/></label>}
           {taskType==="habit"&&<label className="block text-xs text-ink-soft">{zh?"重复结束日期":"Repeat until"}<input type="date" className={field+" mt-1"} min={taskDate} value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)} disabled={busy}/></label>}
           
           {goalEnabled&&taskType==="habit"&&<div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-ink-soft">{zh?"主要指标":"Metric"}<select className={field+" mt-1"} value={goalMetric} onChange={e=>setGoalMetric(e.target.value as typeof goalMetric)} disabled={busy}><option value="count">{zh?"次数":"Count"}</option><option value="duration">{zh?"分钟":"Minutes"}</option></select></label>
             {goalMetric==="duration"&&<label className="text-xs text-ink-soft">{zh?"目标分钟":"Target minutes"}<input className={field+" mt-1"} type="number" min="1" value={goalValue} onChange={e=>setGoalValue(e.target.value)} disabled={busy}/></label>}
           </div>}
-          <label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy}/>{zh?"开启成长旅程":"Enable Journey"}</label>
-          {longTerm&&<div className="space-y-2">
-            <label className="block text-xs text-ink-soft">{zh?"旅程开始":"Journey start"}<input type="date" className={field+" mt-1"} value={startDate} onChange={e=>setStartDate(e.target.value)} disabled={busy}/></label>
-            <label className="block text-xs text-ink-soft">{zh?"旅程结束":"Journey end"}<input type="date" min={startDate} className={field+" mt-1"} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/></label>
-            <div className="flex flex-wrap gap-2">{([{id:"blue",hex:"#4B83D1"},{id:"green",hex:"#38A179"},{id:"purple",hex:"#9268C5"},{id:"orange",hex:"#DE9144"},{id:"pink",hex:"#D9769B"},{id:"teal",hex:"#329B9C"}] as const).map(c=><button type="button" key={c.id} aria-label={c.id} aria-pressed={journeyColor===c.id} onClick={()=>setJourneyColor(c.id)} className={`h-8 w-8 rounded-full border-4 ${journeyColor===c.id?"border-ink":"border-white"}`} style={{backgroundColor:c.hex}}/>)}</div>
-          </div>}
           <label className="block text-xs text-ink-soft">{zh?"可见范围":"Visibility"}<select className={field+" mt-1"} value={visibility} onChange={e=>setVisibility(e.target.value as typeof visibility)} disabled={busy}><option value="private">{zh?"仅自己":"Private"}</option><option value="space">{activeSpaceName}</option></select></label>
         </div>
       </details>
-      <button className="btn-primary w-full" type="submit" disabled={busy||!title.trim()}>{busy?(zh?"保存中…":"Saving..."):(zh?"创建任务":"Create task")}</button>
+      <button className="btn-primary w-full" type="submit" disabled={busy}>{busy?(zh?"保存中…":"Saving..."):(zh?"创建任务":"Create task")}</button>
       {error&&<p role="alert" className="text-sm text-blush-500">{error}</p>}
     </form>
   );
