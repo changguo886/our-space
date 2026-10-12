@@ -319,8 +319,8 @@ export default function AddTodoForm({
         <div className="grid grid-cols-3 gap-2">
           {([
             {value:"one_time",zh:"单次任务",en:"One-time"},
-            {value:"recurring",zh:"重复任务",en:"Recurring"},
-            {value:"habit",zh:"维持习惯",en:"Habit"},
+            {value:"recurring",zh:"定期任务",en:"Regular"},
+            {value:"habit",zh:"习惯养成",en:"Habit"},
           ] as const).map(item=>(
             <button key={item.value} type="button" disabled={busy}
               aria-pressed={taskType===item.value}
