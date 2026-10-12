@@ -1,43 +1,41 @@
 # Our Space — Database Environments & Migration Workflow
 
-Status: **Accepted development policy** (2026-10-12)
+Status: **Accepted — streamlined workflow** (2026-10-12)
 Repository: `changguo886/our-space`
 
-## Environment responsibilities
+## Environment roles
 
-- **Production Supabase**: source of truth for live user data. The deployed production web app should target Production, verified via the Vercel **Production** values of `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (compare project refs; never publish secrets).
-- **Staging Supabase**: separate, copied test database. It initially contained the same identifiers/counts as Production for 15 `todos`, 10 `todo_sessions`, 2 `quick_notes`, and 2 `goal_journeys` on 2026-10-12. It is **not a live mirror**. It may diverge after tests.
-- **Preview / Development apps**: should point to Staging when testing schema-dependent feature branches. Check environment-specific Vercel configuration before testing. Never assume merely creating Staging switched any deployed app.
+- **Production** is the canonical live user database. Production web must point to it. A local V2 feature branch **may also connect to Production** for quick, deliberate UI and low-risk functional tests, but every write is a real write.
+- **Staging** is a separate copied test environment, **not** a continuously synchronized backup. Keep it available for medium/high-risk schema or data operations and authenticated RLS tests. The 2026-10-12 baseline showed matching ID fingerprints for 15 todos, 10 todo_sessions, 2 quick_notes and 2 goal_journeys, not guaranteed matching current contents.
+- Never infer target environment from branch name. Check `NEXT_PUBLIC_SUPABASE_URL` project ref (in local `.env.local` and each Vercel environment) **before running SQL or write tests**. Never commit keys or connection credentials.
 
-## Mandatory schema change workflow
+## Default low-friction workflow
 
-1. **Write versioned SQL in GitHub on a feature branch**, review dependencies, table names, constraints, foreign keys, RLS, and old UI compatibility. Never change `main` just to test an unverified migration.
-2. **Back up/check Staging**, then apply the **full migration SQL** via Staging SQL Editor or an explicitly configured migration runner. Saving a SQL file to GitHub does **not** execute it in Supabase.
-3. **Run read-only verification on Staging**: inspect columns/tables, foreign keys and RLS policies, compare row counts/identities of existing tables, and test representative create/edit/delete operations using the Staging app.
-4. **Regression test** Todo, Quick Notes, scheduled Sessions, Calendar/drag-and-drop, Journey, Focus history, repeat rules and time zones, as applicable. Verify that existing records and completed history remain intact.
-5. **Only after Staging passes**, make a fresh Production backup/snapshot, review the exact SQL and migration state in Production, and execute the **same approved migration against Production**. Do not copy the Staging database onto Production or overwrite newer live records.
-6. **Verify Production** after migration: required columns/tables, RLS, row counts, existing data and app behavior. Deploy production code in a compatibility-safe sequence (additive migration before feature-dependent UI).
-7. **Record** migration name/commit, target Supabase project, date, executed-by, verification results, and any rollback/forward-fix plan in the development log. An SQL Editor execution may not populate `supabase_migrations.schema_migrations`; absence of that table alone does not imply migration failure.
+1. Implement on a GitHub feature branch; keep SQL migration and change notes versioned. Compile/build locally before merge.
+2. Classify database changes by risk. **Low risk**: additive table/column/index on small existing data sets, backward-compatible, with no destructive backfill and no high-impact policy modification. These **may go directly to Production** after review, recent verified backup/recovery option, compatibility check, and explicit user approval. Staging is optional in this case.
+3. Apply approved migration in Production SQL Editor after verifying the selected project. GitHub commits do not execute SQL. Preserve existing records; do not paste old Staging data over live data.
+4. Verify database structure, old row counts and behavior. Local V2 branch may then test **clearly labeled disposable test records** against Production. Never alter/delete genuine tasks to test; clean up only known test records, checking dependent data.
+5. Build, smoke-test Today/Todo/Calendar/Quick Notes/Journey/Focus and repeat/habit behavior, then review and merge. Record SQL file, commit, execution environment, verification and any forward-fix in the development log.
 
-## Safeguards
+## Risk escalation — assistant must warn before execution
 
-- Always confirm the selected Supabase project **before pressing Run**. Never run exploratory DDL on Production.
-- Staging and Production have separate databases; matching counts or row-ID fingerprints show copied identities but **do not** prove payload equality or ongoing synchronization.
-- Avoid destructive migrations on existing `todos`, `todo_subtasks`, `todo_sessions`, `quick_notes`, `goal_journeys`, and `goal_journey_days`.
-- Keep `todos.scheduled_start/end` and `todo_sessions` for compatibility until a separately approved migration.
-- Planned Sessions, executed Focus history, recurring occurrences, and habit logs have distinct meanings and must not silently rewrite each other.
-- Never commit database credentials, service-role tokens, or production user data to GitHub. Use environment-variable names only.
-- Test all new RLS policies (including insert/update/delete) as authenticated users and for denied cross-user access.
-- If Staging tests fail, stop; fix the migration on the branch and retest. Never promote an unverified SQL file.
+- **Medium risk — recommend Staging first:** modifying RLS policies/functions or triggers, backfills that update existing rows, adding restrictive constraints to populated tables, recurrence generation, cascading changes, modifying production data beyond disposable test records, potentially blocking schema changes, or changes across several dependent tables.
+- **High risk — require Staging testing and verified restorable backup before Production:** drop/truncate, destructive/type-conversion migrations, bulk rewrites, auth or ownership changes, uncertain rollback, or any migration risking permanent data loss.
+- If medium/high risk is detected, explicitly identify affected tables, risk and safe alternative **before suggesting running it on Production**. Do not silently lower risk just because tests are inconvenient.
+- PostgreSQL transactions can roll back uncommitted work; a migration already COMMITted cannot be undone with a later ROLLBACK. Prefer reversible, additive migrations; document compensating SQL and recognize that dropping new tables/columns may lose data written since deployment.
+- Preserve independent `todos`, `todo_subtasks`, `todo_sessions`, `quick_notes`, `goal_journeys`, `goal_journey_days`. Do not prematurely drop `todos.scheduled_start/end`; distinguish calendar plans, completed occurrences, habit logs and actual Focus history.
+- For new RLS behavior, test as authenticated users; running SELECT as privileged SQL Editor user does not prove policies restrict access correctly.
 
-## Task Model V2 — 2026-10-12
+## Task Model V2 status and promotion gate (2026-10-12)
 
-- Development branch: `feature/task-model-v2`
-- Initial SQL file: `our-space/supabase/task_model_v2_phase1.sql`
-- Adds `todos.task_type`; backfills existing todos with recurrence rules as `recurring`; introduces `task_occurrences` and `habit_logs` with RLS.
-- On initial attempt, the query `SELECT task_type...` failed with `column "task_type" does not exist`. That was **verification SQL run before the migration**; it does not indicate corrupted data.
-- User later reported **"ok了"** after instructions to apply the full migration on Staging. **Execution and detailed verification results have not been independently inspected here**. Confirm Staging schema and RLS before promotion; do not infer Production has been migrated.
+- Branch `feature/task-model-v2`.
+- `supabase/task_model_v2_phase1.sql`: additive task type, backfill of existing recurrence-bearing todos, task_occurrences/habit_logs and RLS. **Classify as medium risk because of the backfill and RLS** even though table creation itself is additive.
+- `supabase/task_model_v2_phase2_create.sql`: new atomic recurring/habit RPC. Privileges/function require targeted testing.
+- Staging execution reported successful, and user reported `mislabeled_recurring_todos = 0`. This is **not** proof that Production is migrated.
+- Before production test, check whether `todos.task_type`, `task_occurrences`, `habit_logs` and `create_scheduled_todo_v2` exist in Production; do not run V2 app against unmigrated Production. Review and back up before promoting approved SQL.
+- V1.1 Staging-only scripts such as `ourspace_v1_1_staging_rls_test.mjs` may be archived outside the active branch; they are not required for running the V2 application. Do not commit scripts containing secrets.
+- Full functional create/edit/delete, RLS and build test gates are **not yet independently verified**.
 
-## Handoff checklist for new chats
+## New-chat handoff
 
-Read this document and `docs/calendar-architecture-phase-a.md` first. Inspect current branch and migration files. Confirm which Supabase environment an action targets; do not assume new chats have access to live credentials. Keep Production data as the source of truth, test schema changes on Staging, and only then apply approved, reviewed migrations to Production.
+Read this file and `docs/calendar-architecture-phase-a.md`. Confirm branch, current schema, target Project URL ref, migration execution status, and any uncommitted local changes. Use the simple Production-first route for reviewed low-risk changes; alert the user and route medium/high-risk work through Staging as appropriate. Never overwrite live user data with a copied Staging database.
