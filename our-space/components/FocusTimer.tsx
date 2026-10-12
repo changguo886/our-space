@@ -2175,9 +2175,8 @@ export default function FocusTimer({
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50 hover:text-sage-700 disabled:opacity-50">
               <Check className="h-4 w-4" /> 完成整个任务
             </button>
-            <button type="button" onClick={() => {
-              if(window.confirm("重置会清零本任务累计的专注时间，确定继续吗？")) void resetTimer();
-            }} disabled={busy}
+            <button type="button" onClick={() => void resetTimer()}
+              disabled={busy || status === "running" || status === "completed"}
               className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-xs text-ink-faint transition hover:bg-mist-50"
               title={focusText.reset}>
               <RotateCcw className="h-3.5 w-3.5" /> 重置
