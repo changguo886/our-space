@@ -2,6 +2,25 @@
 
 Status: **Product workflow accepted; incremental implementation underway**. This document is the source of truth for Todo / Calendar / Focus / History semantics. It supersedes earlier assumptions that every Todo must be fully specified at creation. Existing architecture and production migration safety documents remain in force.
 
+
+## FINAL APPROVED TODO CREATE CONTRACT — 2026-10-12 (overrides earlier 3-type wording)
+
+Approved UI: desktop Task List by category / status + selected task Workspace + optional 380px Todo-level Quick Notes panel; right-side creation drawer shows ONE selected type, not three parallel forms. Compact quick capture for simple tasks. User-facing labels: **单次任务 / 定期任务 / 习惯养成**. This section supersedes older uses of "定期" to mean recurring frequency.
+
+**1. 单次任务 (one-time)** — outcome-focused, title only required. Optional intended day or precise appointment; no compulsory deadline, duration, steps, or Journey.
+
+**2. 定期任务 (deadline-based project / planned outcome)** — despite its Chinese label, this is **NOT** a recurring series. It is one deliverable over a finite planning interval (e.g., paper or project). Minimum form: title; **plan start date defaults to the user's current date in configured timezone**, editable; **target finish date** explicitly chosen by user. Optional *separate* official external deadline; it is not automatically equal to target finish. Default dates are date-only, not hard booked hourly sessions. Creation does not demand per-day work allocation. After creating, manually add subtasks, sessions, and Notes; future AI can propose subtasks for review. Finishing parent occurs once by user action. DB modeling proposal: use `one_time` plus planned-project date fields or `planned` type only after audit; do NOT relabel existing `recurring` values without inspecting references and data. The UI name is confirmed, internal enum choice remains gated by migration audit.
+
+**3. 习惯养成 (habit)** — sustained behavior, not outcome deadline. Minimum form: title + period day/week/month + primary target count or minutes. Optional fixed weekdays/dates, reminder, per-session effort. Default flexible, without booking a whole period in Calendar. Frequency count is entered ONCE. Never ask user to separately check "save period target". If a weekly habit selects execution weekdays, distinguish *eligible/preferred days* from goal count; do not silently override a deliberately entered target or auto-label missing check-ins failures. Persist metric and period consistently.
+
+**Description vs Notes:** `todos.description` is a short optional task summary only. Actual working notes are `quick_notes`, grouped Todo-level into Unsorted / subtasks. Never create a duplicate free-form "remarks" data model.
+
+**Completion continuation:** after a one-time or planned project is completed, show non-blocking optional feedback: `再做一次` / `定期继续` / `养成习惯` / dismiss. Any continuation creates a NEW Todo linked through nullable `origin_todo_id`; the completed original and its Focus history remain immutable. "定期继续" language should be reviewed to avoid reusing the deadline-project label for repeating a series.
+
+**No unintended data loss:** test data is still in a live Production-backed environment until independently established otherwise. Even if user volunteers to delete test records, inventory references, copy verified backup, review exact affected records, test destructive SQL on Staging and secure explicit confirmation for the particular migration. Do NOT drop the old recurrence tables simply because the new creation UI does not expose recurring duties; existing features or history may still depend on them.
+
+**Migration gates:** inspect current Production and Staging schema, row counts and policy/function definitions, confirm deployment refs, then choose lowest-risk additive design or reviewed replacement. SQL files committed to GitHub are NOT executed automatically. The priority is updating the creation UX and preserving Todo/Calendar/Focus/Quick Notes mappings, not prematurely minimizing table count.
+
 ## Product promise
 **Plan lightly. Progress freely.** Capture immediately; plan in proportion to complexity; never punish unfinished work. Missing a scheduled slot does not delete, fail, or automatically complete a Todo. Reminders are gentle, opt-in, and eventually state-aware.
 
