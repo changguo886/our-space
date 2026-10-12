@@ -92,7 +92,9 @@ export default function FocusTimer({
   const router = useRouter();
   const { dictionary } = useI18n();
   const focusText = dictionary.focus;
-  const [focusEncouragement] = useState(() => {
+  // SSR and the first client render must use identical text.
+  const [focusEncouragement, setFocusEncouragement] = useState("慢慢来，也是在向前走。");
+  useEffect(() => {
     const phrases = [
       "慢慢来，也是在向前走。",
       "每一小段专注，都值得被珍惜。",
@@ -103,8 +105,8 @@ export default function FocusTimer({
       "重要的不是速度，而是继续前行。",
       "让这一刻的专注，成为小小的收获。",
     ];
-    return phrases[Math.floor(Math.random() * phrases.length)];
-  });
+    setFocusEncouragement(phrases[Math.floor(Math.random() * phrases.length)]);
+  }, []);
   const common = dictionary.common;
 
   const [
