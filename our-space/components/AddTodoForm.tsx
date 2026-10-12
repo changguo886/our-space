@@ -171,49 +171,40 @@ export default function AddTodoForm({
     const supabase =
       createClient();
 
-    const { data: created, error } =
-      await supabase
-        .from("todos")
-        .insert({
-          user_id: userId,
-
-          /*
-           * null = 私人任务
-           * 当前 Space ID = 分享到当前空间
-           */
-          group_id:
-            visibility ===
-            "space"
-              ? activeSpaceId
-              : null,
-
-          title:
-            cleanTitle,
-
-          /*
-           * 任务细节 / 描述
-           */
-          description:
-            description.trim()
-              ? description.trim()
-              : null,
-
-          estimated_minutes:
-            parsedMinutes,
-
-          task_date:
-            taskDate,
-
-          // Plan slots live in todo_sessions, never duplicate into todos.scheduled_*.
-
-          category:
-            category,
-
-          custom_tag:
-            customTag.trim()
-              ? customTag.trim()
-              : null,
-        }).select("id").single();
+    let created: { id: string } | null = null;
+    let createError: { message: string } | null = null;
+    if (planMode === "recurring") {
+      const { data, error: rpcError } = await supabase.rpc("create_recurring_todo", {
+        p_title: cleanTitle,
+        p_description: description.trim() || null,
+        p_estimated_minutes: parsedMinutes,
+        p_task_date: taskDate,
+        p_category: category,
+        p_custom_tag: customTag.trim() || null,
+        p_group_id: visibility === "space" ? activeSpaceId : null,
+        p_cadence: cadence,
+        p_weekdays: cadence === "weekly_days" ? weekdays : [],
+        p_times_per_week: cadence === "weekly_quota" ? timesPerWeek : null,
+        p_ends_on: repeatEnd || null,
+        p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
+      createError = rpcError;
+      if (!rpcError && data) created = { id: data as string };
+    } else {
+      const { data, error } = await supabase.from("todos").insert({
+        user_id: userId,
+        group_id: visibility === "space" ? activeSpaceId : null,
+        title: cleanTitle,
+        description: description.trim() || null,
+        estimated_minutes: parsedMinutes,
+        task_date: taskDate,
+        category,
+        custom_tag: customTag.trim() || null,
+      }).select("id").single();
+      created = data;
+      createError = error;
+    }
+    const error = createError;
 
     if (!error && created && planMode === "fixed") {
       const { error: sessionError } = await supabase.from("todo_sessions").insert({
@@ -223,29 +214,6 @@ export default function AddTodoForm({
       });
       if (sessionError) {
         setError("任务已创建，但时间安排未保存 / Task created but schedule failed: " + sessionError.message);
-        setBusy(false);
-        router.refresh();
-        return;
-      }
-    }
-
-    if (!error && created && planMode === "recurring") {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-      const { error: ruleError } = await supabase.from("schedule_rules").insert({
-        todo_id: created.id,
-        cadence,
-        weekdays: cadence === "weekly_days" ? weekdays : [],
-        times_per_week: cadence === "weekly_quota" ? timesPerWeek : null,
-        target_minutes: parsedMinutes,
-        local_start_time: null,
-        local_end_time: null,
-        timezone,
-        starts_on: taskDate,
-        ends_on: repeatEnd || null,
-        status: "active",
-      });
-      if (ruleError) {
-        setError("任务已创建，但重复规则未保存 / Recurrence failed: " + ruleError.message);
         setBusy(false);
         router.refresh();
         return;
