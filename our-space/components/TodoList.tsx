@@ -16,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
+import ScheduleDateTimeField from "@/components/ScheduleDateTimeField";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -354,6 +355,7 @@ export default function TodoList({
     setEditScheduledEnd,
   ] = useState("");
 
+  const [editingSessionId,setEditingSessionId]=useState<string|null>(null);
   const [
     busyId,
     setBusyId,
@@ -449,9 +451,10 @@ export default function TodoList({
      Todo edit
   ======================================================= */
 
-  function startEditing(
+  async function startEditing(
     todo: Todo
   ) {
+    setEditingSessionId(null);
     setEditingId(todo.id);
     setEditTitle(todo.title);
 
@@ -492,6 +495,20 @@ export default function TodoList({
     );
 
     setError(null);
+    const {data,error:sessionError}=await createClient().from("todo_sessions")
+      .select("id,scheduled_start,scheduled_end").eq("todo_id",todo.id)
+      .order("scheduled_start",{ascending:true});
+    if(editingId!==todo.id && sessionError){setError("读取安排失败："+sessionError.message);return;}
+    if(data?.length){
+      setEditingSessionId(data.length===1?data[0].id:null);
+      if(data.length===1){
+        setEditScheduledStart(toLocalInputValue(data[0].scheduled_start));
+        setEditScheduledEnd(toLocalInputValue(data[0].scheduled_end));
+      } else {
+        setEditScheduledStart("");
+        setEditScheduledEnd("");
+      }
+    }
   }
 
 
@@ -507,6 +524,7 @@ export default function TodoList({
     setEditCustomTag("");
     setEditScheduledStart("");
     setEditScheduledEnd("");
+    setEditingSessionId(null);
     setError(null);
   }
 
@@ -542,26 +560,11 @@ export default function TodoList({
       return;
     }
 
-    if (
-      editScheduledStart &&
-      editScheduledEnd
-    ) {
-      const start =
-        new Date(
-          editScheduledStart
-        );
-
-      const end =
-        new Date(
-          editScheduledEnd
-        );
-
-      if (end <= start) {
-        setError(
-          t.endAfterStart
-        );
-        return;
-      }
+    if(Boolean(editScheduledStart)!==Boolean(editScheduledEnd)){
+      setError("请同时填写开始和结束时间。");return;
+    }
+    if(editScheduledStart && new Date(editScheduledEnd).getTime()<=new Date(editScheduledStart).getTime()){
+      setError(t.endAfterStart);return;
     }
 
     setBusyId(todoId);
@@ -594,19 +597,6 @@ export default function TodoList({
               ? editCustomTag.trim()
               : null,
 
-          scheduled_start:
-            editScheduledStart
-              ? new Date(
-                  editScheduledStart
-                ).toISOString()
-              : null,
-
-          scheduled_end:
-            editScheduledEnd
-              ? new Date(
-                  editScheduledEnd
-                ).toISOString()
-              : null,
         })
         .eq("id", todoId);
 
@@ -620,6 +610,25 @@ export default function TodoList({
       return;
     }
 
+    const todoForEdit=todos.find(item=>item.id===todoId);
+    // A single existing Session is editable here. Multiple Sessions are managed in Calendar.
+    if(editingSessionId && editScheduledStart && editScheduledEnd){
+      const {error:sessionError}=await supabase.from("todo_sessions").update({
+        scheduled_start:new Date(editScheduledStart).toISOString(),
+        scheduled_end:new Date(editScheduledEnd).toISOString(),
+      }).eq("id",editingSessionId).eq("todo_id",todoId);
+      if(sessionError){setError("任务已更新，但时间安排保存失败："+sessionError.message);return;}
+    } else if(!editingSessionId && editScheduledStart && editScheduledEnd){
+      const {error:sessionError}=await supabase.from("todo_sessions").insert({
+        todo_id:todoId,scheduled_start:new Date(editScheduledStart).toISOString(),
+        scheduled_end:new Date(editScheduledEnd).toISOString(),
+      });
+      if(sessionError){setError("任务已更新，但新增时间安排失败："+sessionError.message);return;}
+    }
+    // Clear a legacy-only schedule only after a Session is successfully saved.
+    if(editScheduledStart && editScheduledEnd && (todoForEdit?.scheduled_start||todoForEdit?.scheduled_end)){
+      await supabase.from("todos").update({scheduled_start:null,scheduled_end:null}).eq("id",todoId);
+    }
     cancelEditing();
     router.refresh();
   }
@@ -897,51 +906,12 @@ export default function TodoList({
                 </div>
 
 
-                <div>
-                  <p className="mb-2 text-xs text-ink-faint">
-                    {t.schedule}
-                  </p>
-
+                <div className="space-y-3 rounded-2xl border border-line bg-paper/30 p-4">
+                  <p className="text-xs font-medium text-ink-soft">{t.schedule}</p>
+                  <p className="text-[11px] text-ink-faint">多次安排请到 Calendar 管理；这里可修改单次安排，或新增一次。</p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-[11px] text-ink-faint">
-                        {t.start}
-                      </label>
-
-                      <input
-                        className="input"
-                        type="datetime-local"
-                        value={
-                          editScheduledStart
-                        }
-                        onChange={(e) =>
-                          setEditScheduledStart(
-                            e.target.value
-                          )
-                        }
-                        disabled={busy}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-[11px] text-ink-faint">
-                        {t.end}
-                      </label>
-
-                      <input
-                        className="input"
-                        type="datetime-local"
-                        value={
-                          editScheduledEnd
-                        }
-                        onChange={(e) =>
-                          setEditScheduledEnd(
-                            e.target.value
-                          )
-                        }
-                        disabled={busy}
-                      />
-                    </div>
+                    <ScheduleDateTimeField label={t.start} chinese={language==="zh-CN"} value={editScheduledStart} onChange={setEditScheduledStart} disabled={busy}/>
+                    <ScheduleDateTimeField label={t.end} chinese={language==="zh-CN"} value={editScheduledEnd} onChange={setEditScheduledEnd} min={editScheduledStart} disabled={busy}/>
                   </div>
                 </div>
 
