@@ -23,6 +23,7 @@ import TodoList, {
 } from "@/components/TodoList";
 
 import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
+import AllTasksWorkspace from "@/components/AllTasksWorkspace";
 
 import OverdueTodoList from "@/components/OverdueTodoList";
 
@@ -98,7 +99,8 @@ export default async function TodoPage() {
         scheduled_start,
         scheduled_end,
         category,
-        custom_tag
+        custom_tag,
+        task_type
       `)
       .eq(
         "user_id",
@@ -264,6 +266,8 @@ export default async function TodoPage() {
         />
       </section>
 
+
+      <AllTasksWorkspace todos={allTodos as Todo[]} />
 
       {/* =================================================
           Overdue Todos
