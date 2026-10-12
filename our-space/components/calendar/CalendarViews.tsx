@@ -99,6 +99,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             {journeys.map(j=><option key={j.id} value={j.todo_id}>{initialTodos.find(t=>t.id===j.todo_id)?.title??"长期任务"}</option>)}
           </select>
         </label>
+        {activeJourney && <p className="mb-3 flex items-center gap-2 text-xs text-ink-soft"><span className="h-3 w-7 rounded-full" style={{backgroundColor:JOURNEY_PALETTE[activeJourney.color_key]??JOURNEY_PALETTE.blue}} />旅程颜色：{activeJourney.color_key}</p>}
         {loadError?<p role="alert" className="text-xs text-blush-500">读取旅程失败：{loadError}</p>:activeJourney?
           <JourneyCalendar key={activeJourney.id} journeyId={activeJourney.id} startDate={activeJourney.start_date}
             targetDate={activeJourney.target_date} animal={activeJourney.animal_type} route={activeJourney.journey_type} initialDate={date}/>:
