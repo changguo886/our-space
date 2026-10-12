@@ -137,25 +137,6 @@ const CATEGORIES: {
 ];
 
 
-function toLocalInputValue(
-  iso?: string | null
-) {
-  if (!iso) return "";
-
-  const date =
-    new Date(iso);
-
-  const offset =
-    date.getTimezoneOffset() *
-    60000;
-
-  return new Date(
-    date.getTime() - offset
-  )
-    .toISOString()
-    .slice(0, 16);
-}
-
 
 function formatScheduledTime(
   start: string | null | undefined,
@@ -348,32 +329,17 @@ export default function TodoList({
     setEditCustomTag,
   ] = useState("");
 
-  const [
-    editScheduledStart,
-    setEditScheduledStart,
-  ] = useState("");
-
-  const [
-    editScheduledEnd,
-    setEditScheduledEnd,
-  ] = useState("");
-
   const [editType,setEditType]=useState<"one_time"|"planned"|"habit">("one_time");
   const [editPlanStart,setEditPlanStart]=useState("");
   const [editTargetFinish,setEditTargetFinish]=useState("");
   const [editDeadline,setEditDeadline]=useState("");
-  const [editingSessionId,setEditingSessionId]=useState<string|null>(null);
-  const [editRuleId,setEditRuleId]=useState<string|null>(null);
   const [habitPeriod,setHabitPeriod]=useState<"day"|"week"|"month">("week");
   const [habitMode,setHabitMode]=useState<"flexible"|"fixed">("flexible");
   const [habitMonthDays,setHabitMonthDays]=useState<number[]>([]);
   const [habitMonthEnd,setHabitMonthEnd]=useState(false);
   const [habitLoaded,setHabitLoaded]=useState(false);
-  const [editRuleCadence,setEditRuleCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
   const [editRuleWeekdays,setEditRuleWeekdays]=useState<number[]>([]);
   const [editRuleQuota,setEditRuleQuota]=useState(3);
-  const [editRuleEnd,setEditRuleEnd]=useState("");
-  const [editRuleStatus,setEditRuleStatus]=useState<"active"|"paused"|"stopped">("active");
 
   const [
     busyId,
@@ -473,7 +439,6 @@ export default function TodoList({
   async function startEditing(
     todo: Todo
   ) {
-    setEditingSessionId(null);
     setEditingId(todo.id);
     setEditTitle(todo.title);
     setEditType(todo.task_type==="habit"?"habit":todo.target_finish_date?"planned":"one_time");
@@ -505,18 +470,6 @@ export default function TodoList({
       todo.custom_tag ?? ""
     );
 
-    setEditScheduledStart(
-      toLocalInputValue(
-        todo.scheduled_start
-      )
-    );
-
-    setEditScheduledEnd(
-      toLocalInputValue(
-        todo.scheduled_end
-      )
-    );
-
     setError(null);
     setHabitLoaded(false);
     setHabitPeriod("week");setHabitMode("flexible");setEditRuleWeekdays([]);
@@ -531,20 +484,6 @@ export default function TodoList({
       setHabitMonthDays(pattern.month_days??[]);setHabitMonthEnd(Boolean(pattern.include_month_end));
       setHabitLoaded(true);
     }
-    const {data,error:sessionError}=await createClient().from("todo_sessions")
-      .select("id,scheduled_start,scheduled_end").eq("todo_id",todo.id)
-      .order("scheduled_start",{ascending:true});
-    if(sessionError){setError("读取安排失败："+sessionError.message);return;}
-    if(data?.length){
-      setEditingSessionId(data.length===1?data[0].id:null);
-      if(data.length===1){
-        setEditScheduledStart(toLocalInputValue(data[0].scheduled_start));
-        setEditScheduledEnd(toLocalInputValue(data[0].scheduled_end));
-      } else {
-        setEditScheduledStart("");
-        setEditScheduledEnd("");
-      }
-    }
   }
 
 
@@ -558,10 +497,6 @@ export default function TodoList({
     );
     setEditCategory(null);
     setEditCustomTag("");
-    setEditScheduledStart("");
-    setEditScheduledEnd("");
-    setEditingSessionId(null);
-    setEditRuleId(null);
     setError(null);
   }
 
