@@ -364,6 +364,11 @@ export default function TodoList({
   const [editDeadline,setEditDeadline]=useState("");
   const [editingSessionId,setEditingSessionId]=useState<string|null>(null);
   const [editRuleId,setEditRuleId]=useState<string|null>(null);
+  const [editHabitPeriod,setEditHabitPeriod]=useState<"day"|"week"|"month">("week");
+  const [editHabitMode,setEditHabitMode]=useState<"flexible"|"fixed">("flexible");
+  const [editMonthDays,setEditMonthDays]=useState<number[]>([]);
+  const [editMonthEnd,setEditMonthEnd]=useState(false);
+  const [editHabitLoaded,setEditHabitLoaded]=useState(false);
   const [editRuleCadence,setEditRuleCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
   const [editRuleWeekdays,setEditRuleWeekdays]=useState<number[]>([]);
   const [editRuleQuota,setEditRuleQuota]=useState(3);
@@ -420,242 +425,37 @@ export default function TodoList({
       todo.status ===
       "completed";
 
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status: completed
-            ? "pending"
-            : "completed",
-
-          started_at: null,
-
-          completed_at:
-            completed
-              ? null
-              : new Date().toISOString(),
-        })
-        .eq("id", todo.id);
-
-    setBusyId(null);
-
-    if (error) {
-      setError(
-        t.updateFailed +
-          error.message
-      );
-
-      return;
-    }
-
-    router.refresh();
-  }
-
-
-  function openFocus(
-    todoId: string
-  ) {
-    router.push(
-      `/focus/${todoId}`
-    );
-  }
-
-
-  /* =======================================================
-     Todo edit
-  ======================================================= */
-
-  async function startEditing(
-    todo: Todo
-  ) {
-    setEditingSessionId(null);
-    setEditingId(todo.id);
-    setEditTitle(todo.title);
-    setEditType(todo.task_type==="habit"?"habit":todo.target_finish_date?"planned":"one_time");
-    setEditPlanStart(todo.plan_start_date??todo.task_date??"");
-    setEditTargetFinish(todo.target_finish_date??"");
-    setEditDeadline(todo.deadline_date??"");
-
-    setEditDescription(
-      todo.description ?? ""
-    );
-
-    setEditDurationUnit(
-      "minute"
-    );
-
-    setEditMinutes(
-      todo.estimated_minutes
-        ? String(
-            todo.estimated_minutes
-          )
-        : ""
-    );
-
-    setEditCategory(
-      todo.category ?? null
-    );
-
-    setEditCustomTag(
-      todo.custom_tag ?? ""
-    );
-
-    setEditScheduledStart(
-      toLocalInputValue(
-        todo.scheduled_start
-      )
-    );
-
-    setEditScheduledEnd(
-      toLocalInputValue(
-        todo.scheduled_end
-      )
-    );
-
-    setError(null);
-    setEditRuleId(null);setEditRuleCadence("daily");setEditRuleWeekdays([]);
-    setEditRuleQuota(3);setEditRuleEnd("");setEditRuleStatus("active");
-    const {data:rules,error:rulesError}=await createClient().from("schedule_rules")
-      .select("id,cadence,weekdays,times_per_week,ends_on,status")
-      .eq("todo_id",todo.id).order("created_at",{ascending:false}).limit(1);
-    if(rulesError){setError("读取重复规则失败 / Cannot load repeat rule: "+rulesError.message);return;}
-    if(rules?.length){
-      const rule=rules[0];
-      setEditRuleId(rule.id);setEditRuleCadence(rule.cadence);
-      setEditRuleWeekdays(rule.weekdays??[]);
-      setEditRuleQuota(rule.times_per_week??3);setEditRuleEnd(rule.ends_on??"");
-      setEditRuleStatus(rule.status);
-    }
-    const {data,error:sessionError}=await createClient().from("todo_sessions")
-      .select("id,scheduled_start,scheduled_end").eq("todo_id",todo.id)
-      .order("scheduled_start",{ascending:true});
-    if(sessionError){setError("读取安排失败："+sessionError.message);return;}
-    if(data?.length){
-      setEditingSessionId(data.length===1?data[0].id:null);
-      if(data.length===1){
-        setEditScheduledStart(toLocalInputValue(data[0].scheduled_start));
-        setEditScheduledEnd(toLocalInputValue(data[0].scheduled_end));
-      } else {
-        setEditScheduledStart("");
-        setEditScheduledEnd("");
+    if(originalType==="habit"){
+      if(!editHabitLoaded){setBusyId(null);setError("习惯规则尚未载入，不能保存。");return;}
+      const fixedWeek=editHabitPeriod==="week"&&editHabitMode==="fixed";
+      const fixedMonth=editHabitPeriod==="month"&&editHabitMode==="fixed";
+      const count=fixedWeek?editRuleWeekdays.length:fixedMonth?editMonthDays.length+(editMonthEnd?1:0):editRuleQuota;
+      if(count<1||!Number.isInteger(count)||(!fixedWeek&&!fixedMonth&&editHabitPeriod==="week"&&count>7)){
+        setBusyId(null);setError("请填写有效的习惯次数或固定日期。");return;
       }
-    }
-  }
-
-
-  function cancelEditing() {
-    setEditingId(null);
-    setEditTitle("");
-    setEditDescription("");
-    setEditMinutes("");
-    setEditDurationUnit(
-      "minute"
-    );
-    setEditCategory(null);
-    setEditCustomTag("");
-    setEditScheduledStart("");
-    setEditScheduledEnd("");
-    setEditingSessionId(null);
-    setEditRuleId(null);
-    setError(null);
-  }
-
-
-  async function saveEdit(
-    todoId: string
-  ) {
-    const cleanTitle =
-      editTitle.trim();
-
-    if (!cleanTitle) {
-      setError(
-        t.noTitle
-      );
-      return;
-    }
-
-    const parsedMinutes =
-      durationValueToMinutes(
-        editMinutes,
-        editDurationUnit
-      );
-
-    if (
-      parsedMinutes !== null &&
-      Number.isNaN(
-        parsedMinutes
-      )
-    ) {
-      setError(
-        t.invalidDuration
-      );
-      return;
-    }
-
-    const original=todos.find(item=>item.id===todoId);
-    const originalType=original?.task_type==="habit"?"habit":original?.target_finish_date?"planned":"one_time";
-    if(editType==="habit"&&originalType!=="habit"){setError("转换为习惯需要同时建立目标和规则，当前请先使用完整创建入口；原任务与历史记录不会被删除。");return;}
-    if(originalType==="habit"&&editType!=="habit"){setError("已有习惯日志与规则，暂不能直接转换为其他类型，以免历史记录含义发生变化。");return;}
-    if(editType==="planned"&&(!editPlanStart||!editTargetFinish||editTargetFinish<editPlanStart||(editDeadline&&editDeadline<editTargetFinish))){setError("请填写有效的计划开始日期与目标完成日期。");return;}
-    if(originalType==="planned"&&editType==="one_time"&&!window.confirm("改为单次任务将清除计划日期，但不会删除笔记、步骤、Focus 或 Journey 历史。确认继续？"))return;
-    setBusyId(todoId);
-    setError(null);
-
-    const supabase =
-      createClient();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          title: cleanTitle,
-
-          description:
-            editDescription.trim()
-              ? editDescription.trim()
-              : null,
-
-          estimated_minutes:
-            parsedMinutes,
-
-          category:
-            editCategory,
-
-          custom_tag:
-            editCategory ===
-              "other" &&
-            editCustomTag.trim()
-              ? editCustomTag.trim()
-              : null,
-          ...(originalType!=="habit"?{
-            plan_start_date:editType==="planned"?editPlanStart:null,
-            target_finish_date:editType==="planned"?editTargetFinish:null,
-            deadline_date:editType==="planned"?(editDeadline||null):null,
-          }:{}),
-        })
-        .eq("id", todoId);
-
-    if (error) {
-      setBusyId(null);
-      setError(
-        t.saveFailed +
-          error.message
-      );
-      return;
-    }
-
-    if(editRuleId){
-      if(editRuleCadence==="weekly_days" && editRuleWeekdays.length===0){
-        setBusyId(null);setError("请选择至少一个星期 / Select a weekday");return;
-      }
-      const {error:ruleError}=await supabase.from("schedule_rules").update({
-        cadence:editRuleCadence,
-        weekdays:editRuleCadence==="weekly_days"?editRuleWeekdays:[],
-        times_per_week:editRuleCadence==="weekly_quota"?editRuleQuota:null,
-        ends_on:editRuleEnd||null,
-        status:editRuleStatus,
-      }).eq("id",editRuleId).eq("todo_id",todoId);
-      if(ruleError){setBusyId(null);setError("重复规则保存失败 / Repeat rule save failed: "+ruleError.message);return;}
+      const {error:habitError}=await supabase.rpc("save_habit_v3",{
+        edit_id:todoId,
+        payload:{
+          title:cleanTitle,description:editDescription.trim()||null,task_date:original?.task_date,
+          estimated_minutes:parsedMinutes,category:editCategory,
+          custom_tag:editCategory==="other"?editCustomTag.trim()||null:null,
+          group_id:original?.group_id??null,
+          period:editHabitPeriod,arrangement:editHabitPeriod==="day"?"flexible":editHabitMode,
+          target_count:count,weekdays:fixedWeek?editRuleWeekdays:[],
+          month_days:fixedMonth?editMonthDays:[],include_month_end:fixedMonth&&editMonthEnd,
+        },
+      });
+      if(habitError){setBusyId(null);setError("习惯保存失败："+habitError.message);return;}
+    }else{
+      const {error}=await supabase.from("todos").update({
+        title:cleanTitle,description:editDescription.trim()||null,
+        estimated_minutes:parsedMinutes,category:editCategory,
+        custom_tag:editCategory==="other"?editCustomTag.trim()||null:null,
+        plan_start_date:editType==="planned"?editPlanStart:null,
+        target_finish_date:editType==="planned"?editTargetFinish:null,
+        deadline_date:editType==="planned"?(editDeadline||null):null,
+      }).eq("id",todoId);
+      if(error){setBusyId(null);setError(t.saveFailed+error.message);return;}
     }
     setBusyId(null);
     cancelEditing();
@@ -941,42 +741,27 @@ export default function TodoList({
                   </div>
                 </details>
 
-                {editRuleId && <details className="rounded-xl border border-line p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-ink-soft">重复计划（可选）</summary>
+                {todo.task_type==="habit"&&<details open className="rounded-xl border border-line p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-ink-soft">习惯频率与日期（可修改）</summary>
                   <div className="mt-3 space-y-3">
-                  <p className="text-xs font-medium text-ink-soft">重复规则 / Repeat rule</p>
-                  <label className="block text-xs text-ink-soft">方式 / Pattern
-                    <select className="input mt-1 w-full" value={editRuleCadence} disabled={busy}
-                      onChange={e=>setEditRuleCadence(e.target.value as typeof editRuleCadence)}>
-                      <option value="daily">每天 / Daily</option>
-                      <option value="weekly_days">每周指定日期 / Weekdays</option>
-                      <option value="weekly_quota">每周目标次数 / Weekly quota</option>
-                    </select>
-                  </label>
-                  {editRuleCadence==="weekly_days" && <div className="flex flex-wrap gap-2">
-                    {["一","二","三","四","五","六","日"].map((day,i)=>
-                      <button type="button" key={i} aria-pressed={editRuleWeekdays.includes(i+1)} disabled={busy}
-                        onClick={()=>setEditRuleWeekdays(v=>v.includes(i+1)?v.filter(d=>d!==i+1):[...v,i+1].sort())}
-                        className={`rounded-lg border px-3 py-2 text-xs ${editRuleWeekdays.includes(i+1)?"bg-sage-100 border-sage-400":"bg-white border-line"}`}>{day}</button>)}
-                  </div>}
-                  {editRuleCadence==="weekly_quota" && <label className="block text-xs text-ink-soft">每周次数 / Times per week
-                    <select className="input mt-1 w-full" value={editRuleQuota} disabled={busy}
-                      onChange={e=>setEditRuleQuota(Number(e.target.value))}>
-                      {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </label>}
-                  <label className="block text-xs text-ink-soft">结束日期 / End date
-                    <input type="date" className="input mt-1 w-full" value={editRuleEnd} disabled={busy}
-                      onChange={e=>setEditRuleEnd(e.target.value)}/>
-                  </label>
-                  <label className="block text-xs text-ink-soft">状态 / Status
-                    <select className="input mt-1 w-full" value={editRuleStatus} disabled={busy}
-                      onChange={e=>setEditRuleStatus(e.target.value as typeof editRuleStatus)}>
-                      <option value="active">启用 / Active</option>
-                      <option value="paused">暂停 / Paused</option>
-                      <option value="stopped">停止 / Stopped</option>
-                    </select>
-                  </label>
+                    <label className="block text-xs text-ink-soft">统计周期
+                      <select className="input mt-1 w-full" value={editHabitPeriod} disabled={busy||!editHabitLoaded} onChange={e=>{const next=e.target.value as typeof editHabitPeriod;setEditHabitPeriod(next);if(next==="day")setEditHabitMode("flexible");}}>
+                        <option value="day">每天</option><option value="week">每周</option><option value="month">每月</option>
+                      </select>
+                    </label>
+                    {editHabitPeriod!=="day"&&<div className="grid grid-cols-2 gap-2">
+                      {(["flexible","fixed"] as const).map(mode=><button type="button" key={mode} disabled={busy||!editHabitLoaded} aria-pressed={editHabitMode===mode} onClick={()=>setEditHabitMode(mode)} className={`rounded-lg border p-2 text-xs ${editHabitMode===mode?"border-sage-400 bg-sage-50":"border-line"}`}>{mode==="fixed"?"固定日期":"灵活次数"}</button>)}
+                    </div>}
+                    {(editHabitPeriod==="day"||editHabitMode==="flexible")&&<label className="block text-xs text-ink-soft">{editHabitPeriod==="day"?"每天":editHabitPeriod==="week"?"每周":"每月"}完成次数
+                      <input type="number" className="input mt-1 w-full" min={1} max={editHabitPeriod==="week"?7:10000} value={editRuleQuota} disabled={busy||!editHabitLoaded} onChange={e=>setEditRuleQuota(Number(e.target.value))}/>
+                    </label>}
+                    {editHabitPeriod==="week"&&editHabitMode==="fixed"&&<div className="grid grid-cols-7 gap-1">{["一","二","三","四","五","六","日"].map((d,i)=><button key={d} type="button" disabled={busy||!editHabitLoaded} aria-pressed={editRuleWeekdays.includes(i+1)} onClick={()=>setEditRuleWeekdays(prev=>prev.includes(i+1)?prev.filter(n=>n!==i+1):[...prev,i+1].sort((a,b)=>a-b))} className={`rounded-lg border py-2 text-xs ${editRuleWeekdays.includes(i+1)?"border-sage-400 bg-sage-50":"border-line"}`}>{d}</button>)}</div>}
+                    {editHabitPeriod==="month"&&editHabitMode==="fixed"&&<>
+                      <div className="grid grid-cols-7 gap-1">{Array.from({length:31},(_,i)=>i+1).map(d=><button key={d} type="button" disabled={busy||!editHabitLoaded} aria-pressed={editMonthDays.includes(d)} onClick={()=>setEditMonthDays(prev=>prev.includes(d)?prev.filter(n=>n!==d):[...prev,d].sort((a,b)=>a-b))} className={`rounded-lg border py-2 text-xs ${editMonthDays.includes(d)?"border-sage-400 bg-sage-50":"border-line"}`}>{d}</button>)}</div>
+                      <label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={editMonthEnd} onChange={e=>setEditMonthEnd(e.target.checked)} disabled={busy||!editHabitLoaded}/> 每月最后一天</label>
+                      <p className="text-xs text-ink-faint">没有对应日期的月份自动跳过；已完成的历史不会重新计算。</p>
+                    </>}
+                    <p className="text-xs text-ink-faint">修改只更新习惯定义；已记录的打卡和专注历史保留。已有单日预约请到「执行安排」单独管理。</p>
                   </div>
                 </details>}
                 <div className="flex justify-end gap-2 pt-1">
