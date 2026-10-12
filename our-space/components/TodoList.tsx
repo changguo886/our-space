@@ -787,7 +787,14 @@ export default function TodoList({
               key={todo.id}
               className="rounded-2xl border border-sage-300 bg-white p-5 shadow-soft"
             >
-              <div className="space-y-5">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-ink-faint">任务详情 · 按需要完善</p>
+                    <h3 className="font-semibold text-ink">编辑任务</h3>
+                  </div>
+                  <button type="button" onClick={cancelEditing} className="rounded-lg p-2 text-ink-faint hover:bg-paper" aria-label="关闭编辑"><X className="h-4 w-4"/></button>
+                </div>
                 <div>
                   <label className="mb-1.5 block text-xs text-ink-faint">
                     {t.taskName}
@@ -807,7 +814,10 @@ export default function TodoList({
                 </div>
 
 
-                <div>
+                <details className="rounded-xl border border-line p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-ink-soft">描述与分类（可选）</summary>
+                  <div className="mt-3 space-y-4">
+                  <div>
                   <label className="mb-1.5 block text-xs text-ink-faint">
                     {t.taskDetails}
                   </label>
@@ -919,6 +929,12 @@ export default function TodoList({
                 )}
 
 
+                  </div>
+                </details>
+
+                <details className="rounded-xl border border-line p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-ink-soft">预计投入与日历安排（可选）</summary>
+                  <div className="mt-3 space-y-4">
                 <div>
                   <label className="mb-1.5 block text-xs text-ink-faint">
                     {t.estimatedTime}
@@ -952,7 +968,12 @@ export default function TodoList({
                 </div>
 
 
-                {editRuleId && <div className="space-y-3 rounded-2xl border border-line bg-paper/30 p-4">
+                  </div>
+                </details>
+
+                {editRuleId && <details className="rounded-xl border border-line p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-ink-soft">重复计划（可选）</summary>
+                  <div className="mt-3 space-y-3">
                   <p className="text-xs font-medium text-ink-soft">重复规则 / Repeat rule</p>
                   <label className="block text-xs text-ink-soft">方式 / Pattern
                     <select className="input mt-1 w-full" value={editRuleCadence} disabled={busy}
@@ -986,7 +1007,8 @@ export default function TodoList({
                       <option value="stopped">停止 / Stopped</option>
                     </select>
                   </label>
-                </div>}
+                  </div>
+                </details>}
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
@@ -1064,6 +1086,7 @@ export default function TodoList({
                   >
                     {todo.title}
                   </p>
+                  <span className="rounded-full bg-paper px-2 py-0.5 text-[10px] text-ink-soft">{todo.task_type==="habit"?"习惯":todo.task_type==="recurring"?"重复":"单次"}</span>
 
                   {category && (
                     <span
@@ -1134,9 +1157,9 @@ export default function TodoList({
                       ? t.collapseSteps
                       : t.splitTask}
                   </button>
-                  <button type="button" onClick={() => router.push("/calendar?view=journey&todoId=" + encodeURIComponent(todo.id))}
+                  <button type="button" onClick={() => router.push("/calendar?view=day&date=" + encodeURIComponent(todo.task_date ?? ""))}
                     className="ml-4 text-xs font-medium text-sage-700 transition hover:text-sage-500">
-                    🐾 查看成长旅程 ↗
+                    日历安排 ↗
                   </button>
                 </div>
               </div>
