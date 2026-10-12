@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
-type CalendarTask = { id:string; title:string; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
+type CalendarTask = { id:string; title:string; task_type?:"one_time"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
 type RepeatRule = { id:string; todo_id:string; cadence:"daily"|"weekly_days"|"weekly_quota"; weekdays:number[]; times_per_week:number|null; starts_on:string; ends_on:string|null; timezone:string; status:string };
 type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
 const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
@@ -55,6 +55,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     ...(todo.todo_sessions?.length?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function eventsOn(d:string){return sessions.filter(s=>inDay(s.start,d));}
   const taskTitle = new Map(tasks.map(t=>[t.id,t.title]));
+  const taskType = new Map(tasks.map(t=>[t.id,t.task_type??"one_time"]));
   // This is a date-only recurring plan indicator, not a booked calendar session.
   // ISO day 1 = Monday, 7 = Sunday. Quotas are weekly targets without fixed dates.
   function rulesOn(d:string) {
@@ -62,6 +63,8 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     return repeatRules.filter(r=>taskTitle.has(r.todo_id) && d>=r.starts_on && (!r.ends_on||d<=r.ends_on)
       && (r.cadence==="daily"||(r.cadence==="weekly_days"&&r.weekdays.includes(weekday))));
   }
+  // A habit goal is not an obligation or a booked calendar event.
+  const habitRules = repeatRules.filter(r=>taskTitle.has(r.todo_id)&&taskType.get(r.todo_id)==="habit");
   const activeJourney=journeys.find(j=>j.todo_id===selectedTodo)??journeys[0];
   return <div className="mt-6">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -74,11 +77,12 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     </div>
     {repeatError&&<p role="alert" className="mb-3 text-xs text-blush-500">重复计划读取失败 / Repeat rules unavailable: {repeatError}</p>}
     {mode==="day" ? <div className="space-y-3">
-      {rulesOn(date).length>0&&<div className="rounded-2xl border border-line bg-white p-3">
+      {rulesOn(date).filter(r=>taskType.get(r.todo_id)!=="habit").length>0&&<div className="rounded-2xl border border-line bg-white p-3">
         <p className="mb-2 text-xs font-semibold text-ink-soft">当天重复计划 / Recurring plans (not booked sessions)</p>
-        <div className="flex flex-wrap gap-2">{rulesOn(date).map(r=>
+        <div className="flex flex-wrap gap-2">{rulesOn(date).filter(r=>taskType.get(r.todo_id)!=="habit").map(r=>
           <span key={r.id} className="rounded-lg bg-sage-50 px-2 py-1 text-xs text-sage-700">{taskTitle.get(r.todo_id)}</span>)}</div>
       </div>}
+      {habitRules.some(r=>date>=r.starts_on&&(!r.ends_on||date<=r.ends_on))&&<div className="rounded-xl border border-line bg-sage-50/50 p-3"><p className="text-xs font-semibold text-sage-700">习惯目标 · 非预约日程</p><div className="mt-2 flex flex-wrap gap-2">{habitRules.filter(r=>date>=r.starts_on&&(!r.ends_on||date<=r.ends_on)).map(r=><span key={r.id} className="rounded-lg bg-white px-2 py-1 text-xs text-sage-700">{taskTitle.get(r.todo_id)} · {r.cadence==="weekly_quota"?`每周 ${r.times_per_week??0} 次`:r.cadence==="daily"?"每日目标":"每周指定日"}</span>)}</div></div>}
       <CalendarPlanner initialTodos={initialTodos} initialDate={date}/>
     </div> :
     <div className="space-y-4">
@@ -115,13 +119,13 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
                 {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
                 {journeys.filter(j=>j.start_date<=d && j.target_date>=d).map(j=>
                   <div key={j.id} title={taskTitle.get(j.todo_id)??"Journey"} aria-label={(taskTitle.get(j.todo_id)??"Journey")+" journey"} className="h-1.5 w-full rounded-full" style={{backgroundColor:JOURNEY_PALETTE[j.color_key]??JOURNEY_PALETTE.blue}} />)}
-                {rulesOn(d).slice(0,2).map(r=><div key={r.id} className="truncate rounded bg-paper px-1 py-0.5 text-[10px] text-ink-soft">↻ {taskTitle.get(r.todo_id)}</div>)}
+                {rulesOn(d).filter(r=>taskType.get(r.todo_id)!=="habit").slice(0,2).map(r=><div key={r.id} className="truncate rounded bg-paper px-1 py-0.5 text-[10px] text-ink-soft">↻ {taskTitle.get(r.todo_id)}</div>)}
                 {rulesOn(d).length>2&&<span className="text-[10px] text-ink-faint">+{rulesOn(d).length-2} repeats</span>}</>}
             </button>)}
         </div>
         <p className="mt-3 text-xs text-ink-faint">↻ 为重复计划（非已预约时段）。每周次数目标不分配到特定日期。点击日期进入日视图。</p>
         {repeatRules.some(r=>r.cadence==="weekly_quota"&&taskTitle.has(r.todo_id))&&<div className="mt-3 rounded-lg bg-paper p-2 text-xs text-ink-soft">
-          每周次数目标 / Weekly targets: {repeatRules.filter(r=>r.cadence==="weekly_quota"&&taskTitle.has(r.todo_id)
+          每周目标（不自动占用日历） / Weekly targets (not booked): {repeatRules.filter(r=>r.cadence==="weekly_quota"&&taskTitle.has(r.todo_id)
             &&date>=r.starts_on&&(!r.ends_on||date<=r.ends_on)).map(r=>`${taskTitle.get(r.todo_id)} (${r.times_per_week}/week)`).join(" · ")||"—"}
         </div>}
       </div>}
