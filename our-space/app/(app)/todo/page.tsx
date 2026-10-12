@@ -16,17 +16,11 @@ import {
   getUserPreferences,
 } from "@/lib/preferences";
 
-import AddTodoForm from "@/components/AddTodoForm";
-import QuickCaptureTodo from "@/components/QuickCaptureTodo";
+import TaskBoardV2 from "@/components/TaskBoardV2";
 
-import TodoList, {
-  type Todo,
-} from "@/components/TodoList";
+import type { Todo } from "@/components/TodoList";
 
-import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
-import AllTasksWorkspace from "@/components/AllTasksWorkspace";
 
-import OverdueTodoList from "@/components/OverdueTodoList";
 
 
 export const dynamic =
@@ -195,157 +189,14 @@ export default async function TodoPage() {
 
 
   return (
-    <div className="mx-auto max-w-[1180px]">
-      {/* =================================================
-          Page Header
-      ================================================= */}
-
-      <header className="mx-auto max-w-2xl">
-        <h1 className="text-2xl font-semibold">
-          {t.title}
-        </h1>
-
-        <p className="mt-1 text-sm text-ink-faint">
-          {
-            formatYmdLongDate(
-              today,
-              preferences.language
-            )
-          }
-        </p>
-
-        <p className="mt-1 text-xs text-ink-faint">
-          {t.currentSpace}
-          {group.name}
-        </p>
-      </header>
-
-
-      {/* =================================================
-          Today Workspace
-      ================================================= */}
-
-      <TodayTodoWorkspace
-        todayTodos={
-          todayTodos as Todo[]
-        }
-        todayCompleted={
-          todayCompleted as Todo[]
-        }
+    <div className="mx-auto max-w-[1440px]">
+      <TaskBoardV2
+        todos={allTodos as Todo[]}
+        today={today}
+        userId={user.id}
+        activeSpaceId={group.id}
+        activeSpaceName={group.name}
       />
-
-
-      {/* =================================================
-          Add Todo
-      ================================================= */}
-
-      <section className="card mx-auto mt-6 max-w-2xl p-5">
-        <div className="mb-5">
-          <h2 className="font-medium">
-            {t.addTask}
-          </h2>
-
-          <p className="mt-1 text-xs text-ink-faint">
-            {t.addTaskDescription}
-          </p>
-        </div>
-
-
-        <QuickCaptureTodo userId={user.id} taskDate={today} />
-        <details className="mt-4 rounded-2xl border border-line p-3">
-          <summary className="cursor-pointer text-sm font-medium text-ink-soft">
-            更多规划 · 重复任务 / 习惯 / 日期 / Journey
-          </summary>
-          <div className="mt-4">
-        <AddTodoForm
-          userId={
-            user.id
-          }
-          activeSpaceId={
-            group.id
-          }
-          activeSpaceName={
-            group.name
-          }
-          taskDate={
-            today
-          }
-        />
-          </div>
-        </details>
-      </section>
-
-
-      <AllTasksWorkspace todos={allTodos as Todo[]} />
-
-      {/* =================================================
-          Overdue Todos
-
-          这里现在使用专门的 OverdueTodoList。
-
-          用户可以点击：
-          「移到今天」
-
-          数据库只会更新：
-          todos.task_date
-
-          Calendar session / Focus time 都不会改变。
-      ================================================= */}
-
-      {overdueTodos.length >
-        0 && (
-        <section className="card mx-auto mt-6 max-w-2xl p-5">
-          <div className="mb-5">
-            <h2 className="font-medium">
-              {t.overdueTitle}
-            </h2>
-
-            <p className="mt-1 text-xs text-ink-faint">
-              {t.overdueDescription}
-            </p>
-          </div>
-
-
-          <OverdueTodoList
-            todos={
-              overdueTodos as Todo[]
-            }
-            todayDate={
-              today
-            }
-          />
-        </section>
-      )}
-
-
-      {/* =================================================
-          Completed History
-      ================================================= */}
-
-      {completedHistory.length >
-        0 && (
-        <section className="mx-auto mt-8 max-w-2xl">
-          <div className="mb-4">
-            <h2 className="text-sm font-medium text-ink-soft">
-              {t.recentCompleted}
-            </h2>
-          </div>
-
-
-          <div className="opacity-80">
-            <TodoList
-              todos={
-                completedHistory as Todo[]
-              }
-            />
-          </div>
-
-
-          <p className="mt-4 text-center text-xs text-ink-faint">
-            {t.olderHistoryHint}
-          </p>
-        </section>
-      )}
     </div>
   );
 }
