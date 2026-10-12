@@ -88,3 +88,58 @@ Prefill title, category, description and useful duration from the original task.
 - Exact localized date-picker implementation and UI detail screens.
 
 **No SQL or Production migration is authorized merely by this document.** Implement only after reviewing remaining data contracts and risk.
+
+
+## Accepted direction: statistics-ready task data and low-friction goals (2026-10-12)
+
+**Confirmed product principles:** preserve planned targets separately from observed activity; collect actual execution facts once and calculate aggregate statistics from them. Do not ask users to type their own total hours, average session duration, completion rates, or frequency statistics.
+
+### Time and goal semantics
+
+- One-time task: optional estimate for **this task**; can have several planned Sessions but one overall completion.
+- Recurring task / habit: **per-occurrence effort target** (optional), frequency target (e.g. four times weekly), and optionally a **period cumulative duration** target (e.g. 180 minutes/week).
+- A **total effort goal** (e.g. 100 hours across a project) is allowed only as an optional advanced input, not a required or default planning workflow.
+- Recommended proposed **`task_goal_settings`** keyed by `todo_id`: primary metric `count|duration`, period `day|week|month|total`, target value and normalized unit (counts/minutes), optional per-session target minutes and optional total target minutes. Final SQL and mutual-exclusivity validation must be reviewed before migration. Do **not** silently reuse `todos.estimated_minutes` to mean weekly or cumulative effort.
+- Statistics (weekly/monthly frequency, average actual duration, total actual duration, adherence) should generally be **derived from raw logs** rather than stored as independent counters.
+
+### Actual execution records and accounting
+
+- Current `todos.elapsed_seconds` is a cumulative legacy Focus counter, **not an event ledger**. Future **`focus_entries`** must record actual work intervals with owner Todo ID, start/end, duration, source and idempotent write identity so that history and statistics can distinguish planned vs actual work.
+- Protect historical elapsed_seconds: introduce verified logging/cutover and backfill semantics; do not pretend aggregate legacy seconds contain session timestamps.
+- Habit check-ins (`habit_logs`) can optionally record amounts/durations, but **avoid double counting** when they refer to the same actual Focus execution. Choose an explicit link/source-of-truth policy when implementing the ledger.
+- `task_occurrences` are recurring-instance **outcomes** (completed/skipped/cancelled); they are not Calendar `todo_sessions` (planned time) or Focus entries (actual time). Define stable occurrence key, uniqueness/idempotency and same-Todo schedule-rule referential integrity. For recurring edits, plan instance-only, instance-and-future, and series semantics without rewriting completed history.
+- Parent task lifecycle is independent from recurring-instance completion; habit absence of a log is not automatically a missed day.
+
+### Continuation / promotion after a one-off success
+
+- A finished one-time task remains completed. `Do again`, `Repeat regularly`, and `Build a habit` create new tasks with prefilled metadata and a concise 3–4-decision plan, never rewrite the origin's status or Focus history. Dismiss is always available.
+- **Approved planned field:** nullable `todos.origin_todo_id` linking to the source task; use non-cascading deletion semantics and decide provenance-retention rules. Do not automatically count the original trial in the new plan's adherence metrics. Track only confirmed conversions initially; optional funnel analytics events can be considered later.
+- Prefer idempotent creation and prevent duplicate submissions.
+
+### Journey persistence and animation scope
+
+- **Approved planned field:** persisted `goal_journeys.color_key` (palette token, not arbitrary derived list order). Calendar month cells show multiple active Journey ranges as **solid user-colored lines**, chosen like Google Calendar; color-vision pattern toggle in Settings is future work, not part of V2.
+- The chosen Journey palette can theme route/track accent and selected state in a restrained animated pet presentation; not every drawable element must use the same color.
+- Daily date movement/animal idle animation **must not** imply actual progress earned without completed activity. Goal progress and elapsed calendar time are different.
+- Future pet identities/assignments remain separate from Journey's existing animal_type. No pet-schema migration yet.
+
+### AI extension points (design only, no automatic calls)
+
+1. **Statistics insights:** prospective authenticated server endpoint `POST /api/ai/stats-insights`. Calculate deterministic metrics via backend queries first; give the AI minimized, aggregated facts for an optional user-triggered narrative summary. Clearly distinguish observation from inference.
+2. **Task breakdown:** prospective authenticated server endpoint `POST /api/ai/task-breakdown`. Provide structured proposed subtasks and optional effort estimates; only write to `todo_subtasks` after the user reviews/confirms.
+3. Keep model/API credentials server-side; design authorization, rate limits, privacy/data minimization, structured validation and error handling. No AI-specific tables or historical AI response storage required for the first release.
+
+## Schema work: immediate versus reserved
+
+**Immediate design/implementation candidates, subject to schema audit and reviewed migrations:**
+- `task_goal_settings` minimal metric contract for habits/recurring routines.
+- `todos.origin_todo_id` and `goal_journeys.color_key`.
+- `task_occurrences` integrity/idempotency and parent state rules.
+- A scoped `focus_entries` ledger if reliable per-session statistics are a V2 goal; guard current Focus and old totals, implement incremental logging and rigorous tests before release.
+
+**Retain as future extension points (do not build now):**
+- Pet identity/assignment system, Journey chapters, color-vision assistance mode.
+- AI server endpoints described above, optional analytics events, performance/materialized statistics caches.
+- Expanded recurring rule versioning, complex exception calendars and provider synchronization where not required for initial UI.
+
+**Implementation sequence:** audit deployed schemas and constraints → freeze minimal field definitions and record ownership → draft additive, risk-classified SQL → migrate/verify with environment checks → redesign Today and create/edit UI → wire occurrence/habit execution and time logs → continuation UX → Calendar Journey visualization → statistics and AI adapters. Keep the current `task-model-v2` branch until a clean tested split point; a new branch/chat should resume from the documented commit, not duplicate unmerged changes.
