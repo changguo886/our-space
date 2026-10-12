@@ -95,7 +95,10 @@ export default async function TodoPage() {
         scheduled_end,
         category,
         custom_tag,
-        task_type
+        task_type,
+        plan_start_date,
+        target_finish_date,
+        deadline_date
       `)
       .eq(
         "user_id",
