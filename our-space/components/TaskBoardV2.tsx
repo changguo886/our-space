@@ -45,7 +45,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
     const db=createClient();
     void Promise.all([
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end"),
-      db.from("todo_sessions").select("todo_id,id,scheduled_start"),
+      db.from("todo_sessions").select("todo_id,id,scheduled_start,plan_date,mode"),
       db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end")
     ]).then(([p,slots,templateRows])=>{
       if(!active)return;
@@ -53,8 +53,9 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
       if(!templateRows.error)setExecutionTemplates((templateRows.data??[]) as ExecutionTemplateV3[]);
       if(!slots.error){const counts:Record<string,number>={},days:Record<string,string[]>={};for(const slot of slots.data??[]){
         counts[slot.todo_id]=(counts[slot.todo_id]??0)+1;
-        const time=new Date(slot.scheduled_start);
-        const day=[time.getFullYear(),String(time.getMonth()+1).padStart(2,"0"),String(time.getDate()).padStart(2,"0")].join("-");
+        const time=slot.scheduled_start?new Date(slot.scheduled_start):null;
+        const day=slot.plan_date??(time?[time.getFullYear(),String(time.getMonth()+1).padStart(2,"0"),String(time.getDate()).padStart(2,"0")].join("-"):null);
+        if(!day)continue;
         (days[slot.todo_id]??=[]).push(day);
       }setBookedCounts(counts);setBookedDays(days);}
     });
