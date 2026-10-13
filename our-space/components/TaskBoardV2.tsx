@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CalendarDays, CheckCircle2, ChevronRight, Plus, X } from "lucide-react";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import AddTodoForm from "@/components/AddTodoForm";
 import QuickCaptureTodo from "@/components/QuickCaptureTodo";
 import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
 import type { Todo } from "@/components/TodoList";
+import { habitEligible, upcomingEligible, type ExecutionTemplateV3, type HabitPatternV3 } from "@/lib/recurring-execution";
 
 type Filter = "today" | "upcoming" | "backlog" | "completed" | "all";
 type Props = {
@@ -28,18 +29,21 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   const [filter,setFilter] = useState<Filter>("today");
   const [selectedId,setSelectedId] = useState<string | null>(null);
   const [creating,setCreating] = useState(false);
-  type HabitPattern={todo_id:string;period:"day"|"week"|"month";arrangement:"flexible"|"fixed";target_count:number;weekdays:number[];month_days:number[];include_month_end:boolean};
+  type HabitPattern=HabitPatternV3;
   const [habitPatterns,setHabitPatterns]=useState<Record<string,HabitPattern>>({});
   const [bookedCounts,setBookedCounts]=useState<Record<string,number>>({});
+  const [executionTemplates,setExecutionTemplates]=useState<ExecutionTemplateV3[]>([]);
   useEffect(()=>{
     let active=true;
     const db=createClient();
     void Promise.all([
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end"),
-      db.from("todo_sessions").select("todo_id,id")
-    ]).then(([p,slots])=>{
+      db.from("todo_sessions").select("todo_id,id"),
+      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end")
+    ]).then(([p,slots,templateRows])=>{
       if(!active)return;
       if(!p.error)setHabitPatterns(Object.fromEntries(((p.data??[]) as HabitPattern[]).map(pattern=>[pattern.todo_id,pattern])));
+      if(!templateRows.error)setExecutionTemplates((templateRows.data??[]) as ExecutionTemplateV3[]);
       if(!slots.error){const counts:Record<string,number>={};for(const slot of slots.data??[])counts[slot.todo_id]=(counts[slot.todo_id]??0)+1;setBookedCounts(counts);}
     });
     return()=>{active=false};
@@ -55,13 +59,26 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [collapsedCategories,setCollapsedCategories] = useState<string[]>([]);
 
-  const buckets = useMemo(() => ({
-    today: todos.filter(t=>t.task_date===today&&t.status!=="completed"),
-    upcoming: todos.filter(t=>!!t.task_date&&t.task_date>today&&t.status!=="completed"),
-    backlog: todos.filter(t=>(!t.task_date||t.task_date<today)&&t.status!=="completed"),
-    completed: todos.filter(t=>t.status==="completed"),
-    all: todos.filter(t=>t.status!=="completed"),
-  }),[todos,today]);
+  const isHabitToday=(t:Todo)=>{
+    const p=habitPatterns[t.id];
+    return Boolean(p&&habitEligible(today,p,t.task_date??today));
+  };
+  const hasExecution=(t:Todo)=>Boolean(bookedCounts[t.id]||executionTemplates.some(x=>x.todo_id===t.id));
+  const isFutureHabit=(t:Todo)=>{
+    const p=habitPatterns[t.id];
+    return Boolean(p&&upcomingEligible(p,t.task_date??today,today,370,5).some(day=>day>today));
+  };
+  const buckets:Record<Filter,Todo[]> = {
+    today:todos.filter(t=>t.status!=="completed"&&(t.task_type==="habit"?isHabitToday(t):t.task_date===today)),
+    upcoming:todos.filter(t=>t.status!=="completed"&&(
+      t.task_type==="habit"?hasExecution(t)&&isFutureHabit(t):!!t.task_date&&t.task_date>today&&hasExecution(t)
+    )),
+    backlog:todos.filter(t=>t.status!=="completed"&&(
+      t.task_type==="habit"?!hasExecution(t):!hasExecution(t)&&t.task_date!==today
+    )),
+    completed:todos.filter(t=>t.status==="completed"),
+    all:todos.filter(t=>t.status!=="completed"),
+  };
   const visible = buckets[filter].filter(t=>typeFilter==="all"||(t.task_type??"one_time")===typeFilter).sort((a,b)=>filter==="completed"?(b.completed_at??"").localeCompare(a.completed_at??""):0).slice(0,filter==="completed"?10:undefined);
   const categories: {key:string;label:string}[] = [{key:"work",label:"工作"},{key:"study",label:"学习"},{key:"life",label:"生活"},{key:"rest",label:"休息"},{key:"other",label:"其他"},{key:"none",label:"未分类"}];
   const grouped = categories.filter(c=>categoryFilter==="all"||categoryFilter===c.key).map(c=>({ ...c, items:visible.filter(t=>(t.category??"none")===c.key) })).filter(c=>c.items.length>0);
@@ -120,7 +137,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
               {!collapsedCategories.includes(group.key)&&<div className="space-y-1.5">{group.items.map(todo=><button key={todo.id} type="button" onClick={()=>setSelectedId(todo.id)} aria-pressed={selectedId===todo.id}
                 className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${selectedId===todo.id?"border-sage-300 bg-sage-50":"border-line/70 bg-white hover:bg-paper/50"}`}>
                 {todo.status==="completed"?<CheckCircle2 className="h-4 w-4 shrink-0 text-sage-600"/>:<span className={`h-2 w-2 shrink-0 rounded-full ${todo.task_type==="habit"?"bg-emerald-400":todo.task_type==="recurring"?"bg-amber-400":"bg-mist-300"}`}/>}
-                <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-medium ${todo.status==="completed"?"text-ink-faint line-through":"text-ink"}`}>{todo.title}</span><span className="block text-[10px] text-ink-faint">{displayType(todo)} · {ruleSummary(todo)|| (todo.target_finish_date?`目标 ${todo.target_finish_date}`:todo.task_date||"待安排")}{(bookedCounts[todo.id]??0)>0?` · 已预约 ${bookedCounts[todo.id]} 段`:""}</span></span>
+                <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-medium ${todo.status==="completed"?"text-ink-faint line-through":"text-ink"}`}>{todo.title}</span><span className="block text-[10px] text-ink-faint">{displayType(todo)} · {ruleSummary(todo)|| (todo.target_finish_date?`目标 ${todo.target_finish_date}`:todo.task_date||"待安排")}{(bookedCounts[todo.id]??0)>0?` · 已预约 ${bookedCounts[todo.id]} 段`:""}{executionTemplates.some(x=>x.todo_id===todo.id)? " · 已设置未来重复安排":""}</span></span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint"/>
               </button>)}</div>}
             </div>)}
