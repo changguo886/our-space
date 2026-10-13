@@ -102,10 +102,8 @@ export default function AddTodoForm({
   const [monthDays,setMonthDays]=useState<number[]>([]);
   const [includeMonthEnd,setIncludeMonthEnd]=useState(false);
   const [timesPerWeek,setTimesPerWeek]=useState(3);
-  const [repeatEnd,setRepeatEnd]=useState("");
   const [sessionStart,setSessionStart]=useState("");
   const [sessionEnd,setSessionEnd]=useState("");
-  const [crossDay,setCrossDay]=useState(false);
 
   const [journeyColor, setJourneyColor] = useState("blue");
   const [goalPeriod, setGoalPeriod] = useState<"day" | "week" | "month">("week");
@@ -171,9 +169,6 @@ export default function AddTodoForm({
       }
       if (goalPeriod==="week" && cadence==="weekly_quota" && (!Number.isInteger(Number(goalValue)) || Number(goalValue)<1 || Number(goalValue)>7)) {setError("目前每周灵活次数为 1–7 次。");return;}
       if (goalPeriod==="month" && habitArrangement==="fixed" && monthDays.length===0 && !includeMonthEnd){setError("请至少选择一个月度日期，或选择每月最后一天。");return;}
-      if (repeatEnd && repeatEnd < taskDate) {
-        setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
-      }
     }
     if (taskType==="planned" && (!targetFinish || targetFinish<startDate || (officialDeadline && officialDeadline<targetFinish))) {
       setError("请确认目标完成日期不早于开始日期，正式截止日期不早于目标完成日期。");
@@ -264,18 +259,12 @@ export default function AddTodoForm({
     setCustomTag("");
 
     setJourneyColor("blue");
-    setGoalEnabled(false);
-    setGoalMetric("count");
     setGoalPeriod("week");
     setGoalValue("4");
-    setExtraCount("");
-    setExtraPeriodMinutes("");
-    setPerSessionMinutes("");
-    setTotalMinutes("");
     setTaskType("one_time");
     setPlanMode("flexible");
-    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");setHabitArrangement("flexible");setMonthDays([]);setIncludeMonthEnd(false);
-    setSessionStart("");setSessionEnd("");setCrossDay(false);
+    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setHabitArrangement("flexible");setMonthDays([]);setIncludeMonthEnd(false);
+    setSessionStart("");setSessionEnd("");
     setStartDate(taskDate);
     setTargetFinish("");
     setOfficialDeadline("");
@@ -318,7 +307,7 @@ export default function AddTodoForm({
         <p className="mb-2 text-xs font-medium text-ink-soft">{zh?"任务类型":"Task type"}</p>
         <div className="grid grid-cols-3 gap-2">
           {([{value:"one_time",label:zh?"单次任务":"One-time",help:zh?"做完即结束":"Finish once"},{value:"planned",label:zh?"定期任务":"Planned",help:zh?"按期限完成":"Target finish"},{value:"habit",label:zh?"习惯养成":"Habit",help:zh?"长期记录":"Build a habit"}] as const).map(item=>
-            <button key={item.value} type="button" disabled={busy} aria-pressed={taskType===item.value} onClick={()=>{setTaskType(item.value);if(item.value==="habit"){setCadence("weekly_quota");setGoalEnabled(true);setGoalPeriod("week");setGoalMetric("count");setGoalValue("3");setTimesPerWeek(3);}else if(item.value==="planned"){setGoalEnabled(false);}else{setGoalEnabled(false);}}}
+            <button key={item.value} type="button" disabled={busy} aria-pressed={taskType===item.value} onClick={()=>{setTaskType(item.value);if(item.value==="habit"){setCadence("weekly_quota");setGoalPeriod("week");setGoalValue("3");setTimesPerWeek(3);}else if(item.value==="planned"){}else{}}}
               className={`min-w-0 rounded-xl border px-2 py-3 text-center transition ${taskType===item.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line bg-white text-ink-soft hover:bg-paper"}`}>
               <span className="block text-sm font-semibold">{item.label}</span><span className="mt-1 block text-[10px] opacity-70">{item.help}</span>
             </button>)}
