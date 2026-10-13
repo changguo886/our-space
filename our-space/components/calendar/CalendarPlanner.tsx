@@ -2360,7 +2360,7 @@ export default function CalendarPlanner({
                     </div>;
                   })}
                   {/* Sessions */}
-                  <div className="pointer-events-none absolute inset-0 z-20">
+                  <div className="absolute inset-0 z-20">
                     {scheduledSessions.map(({ todo, session }) => (
                       <ScheduledSession
                         key={session.id}
