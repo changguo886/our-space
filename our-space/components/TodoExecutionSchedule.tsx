@@ -145,11 +145,11 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     const recurring=!pattern&&Boolean(projectEnd)&&copyChoice!=="dates";
     let writeError="";
     if(recurring){
-      const selectors=pattern?.period==="week"&&pattern.arrangement==="fixed"
-        ?pattern.weekdays.filter(n=>copyChoice!=="weekdays"||n<=5).map(n=>({selector_kind:"weekday",selector_value:n}))
-        :pattern?.period==="month"&&pattern.arrangement==="fixed"
-        ?[...pattern.month_days.map(n=>({selector_kind:"month_day",selector_value:n})),...(pattern.include_month_end?[{selector_kind:"month_end",selector_value:null}]:[])]
-        :copyChoice==="weekdays"?[1,2,3,4,5].map(n=>({selector_kind:"weekday",selector_value:n})):[{selector_kind:"all",selector_value:null}];
+      // This branch is Project-only; Routine copies stay within the selected period.
+      const selectors: Array<{selector_kind:"all"|"weekday";selector_value:number|null}> =
+        copyChoice==="weekdays"
+          ?[1,2,3,4,5].map(n=>({selector_kind:"weekday" as const,selector_value:n}))
+          :[{selector_kind:"all",selector_value:null}];
       const records=selectors.map(key=>({
         todo_id:todoId,starts_on:addDaysISO(sourceDay,1),ends_on:projectEnd,timezone,
         ...key,execution_mode:copyMode,replaces_slot_key:null,
