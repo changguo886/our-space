@@ -701,6 +701,9 @@ function PoolTask({
         touchAction: "none",
         userSelect: "none",
         ...taskCardVisual(todo.category,todo.color_hex),
+        ...(todo.estimated_minutes && todo.estimated_minutes>0 ? {
+          backgroundImage: `linear-gradient(to right, transparent 0%, transparent ${progress}%, rgba(255,255,255,0.88) ${progress}%, rgba(255,255,255,0.88) 100%)`
+        } : {}),
       }}
       className={`
         flex cursor-grab items-center gap-3 rounded-2xl border border-line
@@ -754,18 +757,7 @@ function PoolTask({
           )}
         </p>
 
-        {todo.estimated_minutes!==null&&todo.estimated_minutes>0&&(
-          <div className="mt-2 space-y-1">
-            <div className="flex justify-between text-[10px] text-ink-faint">
-              <span>{language==="zh-CN"?"已安排":"Scheduled"} {Math.min(scheduled,todo.estimated_minutes)} / {todo.estimated_minutes} {language==="zh-CN"?"分钟":"min"}</span>
-              <span>{language==="zh-CN"?"剩余":"Remaining"} {remaining??0} {language==="zh-CN"?"分钟":"min"}</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-white/85">
-              <div className="h-full rounded-full transition-[width]" style={{width:`${progress}%`,backgroundColor:taskCardVisual(todo.category,todo.color_hex).borderLeftColor}} />
-            </div>
-          </div>
-        )}
-                {expiredCount > 0 && (
+        {expiredCount > 0 && (
           <p className="mt-1 text-[10px] text-amber-700">
             {cal.expiredSessions.replace(
               "{count}",
