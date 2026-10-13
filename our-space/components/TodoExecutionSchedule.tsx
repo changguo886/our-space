@@ -289,7 +289,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         : (zh?"保存失败：":"Save failed: ")+result.error.message);
       return;
     }
-    await refresh();setOpen(false);setEditingTemplateId(null);
+    await refresh();setEditingTemplateId(null);setScope("once");setCopyOpen(true);setCopyNotice(zh?"本次已保存。需要的话可继续复制到其他日期。":"Saved. You may now copy to other dates.");
   }
   async function saveOverride(){
     const t=templates.find(x=>x.id===overrideSlot);
@@ -341,122 +341,61 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         <button type="button" disabled={saving||!overrideSlot} className="btn-primary w-full" onClick={()=>void saveOverride()}>{saving?(zh?"保存中…":"Saving…"):(zh?"仅保存这一次":"Save this occurrence")}</button>
       </div>
     </details>}
-    {open&&<div className="mt-4 space-y-3 border-t border-line pt-4">
-      {!editingTemplateId&&<div className="rounded-xl border border-line p-3 space-y-3">
-        <button type="button" onClick={()=>setCopyOpen(v=>!v)} className="flex w-full items-center justify-between text-sm font-medium text-ink"><span>{zh?"复制本次安排到…":"Copy this schedule to…"}</span><span>{copyOpen?"−":"＋"}</span></button>
+    {open&&<div className="mt-4 space-y-4 border-t border-line pt-4">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-ink">{editingTemplateId?(zh?"修改之后的重复安排":"Edit future recurrence"):(zh?"安排一次":"Schedule once")}</h4>
+        <button type="button" onClick={resetDraft} className="text-xs text-ink-faint underline">{zh?"清空当前输入":"Reset draft"}</button>
+      </div>
+      {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-3 text-xs text-sage-700">{zh?"仅从指定日期起更新，历史安排不变。":"Updates from the selected date; historical occurrences remain."}</p>}
+      {editingTemplateId
+        ? <label className="block text-xs text-ink-soft">{zh?"从这天起":"Effective from"}<AppDatePicker value={date} onChange={setDate}/></label>
+        : mode==="fixed"
+          ? <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs text-ink-soft">{zh?"开始日期":"Start date"}<AppDatePicker value={fixedStartDate} onChange={v=>{setFixedStartDate(v);setFixedEndDate(v);}}/></label>
+              <label className="text-xs text-ink-soft">{zh?"结束日期":"End date"}<AppDatePicker value={fixedEndDate} onChange={setFixedEndDate}/></label>
+            </div>
+          : <label className="block text-xs text-ink-soft">{zh?"执行日期":"Execution date"}<AppDatePicker value={date} onChange={setDate}/></label>}
+      <div className="grid grid-cols-3 gap-2">
+        {(["flexible","window","fixed"] as const).map(next=><button key={next} type="button" aria-pressed={mode===next} onClick={()=>setMode(next)}
+          className={`rounded-lg border px-2 py-2 text-xs ${mode===next?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>
+          {next==="fixed"?(zh?"固定时段":"Fixed"):next==="window"?(zh?"时间窗口":"Window"):(zh?"灵活投入":"Flexible")}
+        </button>)}
+      </div>
+      {mode!=="flexible"&&<div className="grid grid-cols-2 gap-2">
+        <label className="text-xs text-ink-soft">{zh?"开始时间":"Start"}<AppTimePicker value={mode==="fixed"?fixedStartTime:windowStart} onChange={mode==="fixed"?setFixedStartTime:setWindowStart}/></label>
+        <label className="text-xs text-ink-soft">{zh?"结束时间":"End"}<AppTimePicker value={mode==="fixed"?fixedEndTime:windowEnd} onChange={mode==="fixed"?setFixedEndTime:setWindowEnd}/></label>
+      </div>}
+      {mode!=="fixed"&&<label className="block text-xs text-ink-soft">{zh?"预计投入（分钟）":"Planned minutes"}<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
+      {!editingTemplateId&&<button type="button" className="text-xs text-sage-700 underline underline-offset-2" onClick={()=>{
+        const last=sessions[0],plan=plans[0];
+        if(last){const a=new Date(last.scheduled_start),b=new Date(last.scheduled_end);setMode("fixed");setFixedStartTime(localTime(a));setFixedEndTime(localTime(b));}
+        else if(plan){setMode(plan.mode);setMinutes(String(plan.planned_minutes));setWindowStart(plan.window_start?.slice(0,5)??"18:00");setWindowEnd(plan.window_end?.slice(0,5)??"22:00");}
+        else setError(zh?"暂无历史安排可沿用":"No previous timing to reuse");
+      }}>{zh?"沿用最近一次时间":"Reuse last timing"}</button>}
+      <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>
+        {saving?(zh?"保存中…":"Saving…"):editingTemplateId?(zh?"保存以后安排":"Save future schedule"):(zh?"保存这一次":"Save this occurrence")}
+      </button>
+      {!editingTemplateId&&<div className="rounded-xl border border-line bg-paper/30 p-3 space-y-3">
+        <button type="button" onClick={()=>setCopyOpen(v=>!v)} className="flex w-full items-center justify-between text-left text-sm font-medium">
+          <span>{zh?"复制到其他日期…":"Copy to other dates…"}</span><span>{copyOpen?"−":"＋"}</span>
+        </button>
         {copyOpen&&<>
-          <p className="text-xs text-ink-soft">{zh?"直接使用上面填写的时间；已单独安排的日期会跳过。复制不是完成打卡。":"Reuse the timing above. Dated plans take priority; copies do not count as completion."}</p>
+          <p className="text-xs text-ink-faint">{zh?"沿用上方的日期和时间设置；已单独安排的日期会保留。先保存本次，再复制到其他日期。":"Reuse the time above. Save the first occurrence before copying; dated plans are preserved."}</p>
           <div className="flex flex-wrap gap-2">
-            {!isFlexibleQuota&&<button type="button" onClick={()=>setCopyChoice("all")} className={`rounded-lg border px-3 py-1.5 text-xs ${copyChoice==="all"?"border-sage-400 bg-sage-50":"border-line"}`}>{pattern?.arrangement==="fixed"?(zh?"所有规则日":"All rule days"):(zh?"剩余每天":"Remaining days")}</button>}
-            {!isFlexibleQuota&&projectEnd&&<button type="button" onClick={()=>setCopyChoice("weekdays")} className={`rounded-lg border px-3 py-1.5 text-xs ${copyChoice==="weekdays"?"border-sage-400 bg-sage-50":"border-line"}`}>{zh?"剩余工作日":"Remaining weekdays"}</button>}
-            <button type="button" onClick={()=>setCopyChoice("dates")} className={`rounded-lg border px-3 py-1.5 text-xs ${copyChoice==="dates"?"border-sage-400 bg-sage-50":"border-line"}`}>{isFlexibleQuota?(zh?"本周期选日期":"Choose in this period"):(zh?"自己选日期":"Choose dates")}</button>
+            {!isFlexibleQuota&&<button type="button" onClick={()=>setCopyChoice("all")} aria-pressed={copyChoice==="all"} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="all"?"border-sage-400 bg-sage-50":"border-line"}`}>{pattern?.arrangement==="fixed"?(zh?"所有固定规则日":"Every rule day"):(zh?"剩余每天":"Remaining days")}</button>}
+            {!isFlexibleQuota&&projectEnd&&<button type="button" onClick={()=>setCopyChoice("weekdays")} aria-pressed={copyChoice==="weekdays"} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="weekdays"?"border-sage-400 bg-sage-50":"border-line"}`}>{zh?"剩余工作日":"Remaining weekdays"}</button>}
+            <button type="button" onClick={()=>setCopyChoice("dates")} aria-pressed={copyChoice==="dates"} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="dates"?"border-sage-400 bg-sage-50":"border-line"}`}>{isFlexibleQuota?(zh?"本周期选日期":"Dates this period"):(zh?"自选日期":"Choose dates")}</button>
           </div>
-          {copyChoice==="dates"&&<div className="max-h-48 overflow-y-auto grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-            {copyAvailable.map(day=><button type="button" key={day} aria-pressed={copyDays.includes(day)} onClick={()=>setCopyDays(xs=>xs.includes(day)?xs.filter(x=>x!==day):[...xs,day])} className={`rounded-lg border p-2 text-xs ${copyDays.includes(day)?"border-sage-400 bg-sage-50":"border-line"}`}>{day.slice(5)}</button>)}
+          {copyChoice==="dates"&&<div className="grid max-h-48 grid-cols-4 gap-1.5 overflow-y-auto sm:grid-cols-7">
+            {copyAvailable.map(day=><button key={day} type="button" aria-pressed={copyDays.includes(day)} onClick={()=>setCopyDays(xs=>xs.includes(day)?xs.filter(x=>x!==day):[...xs,day])} className={`rounded-lg border p-2 text-xs ${copyDays.includes(day)?"border-sage-400 bg-sage-50":"border-line"}`}>{day.slice(5)}</button>)}
           </div>}
-          <p className="text-xs text-ink-faint">{zh?"将应用到":"Apply to"} {copySelected.length} {zh?"个日期；已有单次安排会保留。":"dates; existing one-offs are preserved."}</p>
-          <button type="button" disabled={copyBusy||copySelected.length===0} onClick={()=>void copySchedule()} className="btn-primary w-full">{copyBusy?(zh?"复制中…":"Copying…"):(zh?"确认复制":"Copy schedule")}</button>
+          <p className="text-xs text-ink-faint">{zh?"选择":"Selected"} {copySelected.length} {zh?"个日期。已有单次计划不会被覆盖。":"dates; existing individual plans stay intact."}</p>
+          <button type="button" disabled={copyBusy||copySelected.length===0} onClick={()=>void copySchedule()} className="btn-primary w-full">
+            {copyBusy?(zh?"复制中…":"Copying…"):(zh?"应用复制安排":"Apply copy")}
+          </button>
         </>}
       </div>}
       {copyNotice&&<p role="status" className="text-xs text-sage-700">{copyNotice}</p>}
-      <div className="flex justify-end"><button type="button" className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft" onClick={resetDraft}>{zh?"重置当前编辑（不删除已保存安排）":"Reset draft (keep saved plans)"}</button></div>
-      {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
-      <p className="text-xs font-semibold text-ink-soft">{zh?"选择安排方式":"Choose scheduling method"}</p>
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope==="once"} onClick={()=>onScopeChange("once")}
-          className={`rounded-xl border p-3 text-left text-xs ${scope==="once"?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>
-          <strong className="block text-sm">{zh?"安排指定日期":"Plan a date"}</strong>
-          <span className="mt-1 block text-ink-faint">{zh?"这次安排，不改变未来规则":"One-off plan; no series changes"}</span>
-        </button>
-        <button type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope!=="once"} onClick={()=>onScopeChange(pattern?.arrangement==="fixed"||pattern?.period==="day"?"all":"by_day")}
-          className={`rounded-xl border p-3 text-left text-xs ${scope!=="once"?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>
-          <strong className="block text-sm">{zh?"规划多个日期":"Plan several dates"}</strong>
-          <span className="mt-1 block text-ink-faint">{zh?"统一时间，也能单独调整":"Reuse a time or customize it"}</span>
-        </button>
-      </div>
-      {scope!=="once"&&!editingTemplateId&&<div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-ink-faint">{zh?"日期方式":"Dates"}：</span>
-        <button type="button" disabled={pattern?.arrangement==="flexible"&&pattern.period!=="day"} onClick={()=>onScopeChange("all")} className={`rounded-lg border px-3 py-1.5 ${scope==="all"?"bg-sage-50 border-sage-400":"border-line"} disabled:opacity-40`}>{zh?"沿用固定周期":"Use fixed recurrence"}</button>
-        <button type="button" onClick={()=>onScopeChange("by_day")} className={`rounded-lg border px-3 py-1.5 ${scope==="by_day"?"bg-sage-50 border-sage-400":"border-line"}`}>{zh?"自己选日期":"Choose dates"}</button>
-      </div>}
-      <button type="button" className="text-left text-xs text-sage-700 underline underline-offset-2"
-        onClick={()=>{
-          const lastFixed=sessions[0];
-          const lastPlan=plans[0];
-          if(lastFixed){
-            const start=new Date(lastFixed.scheduled_start),end=new Date(lastFixed.scheduled_end);
-            setMode("fixed");setFixedStartTime(localTime(start));setFixedEndTime(localTime(end));
-            setSharedMode("fixed");setSharedStart(localTime(start));setSharedEnd(localTime(end));
-          }else if(lastPlan){
-            setMode(lastPlan.mode);setMinutes(String(lastPlan.planned_minutes));
-            setWindowStart(lastPlan.window_start?.slice(0,5)??"18:00");setWindowEnd(lastPlan.window_end?.slice(0,5)??"22:00");
-            setSharedMode(lastPlan.mode);setSharedMinutes(String(lastPlan.planned_minutes));
-            setSharedStart(lastPlan.window_start?.slice(0,5)??"18:00");setSharedEnd(lastPlan.window_end?.slice(0,5)??"22:00");
-          }else{
-            setError(zh?"还没有可沿用的单次安排。":"No previous one-off plan to reuse.");
-          }
-        }}>
-        {zh?"↺ 沿用最近一次时间设置":"↺ Reuse last timing"}
-      </button>
-      {scope==="by_day"&&!editingTemplateId&&<div className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
-        <div className="space-y-2 rounded-lg border border-sage-200 bg-sage-50/40 p-3">
-          <p className="text-xs font-semibold text-ink">{zh?"统一时间模板（可选）":"Shared time template (optional)"}</p>
-          <p className="text-xs text-ink-faint">{zh?"先选择执行日期，再把同一时间应用给所有已选日期；需要不同时间的日期仍可单独修改。":"Choose dates, then apply a shared time to all selected dates. Individual slots remain editable."}</p>
-          <div className="grid grid-cols-3 gap-1">{(["fixed","window","flexible"] as const).map(m=><button key={m} type="button" aria-pressed={sharedMode===m} className={`rounded-lg border px-2 py-1.5 text-xs ${sharedMode===m?"border-sage-400 bg-white":"border-line"}`} onClick={()=>setSharedMode(m)}>{m==="fixed"?(zh?"固定时段":"Fixed"):m==="window"?(zh?"时间窗口":"Window"):(zh?"灵活投入":"Flexible")}</button>)}</div>
-          {sharedMode!=="flexible"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">{zh?"开始":"Start"}<AppTimePicker value={sharedStart} onChange={setSharedStart}/></label><label className="text-xs text-ink-soft">{zh?"结束":"End"}<AppTimePicker value={sharedEnd} onChange={setSharedEnd}/></label></div>}
-          {sharedMode!=="fixed"&&<label className="text-xs text-ink-soft">{zh?"预计分钟":"Planned minutes"}<input className={field+" mt-1"} type="number" min={1} max={1440} value={sharedMinutes} onChange={e=>setSharedMinutes(e.target.value)}/></label>}
-          <button type="button" disabled={!dayPresets.length} onClick={applyShared} className="rounded-lg border border-sage-300 bg-white px-3 py-2 text-xs text-sage-700 disabled:opacity-50">{zh?"应用到所有已选日期":"Apply to selected dates"}</button>
-        </div>
-        <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-ink-soft">{zh?"为不同日期设置时间":"Configure different dates"}</p><span className="text-xs text-ink-faint">{dayPresets.length} {zh?"个时段":"slots"}</span></div>
-        <div className="flex flex-wrap gap-1.5">
-          {(pattern?.period==="week"?(pattern.arrangement==="fixed"?pattern.weekdays:[1,2,3,4,5,6,7]).map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]}))
-          :pattern?.period==="month"?[...(pattern.arrangement==="fixed"?pattern.month_days:Array.from({length:31},(_,i)=>i+1)).map(n=>({key:"month_day:"+n,label:n+"日"})),...(pattern.include_month_end?[{key:"month_end",label:"月末"}]:[])]
-          :!pattern&&projectEnd?[1,2,3,4,5,6,7].map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]})):[]).map(item=><button key={item.key} type="button" aria-pressed={dayPresets.some(x=>x.key===item.key)} disabled={saving} onClick={()=>setDayPresets(rows=>rows.some(x=>x.key===item.key)?rows.filter(x=>x.key!==item.key):[...rows,makePreset(item.key)])} className={`rounded-lg border px-2.5 py-2 text-xs ${dayPresets.some(x=>x.key===item.key)?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>{item.label}</button>)}
-        </div>
-        {dayPresets.map((row,index)=><div key={row.id} className="space-y-2 rounded-xl border border-line bg-white p-3">
-          <div className="flex items-center justify-between"><strong className="text-xs text-ink">{row.key==="month_end"?"每月最后一天":row.key.startsWith("weekday:")?"每周星期"+"一二三四五六日"[Number(row.key.split(":")[1])-1]:"每月 "+row.key.split(":")[1]+" 日"}</strong><button type="button" className="text-xs text-ink-faint underline" onClick={()=>setDayPresets(rows=>rows.filter(x=>x.id!==row.id))}>移除</button></div>
-          <div className="grid grid-cols-3 gap-1">{(["flexible","window","fixed"] as const).map(next=><button key={next} type="button" aria-pressed={row.mode===next} className={`rounded-lg border p-1.5 text-xs ${row.mode===next?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,mode:next}:x))}>{next==="flexible"?"灵活":next==="window"?"时间窗口":"固定时段"}</button>)}</div>
-          {row.mode==="fixed"?<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">开始<AppTimePicker value={row.start} onChange={value=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,start:value}:x))}/></label><label className="text-xs text-ink-soft">结束<AppTimePicker value={row.end} onChange={value=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,end:value}:x))}/></label></div>:<>
-            <label className="block text-xs text-ink-soft">每次预计投入（分钟）<input type="number" min="1" max="1440" className={field+" mt-1"} value={row.minutes} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,minutes:e.target.value}:x))}/></label>
-            {row.mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<AppTimePicker value={row.windowStart} onChange={value=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,windowStart:value}:x))}/></label><label className="text-xs text-ink-soft">最晚结束<AppTimePicker value={row.windowEnd} onChange={value=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,windowEnd:value}:x))}/></label></div>}
-          </>}
-          {templates.some(t=>t.selector_kind==="all")&&<label className="block text-xs text-ink-soft">和默认安排的关系<select className={field+" mt-1"} value={row.replaces} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,replaces:e.target.value}:x))}><option value="">额外增加一段</option>{[...new Map(templates.filter(t=>t.selector_kind==="all").map(t=>[t.slot_key,t])).values()].map(t=><option key={t.slot_key} value={t.slot_key}>替换默认 {t.start_time?.slice(0,5)??t.execution_mode}</option>)}</select></label>}
-        </div>)}
-        <div className="flex flex-wrap gap-2">{[...new Set(dayPresets.map(x=>x.key))].map(key=><button key={key} type="button" className="rounded-lg border border-line bg-white px-3 py-2 text-xs text-ink-soft" onClick={()=>setDayPresets(rows=>[...rows,makePreset(key)])}>{zh?"＋ 添加时段":"＋ Add slot"} · {key}</button>)}</div>
-        {dayPresets.length>0&&<div className="space-y-2 rounded-xl border border-line bg-white p-3">
-          <p className="text-xs font-semibold">{zh?"复制日期安排":"Copy day schedule"}</p>
-          <select className={field} value={copyFrom} onChange={e=>{setCopyFrom(e.target.value);setCopyTo([]);}}><option value="">{zh?"选择来源日期":"Select source day"}</option>{[...new Set(dayPresets.map(x=>x.key))].map(key=><option key={key} value={key}>{key}</option>)}</select>
-          <div className="flex flex-wrap gap-1">{[...new Set(dayPresets.map(x=>x.key))].filter(key=>key!==copyFrom).map(key=><button key={key} type="button" aria-pressed={copyTo.includes(key)} className={`rounded-lg border px-2 py-1.5 text-xs ${copyTo.includes(key)?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setCopyTo(old=>old.includes(key)?old.filter(v=>v!==key):[...old,key])}>{key}</button>)}</div>
-          <button type="button" disabled={!copyFrom||copyTo.length===0} className="rounded-lg border border-sage-300 px-3 py-2 text-xs text-sage-700 disabled:opacity-50" onClick={()=>setShowCopyConfirm(true)}>{zh?"复制到所选日期":"Copy to selected days"}</button>
-          {showCopyConfirm&&<div className="rounded-lg bg-paper p-3 text-xs"><p>{zh?"将替换目标日期当前草稿的时段，不影响已保存的历史。":"This replaces target-day slots in the current draft, not saved history."}</p><div className="mt-2 flex gap-2"><button type="button" className="rounded-lg border px-2 py-1" onClick={()=>setShowCopyConfirm(false)}>{zh?"取消":"Cancel"}</button><button type="button" className="rounded-lg bg-sage-100 px-2 py-1" onClick={()=>{setDayPresets(rows=>[...rows.filter(x=>!copyTo.includes(x.key)),...copyTo.flatMap(key=>rows.filter(x=>x.key===copyFrom).map(x=>({...x,id:crypto.randomUUID(),key,replaces:""})))]);setCopyTo([]);setShowCopyConfirm(false);}}>{zh?"确认复制":"Confirm copy"}</button></div></div>}
-        </div>}
-        <p className="text-xs text-ink-faint">{zh?"每个日期支持多个时段，未来重复安排不会批量生成预约。":"Each day can have multiple slots; future bookings are expanded virtually."}</p>
-      </div>}
-      {scope!=="once"&&<p className="text-xs text-ink-faint">生效日期不等于执行日期。只对符合任务规则的未来日期生效，不会把不匹配的今天安排进去。</p>}
-      {scope!=="once"&&<p className="text-xs text-ink-faint">{zh?"后续符合日期：":"Next eligible dates: "}{preview.filter(day=>!bookedDates.has(day)).join("、")|| (zh?"暂无可安排的新日期":"No new eligible dates")}</p>}
-      {scope!=="once"&&preview.some(day=>bookedDates.has(day))&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">{zh?"注意：以下日期已有单次计划："+preview.filter(day=>bookedDates.has(day)).join("、")+"。目前数据库不会自动取消这些单次计划；保存前请确认是否保留。":"Some dates already have individual plans. Saving this rule will not remove them; review overlaps first."}</p>}
-      {scope!=="by_day"&&<p className="text-xs font-semibold text-ink-soft">{zh?"第二步 · 时间方式":"Step 2 · Timing"}</p>}
-      {scope!=="by_day"&&<div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:zh?"灵活投入":"Flexible"},{id:"window",label:zh?"时间窗口":"Window"},{id:"fixed",label:zh?"固定时段":"Fixed"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>}
-      {scope!=="once"&&!editingTemplateId&&autoSeriesDate!==date&&<p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{zh?`今天或之前已有单次安排；新的重复系列建议从 ${autoSeriesDate} 开始，不覆盖已有记录。未来单次计划仍需检查冲突。`:`Earlier standalone plans are protected; the new series begins ${autoSeriesDate}. Review any future bookings for conflicts.`}</p>}
-      {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"规则生效起始日期"}<AppDatePicker value={date} onChange={setDate}/></label>}
-      {scope!=="by_day"&&mode!=="fixed"&&<label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
-      {scope!=="by_day"&&mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<AppTimePicker value={windowStart} onChange={v=>setWindowStart(v)}/></label><label className="text-xs text-ink-soft">最晚结束<AppTimePicker value={windowEnd} onChange={v=>setWindowEnd(v)}/></label></div>}
-      {scope!=="by_day"&&mode==="fixed"&&<div className="space-y-3">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {scope==="once"&&<label className="block text-xs text-ink-soft">{zh?"开始日期":"Start date"}<AppDatePicker value={fixedStartDate} onChange={setFixedStartDate}/></label>}
-          <label className="block text-xs text-ink-soft">开始时间（24小时制）<AppTimePicker value={fixedStartTime} onChange={setFixedStartTime}/></label>
-          {scope==="once"&&<label className="block text-xs text-ink-soft">{zh?"结束日期":"End date"}<AppDatePicker value={fixedEndDate} onChange={setFixedEndDate}/></label>}
-          <label className="block text-xs text-ink-soft">结束时间（24小时制）<AppTimePicker value={fixedEndTime} onChange={setFixedEndTime}/></label>
-        </div>
-        <p className="text-xs text-ink-faint">{scope==="once"?"单次固定预约允许跨日期。":"重复固定预约按当地时钟时间自动应用于未来日期，当前只支持同一天内的时段。"}</p>
-      </div>}
-      <p className="text-xs text-ink-faint">{mode==="fixed"?"固定时段会显示在 Calendar；重复设置自动生成未来时段。":mode==="window"?"窗口不是连续预约时长，也不会显示在 Calendar。":"只记录投入计划，不占用 Calendar。"}</p>
-      <div className="rounded-xl border border-line bg-paper/40 p-3 text-xs text-ink-soft">
-        <p className="mb-1 font-semibold">{zh?"第三步 · 确认安排":"Step 3 · Review"}</p>
-        <p>{scope==="once"?"只安排一次":scope==="all"?"以后所有符合规则的日期":"选定的星期／月日期"} · {scope==="by_day"?dayPresets.map(row=>(row.key==="month_end"?"月末":row.key.startsWith("weekday:")?"星期"+row.key.split(":")[1]:"每月"+row.key.split(":")[1]+"日")+" "+(row.mode==="fixed"?row.start+"–"+row.end:row.mode==="window"?row.windowStart+"–"+row.windowEnd:"灵活 "+row.minutes+" 分钟")).join("；")||"请先选择日期":mode==="fixed"?"固定 "+fixedStartTime+"–"+fixedEndTime:mode==="window"?"时间窗口 "+windowStart+"–"+windowEnd:"灵活安排，计划 "+minutes+" 分钟"}</p>
-        {scope!=="once"&&<p className="mt-1">起始生效：{autoSeriesDate}；下一批符合日期：{preview.join("、")||"暂无"}。Calendar 会根据重复规则显示未来安排；无需提前逐日创建预约。</p>}
-      </div>
-      <button type="button" disabled={saving||(scope==="by_day"&&dayPresets.length===0)} className="btn-primary w-full" onClick={()=>void save()}>{saving?(zh?"保存中…":"Saving…"):editingTemplateId?(zh?"从选定日期起更新":"Update future schedule"):(zh?"保存执行安排":"Save schedule")}</button>
     </div>}
     {error&&<p role="alert" className="mt-2 text-xs text-blush-500">{error}</p>}
   </section>;
