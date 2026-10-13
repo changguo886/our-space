@@ -122,7 +122,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(pattern?.period==="week"){const weekEnd=addDaysISO(day,7-weekdayISO(day));return weekEnd;}
     return [year,String(month).padStart(2,"0"),String(new Date(year,month,0).getDate()).padStart(2,"0")].join("-");
   };
-  const copyLimit=isFlexibleQuota?lastOfPeriod(sourceDay):projectEnd??addDaysISO(sourceDay,27);
+  const copyLimit=pattern&&(pattern.period==="week"||pattern.period==="month")?lastOfPeriod(sourceDay):projectEnd??addDaysISO(sourceDay,27);
   const candidateDays=Array.from({length:Math.max(0,Math.min(90,Math.floor((Date.parse(copyLimit+"T12:00:00Z")-Date.parse(sourceDay+"T12:00:00Z"))/86400000)))},(_,i)=>addDaysISO(sourceDay,i+1));
   const copyEligible=(day:string)=>!pattern||pattern.arrangement==="flexible"||pattern.period==="day"||
     pattern.period==="week"&&pattern.weekdays.includes(weekdayISO(day))||
@@ -142,7 +142,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(!target.length){setCopyBusy(false);setCopyNotice(zh?"所选日期均已有单次安排，没有新增。":"All dates already have individual plans.");return;}
     // A repeating template represents many future virtual occurrences; do not bulk-create them.
     if(!copySource){setError(zh?"请先选择一条已保存安排作为来源。":"Choose a saved schedule to copy.");setCopyBusy(false);return;}
-    const recurring=!isFlexibleQuota&&copyChoice!=="dates"&&Boolean(projectEnd||pattern?.arrangement==="fixed"||pattern?.period==="day");
+    const recurring=!pattern&&Boolean(projectEnd)&&copyChoice!=="dates";
     let writeError="";
     if(recurring){
       const selectors=pattern?.period==="week"&&pattern.arrangement==="fixed"
