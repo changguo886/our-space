@@ -201,7 +201,6 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       .filter((item):item is typeof item & {target:string}=>item.target!==null)
       .filter(item=>!projectEnd||item.target<=projectEnd)
       .filter(item=>pattern.arrangement==="flexible"||copyEligible(item.target));
-    const unique=[...new Set(items.map(item=>item.target))];
     const occupied=new Set([...plans.map(p=>p.plan_date),...sessions.map(p=>localDate(new Date(p.scheduled_start)))]);
     let failure="";
     if(forever){
