@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AppDatePicker from "@/components/ui/AppDatePicker";
 import AppTimePicker from "@/components/ui/AppTimePicker";
+import CopyDateCalendar from "@/components/ui/CopyDateCalendar";
 import { useI18n } from "@/components/I18nProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addDaysISO, lastDayISO, weekdayISO, templateEligible, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
@@ -24,6 +25,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [open,setOpen]=useState(false);
   const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
   const [copyOpen,setCopyOpen]=useState(false);
+  const [copySource,setCopySource]=useState<{id:string;day:string;mode:Mode;start:string;end:string;minutes:number}|null>(null);
   const [copyChoice,setCopyChoice]=useState<"all"|"weekdays"|"dates">("dates");
   const [copyDays,setCopyDays]=useState<string[]>([]);
   const [copyBusy,setCopyBusy]=useState(false);
@@ -105,9 +107,11 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
 
 
   const applyShared=()=>setDayPresets(rows=>rows.map(row=>({...row,mode:sharedMode,start:sharedStart,end:sharedEnd,windowStart:sharedStart,windowEnd:sharedEnd,minutes:sharedMinutes})));
-  const sourceDay=mode==="fixed"?fixedStartDate:date;
-  const sourceStart=mode==="fixed"?fixedStartTime:windowStart;
-  const sourceEnd=mode==="fixed"?fixedEndTime:windowEnd;
+  const sourceDay=copySource?.day??(mode==="fixed"?fixedStartDate:date);
+  const sourceStart=copySource?.start??(mode==="fixed"?fixedStartTime:windowStart);
+  const sourceEnd=copySource?.end??(mode==="fixed"?fixedEndTime:windowEnd);
+  const copyMode=copySource?.mode??mode;
+  const copyMinutes=copySource?.minutes??Number(minutes);
   const isFlexibleQuota=Boolean(pattern?.arrangement==="flexible"&&pattern.period!=="day");
   const lastOfPeriod=(day:string)=>{
     const [year,month]=day.split("-").map(Number);
@@ -125,14 +129,15 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setCopyNotice("");setError("");
     const db=createClient();
     if(!validDate(sourceDay)||!copySelected.length){setError(zh?"请选择要复制到的日期。":"Choose destination dates.");return;}
-    if(mode==="fixed"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart)){setError("请检查固定时间。");return;}
-    if(mode==="window"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart||Number(minutes)>((Number(sourceEnd.slice(0,2))-Number(sourceStart.slice(0,2)))*60+Number(sourceEnd.slice(3))-Number(sourceStart.slice(3))))){setError("请检查时间窗口和预计分钟。");return;}
+    if(copyMode==="fixed"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart)){setError("请检查固定时间。");return;}
+    if(copyMode==="window"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart||copyMinutes>((Number(sourceEnd.slice(0,2))-Number(sourceStart.slice(0,2)))*60+Number(sourceEnd.slice(3))-Number(sourceStart.slice(3))))){setError("请检查时间窗口和预计分钟。");return;}
     setCopyBusy(true);
     const occupied=new Set([...plans.map(p=>p.plan_date),...sessions.map(p=>localDate(new Date(p.scheduled_start)))]);
     const target=copySelected.filter(day=>!occupied.has(day));
     const skipped=copySelected.length-target.length;
     if(!target.length){setCopyBusy(false);setCopyNotice(zh?"所选日期均已有单次安排，没有新增。":"All dates already have individual plans.");return;}
     // A repeating template represents many future virtual occurrences; do not bulk-create them.
+    if(!copySource){setError(zh?"请先选择一条已保存安排作为来源。":"Choose a saved schedule to copy.");setCopyBusy(false);return;}
     const recurring=!isFlexibleQuota&&copyChoice!=="dates"&&Boolean(projectEnd||pattern?.arrangement==="fixed"||pattern?.period==="day");
     let writeError="";
     if(recurring){
@@ -143,19 +148,19 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         :copyChoice==="weekdays"?[1,2,3,4,5].map(n=>({selector_kind:"weekday",selector_value:n})):[{selector_kind:"all",selector_value:null}];
       const records=selectors.map(key=>({
         todo_id:todoId,starts_on:addDaysISO(sourceDay,1),ends_on:projectEnd,timezone,
-        ...key,execution_mode:mode,replaces_slot_key:null,
-        start_time:mode==="fixed"?sourceStart:null,end_time:mode==="fixed"?sourceEnd:null,
-        window_start:mode==="window"?sourceStart:null,window_end:mode==="window"?sourceEnd:null,
-        planned_minutes:mode==="fixed"?null:Number(minutes)
+        ...key,execution_mode:copyMode,replaces_slot_key:null,
+        start_time:copyMode==="fixed"?sourceStart:null,end_time:copyMode==="fixed"?sourceEnd:null,
+        window_start:copyMode==="window"?sourceStart:null,window_end:copyMode==="window"?sourceEnd:null,
+        planned_minutes:copyMode==="fixed"?null:copyMinutes
       }));
-      const existing=records.some(record=>templates.some(t=>t.selector_kind===record.selector_kind&&t.selector_value===record.selector_value&&t.execution_mode===mode&&t.starts_on<=record.starts_on&&(t.ends_on===null||t.ends_on>=record.starts_on)));
+      const existing=records.some(record=>templates.some(t=>t.selector_kind===record.selector_kind&&t.selector_value===record.selector_value&&t.execution_mode===copyMode&&t.starts_on<=record.starts_on&&(t.ends_on===null||t.ends_on>=record.starts_on)));
       if(existing)writeError=zh?"已有相同日期规则的有效重复模板，请先修改该模板。":"A matching active template exists. Edit that series instead.";
       else {const x=await db.from("todo_execution_templates").insert(records);writeError=x.error?.message??"";}
     } else {
       // Dated copies are independent single sessions, safe for flexible weekly/monthly targets.
-      const rows=target.map(day=>mode==="fixed"
+      const rows=target.map(day=>copyMode==="fixed"
         ?{todo_id:todoId,mode:"fixed",scheduled_start:toFixedDateTime(day,sourceStart).toISOString(),scheduled_end:toFixedDateTime(day,sourceEnd).toISOString()}
-        :{todo_id:todoId,mode,plan_date:day,planned_minutes:Number(minutes),window_start:mode==="window"?sourceStart:null,window_end:mode==="window"?sourceEnd:null});
+        :{todo_id:todoId,mode:copyMode,plan_date:day,planned_minutes:copyMinutes,window_start:copyMode==="window"?sourceStart:null,window_end:copyMode==="window"?sourceEnd:null});
       const x=await db.from("todo_sessions").insert(rows);writeError=x.error?.message??"";
     }
     setCopyBusy(false);
@@ -326,8 +331,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <button type="button" className="rounded-lg border border-sage-300 px-3 py-2 text-xs text-sage-700" onClick={()=>setOpen(v=>!v)}>{open?(zh?"收起":"Close"):(zh?"＋ 安排执行":"+ Plan execution")}</button>
     </div>
     {loading?<p className="mt-3 text-xs text-ink-faint">读取安排中…</p>:<div className="mt-3 space-y-1.5">
-      {plans.map(p=><div key={p.id} className="rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft">{p.plan_date} · {p.mode==="flexible"?(zh?"灵活安排":"Flexible"):(zh?"时间窗口":"Window")+` ${p.window_start?.slice(0,5)}–${p.window_end?.slice(0,5)}`} · {p.planned_minutes} {zh?"分钟":"min"}</div>)}
-      {sessions.map(s=><div key={s.id} className="rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">{zh?"固定时段":"Fixed slot"} · {new Date(s.scheduled_start).toLocaleString(zh?"zh-CN":"en-US")} – {new Date(s.scheduled_end).toLocaleTimeString(zh?"zh-CN":"en-US")}</div>)}
+      {plans.map(p=><div key={p.id} className="flex items-center justify-between gap-3 rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft"><span>{p.plan_date} · {p.mode==="flexible"?(zh?"灵活安排":"Flexible"):(zh?"时间窗口":"Window")+" "+p.window_start?.slice(0,5)+"–"+p.window_end?.slice(0,5)} · {p.planned_minutes} min</span><button type="button" className="shrink-0 rounded-lg border border-line bg-white px-3 py-1.5 text-sage-700" onClick={()=>{setCopySource({id:p.id,day:p.plan_date,mode:p.mode,start:p.window_start?.slice(0,5)??"",end:p.window_end?.slice(0,5)??"",minutes:p.planned_minutes});setCopyChoice("dates");setCopyDays([]);setCopyOpen(true);setOpen(true);}}>{zh?"复制":"Copy"}</button></div>)}
+      {sessions.map(session=><div key={session.id} className="flex items-center justify-between gap-3 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>{zh?"固定时段":"Fixed"} · {new Date(session.scheduled_start).toLocaleString(zh?"zh-CN":"en-US")} – {new Date(session.scheduled_end).toLocaleTimeString(zh?"zh-CN":"en-US")}</span><button type="button" className="shrink-0 rounded-lg border border-line bg-white px-3 py-1.5" onClick={()=>{const first=new Date(session.scheduled_start),last=new Date(session.scheduled_end);setCopySource({id:session.id,day:localDate(first),mode:"fixed",start:localTime(first),end:localTime(last),minutes:Math.round((last.getTime()-first.getTime())/60000)});setCopyChoice("dates");setCopyDays([]);setCopyOpen(true);setOpen(true);}}>{zh?"复制":"Copy"}</button></div>)}
       {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><span className="flex shrink-0 gap-2"><button type="button" className="underline" onClick={()=>{setEditingTemplateId(t.id);setScope("all");setOpen(true);setDate(t.starts_on>date?t.starts_on:date);setMode(t.execution_mode);setFixedStartTime(t.start_time?.slice(0,5)??"09:00");setFixedEndTime(t.end_time?.slice(0,5)??"10:00");setWindowStart(t.window_start?.slice(0,5)??"08:00");setWindowEnd(t.window_end?.slice(0,5)??"12:00");setMinutes(String(t.planned_minutes??45));}}>从这天起修改</button><button type="button" className="underline" onClick={async()=>{const effective=date<t.starts_on?t.starts_on:date;if(!window.confirm("停止从 "+effective+" 起的重复安排？之前的时间计划保留。"))return;const x=await createClient().rpc("stop_execution_template_future_v3",{p_template_id:t.id,p_effective_on:effective});if(x.error)setError(x.error.message);else await refresh();}}>停止后续</button></span></div>)}
       {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">{zh?"尚无执行安排。可以先不安排。":"No execution plans yet. You can schedule later."}</p>}
     </div>}
