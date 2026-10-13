@@ -113,7 +113,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       {key!=="all"&&<span className="h-2.5 w-2.5 rounded-full" style={{backgroundColor:CATEGORY_VISUALS[key].accent}}/>}{key==="all"?(zh?"全部":"All"):(zh?CATEGORY_VISUALS[key].labelZh:CATEGORY_VISUALS[key].labelEn)}</button>)}
     </div>
     {mode==="day" ? <div className="space-y-3">
-      <CalendarPlanner initialTodos={initialTodos.filter(t=>categoryFilter==="all"||(t.category??"none")===categoryFilter)} initialDate={date} onDateChange={setDate}
+      <CalendarPlanner key={categoryFilter} initialTodos={initialTodos.filter(t=>categoryFilter==="all"||(t.category??"none")===categoryFilter)} initialDate={date} onDateChange={setDate}
         virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter).map(e=>({
           todo_id:e.todoId,id:e.virtualId,
           scheduled_start:e.start,scheduled_end:e.end,
