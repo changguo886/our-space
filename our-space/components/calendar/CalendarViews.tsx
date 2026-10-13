@@ -101,9 +101,11 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     mode:s.mode??"flexible",planned_minutes:s.planned_minutes??0,
     window_start:s.window_start??null,window_end:s.window_end??null
   })));
-  const recurringPlans=templates.filter(t=>t.execution_mode!=="fixed"&&tasks.some(todo=>todo.id===t.todo_id)
+  const matchingPlanTemplates=templates.filter(t=>t.execution_mode!=="fixed"&&tasks.some(todo=>todo.id===t.todo_id)
       &&templateEligible(date,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)
-      &&!overrides.some(o=>o.todo_id===t.todo_id&&o.slot_key===t.slot_key&&o.occurrence_date===date&&o.action==="cancel"))
+      &&!overrides.some(o=>o.todo_id===t.todo_id&&o.slot_key===t.slot_key&&o.occurrence_date===date&&o.action==="cancel"));
+  const recurringPlans=matchingPlanTemplates.filter(t=>!(t.selector_kind==="all"&&matchingPlanTemplates.some(other=>
+      other.todo_id===t.todo_id&&other.replaces_slot_key===t.slot_key)))
     .map(t=>({id:"template:"+t.slot_key+":"+date,todo_id:t.todo_id,title:tasks.find(x=>x.id===t.todo_id)?.title??"Task",
       category:tasks.find(x=>x.id===t.todo_id)?.category??null,color_hex:tasks.find(x=>x.id===t.todo_id)?.color_hex??null,
       mode:t.execution_mode,planned_minutes:t.planned_minutes??0,
