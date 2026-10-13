@@ -544,35 +544,36 @@ export default function TodoList({
     const supabase =
       createClient();
 
-    if(originalType==="habit"){
-      if(!habitLoaded){setBusyId(null);setError("习惯规则未加载完成，无法保存。");return;}
-      const weekFixed=habitPeriod==="week"&&habitMode==="fixed";
-      const monthFixed=habitPeriod==="month"&&habitMode==="fixed";
-      const total=weekFixed?editRuleWeekdays.length:monthFixed?habitMonthDays.length+(habitMonthEnd?1:0):editRuleQuota;
-      if(!Number.isInteger(total)||total<1||(habitPeriod==="week"&&total>7)){
-        setBusyId(null);setError("请确认习惯次数和固定日期有效。");return;
-      }
-      const {error:habitError}=await supabase.rpc("save_habit_v3",{edit_id:todoId,payload:{
-        title:cleanTitle,description:editDescription.trim()||null,
-        task_date:original?.task_date,estimated_minutes:parsedMinutes,category:editCategory,
-        custom_tag:editCategory==="other"?editCustomTag.trim()||null:null,
-        group_id:original?.group_id??null,period:habitPeriod,
-        arrangement:habitPeriod==="day"?"flexible":habitMode,target_count:total,
-        weekdays:weekFixed?editRuleWeekdays:[],month_days:monthFixed?habitMonthDays:[],
-        include_month_end:monthFixed&&habitMonthEnd,
-      }});
-      if(habitError){setBusyId(null);setError("习惯保存失败："+habitError.message);return;}
-    }else{
-      const {error}=await supabase.from("todos").update({
-        title:cleanTitle,description:editDescription.trim()||null,
-        estimated_minutes:parsedMinutes,category:editCategory,
-        custom_tag:editCategory==="other"?editCustomTag.trim()||null:null,
-        plan_start_date:editType==="planned"?editPlanStart:null,
-        target_finish_date:editType==="planned"?editTargetFinish:null,
-        deadline_date:editType==="planned"?(editDeadline||null):null,
-      }).eq("id",todoId);
-      if(error){setBusyId(null);setError(t.saveFailed+error.message);return;}
+    if(originalType==="habit"&&!habitLoaded){setBusyId(null);setError("习惯规则未加载完成，无法保存。");return;}
+    const weekFixed=habitPeriod==="week"&&habitMode==="fixed";
+    const monthFixed=habitPeriod==="month"&&habitMode==="fixed";
+    const total=weekFixed?editRuleWeekdays.length:monthFixed?habitMonthDays.length+(habitMonthEnd?1:0):editRuleQuota;
+    if(originalType==="habit"&&(!Number.isInteger(total)||total<1||(habitPeriod==="week"&&total>7))){
+      setBusyId(null);setError("请确认周期次数和固定日期有效。");return;
     }
+    const {error:saveError}=await supabase.rpc("save_task_v4",{
+      edit_id:todoId,
+      payload:{
+        task_type:editType==="planned"?"project":editType==="habit"?"routine":"one_time",
+        title:cleanTitle,description:editDescription.trim()||null,
+        estimated_minutes:parsedMinutes,
+        task_date:original?.task_date,
+        category:editCategory,
+        custom_tag:editCategory==="other"?editCustomTag.trim()||null:null,
+        group_id:original?.group_id??null,
+        ...(editType==="planned"?{
+          plan_start_date:editPlanStart,target_finish_date:editTargetFinish,
+          deadline_date:editDeadline||null,
+        }:{}),
+        ...(editType==="habit"?{
+          period:habitPeriod,arrangement:habitPeriod==="day"?"flexible":habitMode,
+          target_count:total,weekdays:weekFixed?editRuleWeekdays:[],
+          month_days:monthFixed?habitMonthDays:[],
+          include_month_end:monthFixed&&habitMonthEnd,
+        }:{}),
+      },
+    });
+    if(saveError){setBusyId(null);setError(t.saveFailed+saveError.message);return;}
     setBusyId(null);
     cancelEditing();
     router.refresh();
