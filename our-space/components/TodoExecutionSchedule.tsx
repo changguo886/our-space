@@ -205,7 +205,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     let failure="";
     if(forever){
       const start=shiftPeriod(continuationDays[0]);
-      if(!start){failure=zh?"下周期不存在对应日期。":"No matching date next period.";}
+      if(!start||items.length===0){failure=zh?"下一周期没有符合条件的日期。":"No eligible dates next period.";}
       else {
         const rows=items.map(item=>({
           todo_id:todoId,starts_on:start,ends_on:projectEnd,timezone,replaces_slot_key:null,
@@ -216,7 +216,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           window_start:item.mode==="window"?item.start:null,window_end:item.mode==="window"?item.end:null,
           planned_minutes:item.mode==="fixed"?null:item.minutes
         }));
-        const conflicts=rows.some(row=>templates.some(t=>t.selector_kind===row.selector_kind&&t.selector_value===row.selector_value&&(t.ends_on===null||t.ends_on>=start)));
+        const keys=new Set(rows.map(row=>row.selector_kind+":"+row.selector_value));
+        const conflicts=keys.size!==rows.length||rows.some(row=>templates.some(t=>t.selector_kind===row.selector_kind&&t.selector_value===row.selector_value&&(t.ends_on===null||t.ends_on>=start)));
         if(conflicts)failure=zh?"已有覆盖相同日期的重复安排，请先修改已有规则。":"An active recurring rule already covers these dates.";
         else {const result=await db.from("todo_execution_templates").insert(rows);failure=result.error?.message??"";}
       }
