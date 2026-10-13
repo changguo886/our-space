@@ -9,7 +9,7 @@ import Link from "next/link";
 import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
-type CalendarTask = { id:string; title:string; task_date?:string; task_type?:"one_time"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
+type CalendarTask = { id:string; title:string; task_date?:string; task_type?:"one_time"|"project"|"routine"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
 type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
 const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
