@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CalendarDays, CheckCircle2, ChevronRight, Plus, X } from "lucide-react";
 import Link from "next/link";
+import { useI18n } from "@/components/I18nProvider";
 import AddTodoForm from "@/components/AddTodoForm";
 import QuickCaptureTodo from "@/components/QuickCaptureTodo";
 import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
@@ -28,6 +29,8 @@ const typeLabel: Record<string,string> = {
 };
 
 export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activeSpaceName }: Props) {
+  const {language} = useI18n();
+  const zh = language === "zh-CN";
   const [filter,setFilter] = useState<Filter>("today");
   const [selectedId,setSelectedId] = useState<string | null>(null);
   useEffect(()=>{
@@ -68,7 +71,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
     if(p.period==="week")return p.arrangement==="fixed"?`每周 ${(p.weekdays??[]).map(x=>"一二三四五六日"[x-1]).join("、")}`:`每周 ${p.target_count} 次`;
     return p.arrangement==="fixed"?`每月 ${(p.month_days??[]).join("、")}${p.include_month_end?"、最后一天":""} 日`:`每月 ${p.target_count} 次`;
   };
-  const [typeFilter,setTypeFilter] = useState<"all"|"one_time"|"recurring"|"habit"|"project"|"routine">("all");
+  const [typeFilter,setTypeFilter] = useState<"all"|"one_time"|"project"|"routine">("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [collapsedCategories,setCollapsedCategories] = useState<string[]>([]);
 
@@ -104,24 +107,24 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
     all:todos.filter(t=>t.status!=="completed"),
   };
   const visible = buckets[filter].filter(t=>typeFilter==="all"||(t.task_type??"one_time")===typeFilter).sort((a,b)=>filter==="completed"?(b.completed_at??"").localeCompare(a.completed_at??""):0).slice(0,filter==="completed"?10:undefined);
-  const categories: {key:string;label:string}[] = [{key:"work",label:"工作"},{key:"study",label:"学习"},{key:"life",label:"生活"},{key:"rest",label:"休息"},{key:"other",label:"其他"},{key:"none",label:"未分类"}];
+  const categories: {key:string;label:string}[] = [{key:"work",label:zh?"工作":"Work"},{key:"study",label:zh?"学习":"Study"},{key:"life",label:zh?"生活":"Life"},{key:"rest",label:zh?"休息":"Rest"},{key:"other",label:zh?"其他":"Other"},{key:"none",label:zh?"未分类":"Uncategorized"}];
   const grouped = categories.filter(c=>categoryFilter==="all"||categoryFilter===c.key).map(c=>({ ...c, items:visible.filter(t=>(t.category??"none")===c.key) })).filter(c=>c.items.length>0);
   const selected = todos.find(t=>t.id===selectedId)??null;
-  const displayType = (todo:Todo) => (todo.task_type==="one_time" || todo.task_type==="project") && todo.target_finish_date ? "定期任务" : typeLabel[todo.task_type??"one_time"];
+  const displayType = (todo:Todo) => zh ? (typeLabel[todo.task_type??"one_time"]??"任务") : ({one_time:"One-time",project:"Project",routine:"Routine",recurring:"Legacy recurring",habit:"Legacy habit"}[todo.task_type??"one_time"]??"Task");
   const tabs: {key:Filter;label:string}[] = [
-    {key:"today",label:"今天"},
-    {key:"backlog",label:"待安排"},
-    {key:"upcoming",label:"即将到来"},
-    {key:"completed",label:"已完成"},
-    {key:"all",label:"全部"},
+    {key:"today",label:zh?"今天":"Today"},
+    {key:"backlog",label:zh?"待安排":"Unscheduled"},
+    {key:"upcoming",label:zh?"即将到来":"Upcoming"},
+    {key:"completed",label:zh?"已完成":"Completed"},
+    {key:"all",label:zh?"全部":"All"},
   ];
 
   return (
     <div className="relative mt-6 min-w-0">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-ink">我的任务</h1>
-          <p className="mt-1 text-xs text-ink-faint">先记录，再规划。任务不会因为错过计划而消失。</p>
+          <h1 className="text-2xl font-semibold text-ink">{zh?"我的任务":"My Tasks"}</h1>
+          <p className="mt-1 text-xs text-ink-faint">{zh?"先记录，再规划。错过计划不会删除任务。":"Capture first, schedule later. Missed plans never delete tasks."}</p>
         </div>
 
       </div>
@@ -130,29 +133,29 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
         <section className="min-w-0 rounded-2xl border border-line bg-white/85 p-4 shadow-soft">
           <div className="mb-3 rounded-xl border border-line bg-paper/30 p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-semibold text-ink-soft">快速制定任务</p>
-              <button type="button" onClick={()=>setCreating(true)} className="inline-flex items-center gap-1 rounded-lg border border-sage-300 bg-white px-2.5 py-1.5 text-xs font-medium text-sage-700 hover:bg-sage-50"><Plus className="h-3.5 w-3.5"/> 完整制定任务</button>
+              <p className="text-xs font-semibold text-ink-soft">{zh?"快速添加":"Quick capture"}</p>
+              <button type="button" onClick={()=>setCreating(true)} className="inline-flex items-center gap-1 rounded-lg border border-sage-300 bg-white px-2.5 py-1.5 text-xs font-medium text-sage-700 hover:bg-sage-50"><Plus className="h-3.5 w-3.5"/> {zh?"创建任务":"Create task"}</button>
             </div>
             <QuickCaptureTodo userId={userId} taskDate={today}/>
           </div>
-          <div className="flex flex-wrap gap-1 border-b border-line pb-3" aria-label="任务分组">
+          <div className="flex flex-wrap gap-1 border-b border-line pb-3" aria-label={zh?"任务分组":"Task groups"}>
             {tabs.map(tab=><button key={tab.key} type="button" aria-pressed={filter===tab.key}
               className={`rounded-lg px-3 py-2 text-xs transition ${filter===tab.key?"bg-sage-100 font-semibold text-sage-700":"text-ink-soft hover:bg-paper"}`}
               onClick={()=>{setFilter(tab.key);setSelectedId(null);}}>{tab.label} <span className="opacity-65">{buckets[tab.key].length}</span></button>)}
           </div>
           <div className="flex items-center justify-between gap-2 py-3">
-            <label className="flex min-w-0 items-center gap-2 text-xs text-ink-faint">分类
-              <select aria-label="按任务分类筛选" className="min-w-0 max-w-[145px] rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink-soft" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setSelectedId(null);}}>
-                <option value="all">全部分类</option>
+            <label className="flex min-w-0 items-center gap-2 text-xs text-ink-faint">{zh?"分类":"Category"}
+              <select aria-label={zh?"按任务分类筛选":"Filter category"} className="min-w-0 max-w-[145px] rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink-soft" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setSelectedId(null);}}>
+                <option value="all">{zh?"全部分类":"All categories"}</option>
                 {categories.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
               </select>
             </label>
-            <select aria-label="任务类型筛选" className="rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink-soft" value={typeFilter} onChange={e=>setTypeFilter(e.target.value as typeof typeFilter)}>
-              <option value="all">全部类型</option><option value="one_time">单次任务</option><option value="recurring">旧版重复任务</option><option value="habit">习惯养成</option>
+            <select aria-label={zh?"任务类型筛选":"Filter task type"} className="rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink-soft" value={typeFilter} onChange={e=>setTypeFilter(e.target.value as typeof typeFilter)}>
+              <option value="all">{zh?"全部类型":"All types"}</option><option value="one_time">{zh?"单次任务":"One-time"}</option><option value="project">{zh?"长期项目":"Project"}</option><option value="routine">{zh?"周期任务":"Routine"}</option>
             </select>
           </div>
           <div className="space-y-4">
-            {visible.length===0&&<p className="rounded-xl bg-paper/40 p-3 text-sm text-ink-faint">这里暂时没有任务。</p>}
+            {visible.length===0&&<p className="rounded-xl bg-paper/40 p-3 text-sm text-ink-faint">{zh?"这里暂时没有任务。":"No tasks match this view."}</p>}
             {grouped.map(group=><div key={group.key}>
               <button type="button" className="mb-1.5 flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-left hover:bg-paper/60" aria-expanded={!collapsedCategories.includes(group.key)} onClick={()=>setCollapsedCategories(current=>current.includes(group.key)?current.filter(k=>k!==group.key):[...current,group.key])}>
                 <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform ${collapsedCategories.includes(group.key)?"":"rotate-90"}`}/>
@@ -160,7 +163,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
               </button>
               {!collapsedCategories.includes(group.key)&&<div className="space-y-1.5">{group.items.map(todo=><button key={todo.id} type="button" onClick={()=>setSelectedId(todo.id)} aria-pressed={selectedId===todo.id}
                 className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${selectedId===todo.id?"border-sage-300 bg-sage-50":"border-line/70 bg-white hover:bg-paper/50"}`}>
-                {todo.status==="completed"?<CheckCircle2 className="h-4 w-4 shrink-0 text-sage-600"/>:<span className={`h-2 w-2 shrink-0 rounded-full ${todo.task_type==="habit"?"bg-emerald-400":todo.task_type==="recurring"?"bg-amber-400":"bg-mist-300"}`}/>}
+                {todo.status==="completed"?<CheckCircle2 className="h-4 w-4 shrink-0 text-sage-600"/>:<span className={`h-2 w-2 shrink-0 rounded-full ${todo.task_type==="routine"?"bg-emerald-400":todo.task_type==="project"?"bg-amber-400":"bg-mist-300"}`}/>}
                 <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-medium ${todo.status==="completed"?"text-ink-faint line-through":"text-ink"}`}>{todo.title}</span><span className="block text-[10px] text-ink-faint">{displayType(todo)} · {ruleSummary(todo)|| (todo.target_finish_date?`目标 ${todo.target_finish_date}`:todo.task_date||"待安排")}{(bookedCounts[todo.id]??0)>0?` · 已预约 ${bookedCounts[todo.id]} 段`:""}{executionTemplates.some(x=>x.todo_id===todo.id)? " · 已设置未来重复安排":""}</span></span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint"/>
               </button>)}</div>}
@@ -171,8 +174,8 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
 
         {selected&&<section className="min-w-0">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium text-ink-faint">任务工作区</span>
-            <button type="button" onClick={()=>setSelectedId(null)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-soft hover:bg-paper"><X className="h-3.5 w-3.5"/> 关闭详情</button>
+            <span className="text-xs font-medium text-ink-faint">{zh?"任务工作区":"Task workspace"}</span>
+            <button type="button" onClick={()=>setSelectedId(null)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-soft hover:bg-paper"><X className="h-3.5 w-3.5"/> {zh?"关闭详情":"Close details"}</button>
           </div>
           <TodayTodoWorkspace key={selected.id} todayTodos={selected.status==="completed"?[]:[selected]}
             todayCompleted={selected.status==="completed"?[selected]:[]}
@@ -181,13 +184,13 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
       </div>
 
       {creating&&<div className="fixed inset-0 z-50 flex justify-end bg-black/30" onMouseDown={event=>{if(event.target===event.currentTarget)setCreating(false);}}>
-        <div role="dialog" aria-modal="true" aria-label="创建任务" className="flex h-full w-full max-w-[550px] flex-col overflow-hidden bg-[#FCFBF8] shadow-2xl">
+        <div role="dialog" aria-modal="true" aria-label={zh?"创建任务":"Create task"} className="flex h-full w-full max-w-[550px] flex-col overflow-hidden bg-[#FCFBF8] shadow-2xl">
           <div className="flex shrink-0 items-center justify-between border-b border-line px-6 py-4">
-            <div><h2 className="text-xl font-semibold text-ink">完整制定任务</h2><p className="mt-1 text-xs text-ink-faint">单次任务 · 定期任务 · 习惯养成</p></div>
-            <button type="button" onClick={()=>setCreating(false)} aria-label="关闭创建面板" className="rounded-lg p-2 hover:bg-paper"><X className="h-5 w-5"/></button>
+            <div><h2 className="text-xl font-semibold text-ink">{zh?"创建任务":"Create task"}</h2><p className="mt-1 text-xs text-ink-faint">{zh?"单次任务 · 长期项目 · 周期任务":"One-time · Project · Routine"}</p></div>
+            <button type="button" onClick={()=>setCreating(false)} aria-label={zh?"关闭创建面板":"Close create panel"} className="rounded-lg p-2 hover:bg-paper"><X className="h-5 w-5"/></button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-            <p className="mb-4 rounded-xl bg-sage-50 p-3 text-xs text-sage-700"><CalendarDays className="mr-1 inline h-3.5 w-3.5"/> 简单的事可以直接使用左侧快速添加；这里只在需要规划时填写更多信息。</p>
+            <p className="mb-4 rounded-xl bg-sage-50 p-3 text-xs text-sage-700"><CalendarDays className="mr-1 inline h-3.5 w-3.5"/> {zh?"这里只设置任务本身；具体执行时间可创建后安排。":"Set up the task here; schedule execution times after creating it."}</p>
             <AddTodoForm userId={userId} activeSpaceId={activeSpaceId} activeSpaceName={activeSpaceName} taskDate={today} onCreated={()=>setCreating(false)}/>
           </div>
         </div>
