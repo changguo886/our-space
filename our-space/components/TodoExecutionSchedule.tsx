@@ -23,6 +23,11 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [projectEnd,setProjectEnd]=useState<string|null>(null);
   const [templates,setTemplates]=useState<ExecutionTemplateV3[]>([]);
   const [timezone]=useState(()=>Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC");
+  const [overrideSlot,setOverrideSlot]=useState("");
+  const [overrideDate,setOverrideDate]=useState(()=>localDate(new Date()));
+  const [overrideStart,setOverrideStart]=useState("09:00");
+  const [overrideEnd,setOverrideEnd]=useState("10:00");
+  const [overrideAction,setOverrideAction]=useState<"cancel"|"reschedule">("reschedule");
   const [mode,setMode]=useState<Mode>("flexible");
   const [date,setDate]=useState(()=>localDate(new Date()));
   const [minutes,setMinutes]=useState("45");
@@ -81,6 +86,22 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(result.error){setError("保存失败："+result.error.message);return;}
     await refresh();setOpen(false);
   }
+  async function saveOverride(){
+    const t=templates.find(x=>x.id===overrideSlot);
+    if(!t){setError("请先选择重复安排。");return;}
+    if(!validDate(overrideDate)||overrideDate<t.starts_on||(t.ends_on&&overrideDate>t.ends_on)){setError("请选择模板有效期内的日期。");return;}
+    if(overrideAction==="reschedule"&&(!validTime(overrideStart)||!validTime(overrideEnd)||overrideEnd<=overrideStart)){setError("改期时间必须是同一天内有效的开始和结束时间。");return;}
+    setSaving(true);const change=overrideAction==="cancel"?{scheduled_start:null,scheduled_end:null}:{
+      scheduled_start:toFixedDateTime(overrideDate,overrideStart).toISOString(),
+      scheduled_end:toFixedDateTime(overrideDate,overrideEnd).toISOString(),
+    };
+    const {error:writeError}=await createClient().from("todo_execution_overrides").upsert({
+      todo_id:todoId,slot_key:t.slot_key,occurrence_date:overrideDate,action:overrideAction,...change
+    },{onConflict:"todo_id,slot_key,occurrence_date"});
+    setSaving(false);
+    if(writeError){setError("保存单次调整失败："+writeError.message);return;}
+    setError("");await refresh();
+  }
   return <section className="mt-4 rounded-xl border border-line bg-white p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h3 className="text-sm font-semibold text-ink">执行安排</h3><p className="text-xs text-ink-faint">只有固定时段会显示在 Calendar。</p></div>
@@ -92,6 +113,16 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><button type="button" className="shrink-0 underline" onClick={async()=>{if(!window.confirm("删除这条未来重复安排？"))return;const x=await createClient().from("todo_execution_templates").delete().eq("id",t.id);if(x.error)setError(x.error.message);else await refresh();}}>删除</button></div>)}
       {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">尚无执行安排。可以先不安排。</p>}
     </div>}
+    {templates.some(t=>t.execution_mode==="fixed")&&<details className="mt-4 rounded-xl border border-line p-3">
+      <summary className="cursor-pointer text-xs font-semibold text-ink-soft">修改／取消某一次固定预约</summary>
+      <div className="mt-3 space-y-2">
+        <label className="block text-xs text-ink-soft">重复时段<select className={field+" mt-1"} value={overrideSlot} onChange={e=>setOverrideSlot(e.target.value)}><option value="">请选择</option>{templates.filter(t=>t.execution_mode==="fixed").map(t=><option key={t.id} value={t.id}>{t.start_time?.slice(0,5)}–{t.end_time?.slice(0,5)} · {t.selector_kind==="all"?"所有日期":t.selector_kind+" "+(t.selector_value??"末日")}</option>)}</select></label>
+        <label className="block text-xs text-ink-soft">只调整这一天<input type="date" className={field+" mt-1"} value={overrideDate} onChange={e=>setOverrideDate(e.target.value)}/></label>
+        <div className="grid grid-cols-2 gap-2">{(["reschedule","cancel"] as const).map(x=><button key={x} type="button" className={`rounded-lg border p-2 text-xs ${overrideAction===x?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setOverrideAction(x)}>{x==="cancel"?"取消这一次":"仅这次改时间"}</button>)}</div>
+        {overrideAction==="reschedule"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">开始<input type="time" className={field+" mt-1"} value={overrideStart} onChange={e=>setOverrideStart(e.target.value)}/></label><label className="text-xs text-ink-soft">结束<input type="time" className={field+" mt-1"} value={overrideEnd} onChange={e=>setOverrideEnd(e.target.value)}/></label></div>}
+        <button type="button" disabled={saving||!overrideSlot} className="btn-primary w-full" onClick={()=>void saveOverride()}>{saving?"保存中…":"仅保存这一次"}</button>
+      </div>
+    </details>}
     {open&&<div className="mt-4 space-y-3 border-t border-line pt-4">
       <p className="text-xs font-semibold text-ink-soft">1. 应用范围</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -121,7 +152,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         </div>
         <p className="text-xs text-ink-faint">支持直接输入日期与时间，例如 2026-10-15、20:45；可以跨日期预约。</p>
       </div>}
-      <p className="text-xs text-ink-faint">{mode==="fixed"?"保存后在 Calendar 创建预约时间块。":mode==="window"?"窗口不是连续预约时长，也不会显示在 Calendar。":"只记录投入计划，不占用 Calendar。"}</p>
+      <p className="text-xs text-ink-faint">{mode==="fixed"?"固定时段会显示在 Calendar；重复设置自动生成未来时段。":mode==="window"?"窗口不是连续预约时长，也不会显示在 Calendar。":"只记录投入计划，不占用 Calendar。"}</p>
       <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>{saving?"保存中…":"保存执行安排"}</button>
     </div>}
     {error&&<p role="alert" className="mt-2 text-xs text-blush-500">{error}</p>}
