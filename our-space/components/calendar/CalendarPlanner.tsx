@@ -671,9 +671,11 @@ function readSlotId(id: string) {
 function PoolTask({
   todo,
   nowMs,
+  quota,
 }: {
   todo: CalendarTodo;
   nowMs: number;
+  quota?:{goal:number;booked:number};
 }) {
   const { dictionary, language } = useI18n();
   const cal = dictionary.calendar;
@@ -688,13 +690,11 @@ function PoolTask({
     todoText.categories,
     cal.unclassified
   );
-  const scheduled = activeScheduledMinutes(todo, nowMs);
-  const remaining =
-    remainingPlannableMinutes(todo, nowMs);
+  const scheduled = quota ? quota.booked : activeScheduledMinutes(todo, nowMs);
+  const remaining = quota ? Math.max(0,quota.goal-quota.booked) : remainingPlannableMinutes(todo, nowMs);
   const overplanned =
     activeOverplannedMinutes(todo, nowMs);
-  const progress =
-    activeScheduledRatio(todo, nowMs) * 100;
+  const progress = quota ? Math.min(100,100*quota.booked/quota.goal) : activeScheduledRatio(todo, nowMs) * 100;
   const expiredCount =
     expiredSessionCount(todo, nowMs);
 
@@ -707,7 +707,7 @@ function PoolTask({
         touchAction: "none",
         userSelect: "none",
         ...taskCardVisual(todo.category,todo.color_hex),
-        ...(todo.estimated_minutes && todo.estimated_minutes>0 ? {
+        ...((quota?.goal??todo.estimated_minutes??0)>0 ? {
           backgroundImage: `linear-gradient(to right, transparent 0%, transparent ${progress}%, rgba(255,255,255,0.88) ${progress}%, rgba(255,255,255,0.88) 100%)`
         } : {}),
       }}
@@ -1294,6 +1294,17 @@ export default function CalendarPlanner({
     lastAutoScrolledDateRef.current = null;
   }, [selectedDate]);
 
+  // Plan quota is scoped to the displayed day, not historical all-time bookings.
+  // With no explicit per-day plan, fall back to legacy estimated_minutes.
+  const dailyQuota=(todo:CalendarTodo)=>{
+    const plans=windowPlans.filter(p=>p.todo_id===todo.id&&p.planned_minutes>0);
+    const planned=plans.reduce((sum,p)=>sum+p.planned_minutes,0);
+    const goal=planned>0?planned:todo.estimated_minutes??0;
+    if(goal<=0)return null;
+    const booked=(todo.todo_sessions??[]).filter(session=>session.scheduled_start&&session.scheduled_end&&localDatePart(session.scheduled_start)===selectedDate)
+      .reduce((sum,session)=>sum+sessionDurationMinutes(session),0);
+    return {goal,booked};
+  };
   const poolTodos = useMemo(
     () =>
       todos.filter((todo) => {
@@ -1301,8 +1312,8 @@ export default function CalendarPlanner({
           return false;
         }
 
-        const remaining =
-          remainingPlannableMinutes(todo, now);
+        const quota=dailyQuota(todo);
+        const remaining=quota?Math.max(0,quota.goal-quota.booked):remainingPlannableMinutes(todo,now);
         return remaining === null || remaining > 0;
       }),
     [todos, now]
@@ -1333,7 +1344,7 @@ export default function CalendarPlanner({
 
     for (const todo of todos) {
       for (const session of todo.todo_sessions ?? []) {
-        if (localDatePart(session.scheduled_start) === selectedDate) {
+        if (session.scheduled_start&&session.scheduled_end&&localDatePart(session.scheduled_start) === selectedDate) {
           result.push({ todo, session });
         }
       }
@@ -1422,7 +1433,7 @@ export default function CalendarPlanner({
     }
 
     if (activeTodo) {
-      return defaultSessionMinutes(activeTodo, now);
+      return dailyQuota(activeTodo) ? Math.max(SLOT_MINUTES,dailyQuota(activeTodo)!.goal-dailyQuota(activeTodo)!.booked) : defaultSessionMinutes(activeTodo, now);
     }
 
     return DEFAULT_SESSION_MINUTES;
@@ -2182,7 +2193,7 @@ export default function CalendarPlanner({
               )}
 
               {poolTodos.map((todo) => (
-                <PoolTask key={todo.id} todo={todo} nowMs={now} />
+                <PoolTask key={todo.id} todo={todo} nowMs={now} quota={dailyQuota(todo)??undefined} />
               ))}
             </div>
 
@@ -2204,6 +2215,7 @@ export default function CalendarPlanner({
                       key={`planned-${todo.id}`}
                       todo={todo}
                       nowMs={now}
+                      quota={dailyQuota(todo)??undefined}
                     />
                   ))}
                 </div>
