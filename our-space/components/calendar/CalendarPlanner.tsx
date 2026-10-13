@@ -50,7 +50,7 @@ import DurationInput, {
 import TodoSubtasks from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
 import { useI18n } from "@/components/I18nProvider";
-import {normalizeTaskColor,CATEGORY_VISUALS} from "@/lib/task-colors";
+import {taskCardVisual} from "@/lib/task-colors";
 
 /* =========================================================
    Types
@@ -700,15 +700,7 @@ function PoolTask({
       style={{
         touchAction: "none",
         userSelect: "none",
-        background: `
-          linear-gradient(
-            to right,
-            rgba(147, 169, 142, 0.26) 0%,
-            rgba(147, 169, 142, 0.26) ${progress}%,
-            rgba(251, 247, 241, 0.72) ${progress}%,
-            rgba(251, 247, 241, 0.72) 100%
-          )
-        `,
+        ...taskCardVisual(todo.category,todo.color_hex),
       }}
       className={`
         flex cursor-grab items-center gap-3 rounded-2xl border border-line
@@ -796,9 +788,10 @@ function DragPreview({
 
   return (
     <div
+      style={taskCardVisual(todo.category,todo.color_hex)}
       className={`
         w-[280px] scale-[1.015] rounded-2xl border px-3 py-3
-        shadow-[0_14px_36px_rgba(60,50,40,0.12)] ${category.card}
+        shadow-[0_14px_36px_rgba(60,50,40,0.12)]
       `}
     >
       <div className="flex items-center justify-between gap-3">
@@ -870,7 +863,8 @@ function CalendarSlot({
       {isOver && activeTodo && (
         <div className="pointer-events-none absolute inset-x-2 top-1/2 z-40 -translate-y-1/2">
           <div
-            className={`rounded-xl border px-3 py-1.5 text-center text-[10px] shadow-sm ${category?.card}`}
+            className="rounded-xl border px-3 py-1.5 text-center text-[10px] shadow-sm"
+            style={taskCardVisual(activeTodo.category,activeTodo.color_hex)}
           >
             {previewStart.toLocaleTimeString([], {
               hour: "2-digit",
@@ -1012,12 +1006,11 @@ function ScheduledSession({
     <div
       ref={setNodeRef}
       onClick={onSelect}
-      style={{ top, height, backgroundColor: (CATEGORY_VISUALS[todo.category??"none"]??CATEGORY_VISUALS.none).background, borderColor: (CATEGORY_VISUALS[todo.category??"none"]??CATEGORY_VISUALS.none).border, borderLeftColor: normalizeTaskColor(todo.color_hex), borderLeftWidth: 4 }}
+      style={{ top, height, ...taskCardVisual(todo.category,todo.color_hex) }}
       className={`
         absolute left-2 right-2 z-20 rounded-2xl border
         shadow-[0_3px_14px_rgba(60,50,40,0.045)]
         transition-[transform,box-shadow,opacity,filter] duration-150
-        ${category.card}
         ${session.virtual ? "border-dashed opacity-85" : ""}
         ${selected ? "ring-2 ring-sage-300/50" : ""}
         ${isDragging ? "opacity-25" : ""}
