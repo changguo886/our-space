@@ -6,6 +6,7 @@ import CalendarPlanner from "@/components/calendar/CalendarPlanner";
 import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import AppTimePicker from "@/components/ui/AppTimePicker";
 import {CATEGORY_VISUALS,taskCardVisual} from "@/lib/task-colors";
 import {useI18n} from "@/components/I18nProvider";
 import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
@@ -156,6 +157,9 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     const segments=chosen.virtualId?.split(":");
     const slot=segments?.[2],occurrence=segments?.[3];
     const template=slot?templates.find(t=>t.todo_id===chosen.todoId&&t.slot_key===slot):undefined;
+    const chosenStart=new Date(chosen.start);
+    const chosenDay=occurrence??dateOf(chosenStart.getFullYear(),chosenStart.getMonth(),chosenStart.getDate());
+    if(chosenDay<dateOf(new Date().getFullYear(),new Date().getMonth(),new Date().getDate())){setLoadError(zh?"过去的安排不能取消或修改。":"Past plans are read-only.");return;}
     const message=allFuture
       ?(zh?"从所选日期起停止这条重复安排？历史记录不会删除。":"Stop this recurring schedule from this date? History remains.")
       :(zh?"仅取消这一次时间安排？任务和完成记录仍然保留。":"Cancel this occurrence only? The task and completion records remain.");
@@ -177,6 +181,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       else setOverrides(current=>[...current.filter(o=>!(o.todo_id===chosen.todoId&&o.slot_key===slot&&o.occurrence_date===occurrence)),{todo_id:chosen.todoId,slot_key:slot,occurrence_date:occurrence,action:"cancel",scheduled_start:null,scheduled_end:null}]);
     }
   }
+  const pickedPast=(()=>{if(!pickedEvent)return false;const occ=pickedEvent.virtualId?.split(":")[3];const a=new Date(pickedEvent.start);const day=occ??dateOf(a.getFullYear(),a.getMonth(),a.getDate());return day<dateOf(new Date().getFullYear(),new Date().getMonth(),new Date().getDate());})();
   const dailyPlans=tasks.flatMap(todo=>(todo.todo_sessions??[]).filter(s=>s.plan_date===date&&s.mode!=="fixed").map(s=>({
     id:s.id,todo_id:todo.id,title:todo.title,category:todo.category??null,color_hex:todo.color_hex??null,
     mode:s.mode??"flexible",planned_minutes:s.planned_minutes??0,
@@ -258,11 +263,11 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     {pickedEvent&&<div role="dialog" aria-modal="true" aria-label={zh?"管理执行安排":"Manage appointment"} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-xl">
         <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-semibold text-ink">{pickedEvent.title}</h3><p className="text-xs text-ink-soft">{new Date(pickedEvent.start).toLocaleString()} – {new Date(pickedEvent.end).toLocaleTimeString()}</p></div><button type="button" onClick={()=>setPickedEvent(null)} aria-label={zh?"关闭":"Close"}>✕</button></div>
-        {(pickedEvent.sessionId||pickedEvent.virtualId)&&<button type="button" disabled={actionBusy} className="w-full rounded-lg border border-line p-3 text-left text-sm" onClick={()=>{const a=new Date(pickedEvent.start),b=new Date(pickedEvent.end);setPickedStart(String(a.getHours()).padStart(2,"0")+":"+String(a.getMinutes()).padStart(2,"0"));setPickedEnd(String(b.getHours()).padStart(2,"0")+":"+String(b.getMinutes()).padStart(2,"0"));setEditingPicked(v=>!v);}}>{zh?"修改本次时间":"Edit this occurrence"}</button>}
-        {editingPicked&&<div className="space-y-2 rounded-lg border border-line p-3"><div className="grid grid-cols-2 gap-2"><label className="text-xs">{zh?"开始":"Start"}<input type="time" value={pickedStart} onChange={e=>setPickedStart(e.target.value)} className="w-full rounded-lg border border-line p-2"/></label><label className="text-xs">{zh?"结束":"End"}<input type="time" value={pickedEnd} onChange={e=>setPickedEnd(e.target.value)} className="w-full rounded-lg border border-line p-2"/></label></div><button type="button" disabled={actionBusy} className="btn-primary w-full" onClick={()=>void updatePicked()}>{zh?"保存本次修改":"Save occurrence"}</button></div>}
+        {(pickedEvent.sessionId||pickedEvent.virtualId)&&!pickedPast&&<button type="button" disabled={actionBusy} className="w-full rounded-lg border border-line p-3 text-left text-sm" onClick={()=>{const a=new Date(pickedEvent.start),b=new Date(pickedEvent.end);setPickedStart(String(a.getHours()).padStart(2,"0")+":"+String(a.getMinutes()).padStart(2,"0"));setPickedEnd(String(b.getHours()).padStart(2,"0")+":"+String(b.getMinutes()).padStart(2,"0"));setEditingPicked(v=>!v);}}>{zh?"修改本次时间":"Edit this occurrence"}</button>}
+        {editingPicked&&<div className="space-y-2 rounded-lg border border-line p-3"><div className="grid grid-cols-2 gap-2"><label className="text-xs">{zh?"开始":"Start"}<AppTimePicker value={pickedStart} onChange={setPickedStart}/></label><label className="text-xs">{zh?"结束":"End"}<AppTimePicker value={pickedEnd} onChange={setPickedEnd}/></label></div><button type="button" disabled={actionBusy} className="btn-primary w-full" onClick={()=>void updatePicked()}>{zh?"保存本次修改":"Save occurrence"}</button></div>}
         <Link href={"/todo?todoId="+encodeURIComponent(pickedEvent.todoId)} className="block rounded-lg border border-line p-3 text-sm">{zh?"进入任务工作区 · 修改时间":"Open Todo workspace · change time"}</Link>
-        {(pickedEvent.sessionId||pickedEvent.virtualId)&&<button disabled={actionBusy} type="button" onClick={()=>void cancelPicked(false)} className="w-full rounded-lg border border-blush-200 p-3 text-left text-sm text-blush-500">{zh?"取消这一次安排（需确认）":"Cancel this occurrence (confirm)"}</button>}
-        {pickedEvent.virtualId&&<button disabled={actionBusy} type="button" onClick={()=>void cancelPicked(true)} className="w-full rounded-lg border border-blush-200 p-3 text-left text-sm text-blush-500">{zh?"停止从这次起的重复安排（需确认）":"Stop future recurrence (confirm)"}</button>}
+        {(pickedEvent.sessionId||pickedEvent.virtualId)&&!pickedPast&&<button disabled={actionBusy} type="button" onClick={()=>void cancelPicked(false)} className="w-full rounded-lg border border-blush-200 p-3 text-left text-sm text-blush-500">{zh?"取消这一次安排（需确认）":"Cancel this occurrence (confirm)"}</button>}
+        {pickedEvent.virtualId&&!pickedPast&&<button disabled={actionBusy} type="button" onClick={()=>void cancelPicked(true)} className="w-full rounded-lg border border-blush-200 p-3 text-left text-sm text-blush-500">{zh?"停止从这次起的重复安排（需确认）":"Stop future recurrence (confirm)"}</button>}
         <p className="text-xs text-ink-faint">{zh?"永久删除任务及其所有数据请前往 Todo 工作区，勿与取消日程混淆。":"Permanently deleting a task is managed separately in Todo."}</p>
         {loadError&&<p role="alert" className="text-xs text-blush-500">{loadError}</p>}
       </div>

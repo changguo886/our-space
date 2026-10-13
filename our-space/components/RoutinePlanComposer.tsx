@@ -1,146 +1,181 @@
 "use client";
-import {useEffect,useState} from "react";
-import {createClient} from "@/lib/supabase/client";
-import {addDaysISO,lastDayISO,weekdayISO,type HabitPatternV3} from "@/lib/recurring-execution";
-type Mode="fixed"|"window"|"flexible";
-type Slot={id:string;key:string;mode:Mode;start:string;end:string;minutes:string};
-type Props={todoId:string;pattern:HabitPatternV3;today:string;startDate:string;onSaved:()=>Promise<void>;zh:boolean};
-const defaults=():Omit<Slot,"id"|"key">=>({mode:"fixed",start:"09:00",end:"10:00",minutes:"45"});
-const pad=(n:number)=>String(n).padStart(2,"0");
-const dayAt=(year:number,month:number,day:number)=>year+"-"+pad(month)+"-"+pad(day);
-const validTime=(x:string)=>/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(x);
-const toDate=(d:string,t:string)=>new Date(d+"T"+t+":00").toISOString();
-function nextCycle(day:string,period:"day"|"week"|"month"){
- if(period==="week")return addDaysISO(day,7);
- if(period==="day")return addDaysISO(day,1);
- const [y,m]=day.split("-").map(Number);
- return dayAt(m===12?y+1:y,m===12?1:m+1,1);
-}
-export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSaved,zh}:Props){
- const [anchor,setAnchor]=useState(today);
- const [selected,setSelected]=useState<number[]>([]);
- const [slots,setSlots]=useState<Slot[]>([]);
- const [shared,setShared]=useState(defaults());
- const [scope,setScope]=useState<"period"|"ongoing">("period");
- const [busy,setBusy]=useState(false);
- const [error,setError]=useState("");
- const [notice,setNotice]=useState("");
- const weekly=pattern.period!=="month";
- const fixed=pattern.arrangement==="fixed";
- const [year,month]=anchor.split("-").map(Number);
- const weekdayStart=addDaysISO(anchor,1-weekdayISO(anchor));
- const periodStart=weekly?weekdayStart:dayAt(year,month,1);
- const periodEnd=weekly?addDaysISO(weekdayStart,6):dayAt(year,month,lastDayISO(anchor));
- const values=weekly?[1,2,3,4,5,6,7]:Array.from({length:lastDayISO(anchor)},(_,i)=>i+1);
- const dayFor=(v:number)=>weekly?addDaysISO(weekdayStart,v-1):dayAt(year,month,v);
- const eligible=(v:number)=>{const d=dayFor(v);return d>=today&&d>=startDate;};
- const defaultKeys=()=>pattern.period==="day"?[1,2,3,4,5,6,7]:pattern.period==="week"?pattern.weekdays:pattern.period==="month"?[...pattern.month_days,...(pattern.include_month_end?[lastDayISO(anchor)]:[])]:[];
- useEffect(()=>{
-   const ids=[...new Set(defaultKeys())].filter(eligible);
-   setSelected(fixed?ids:[]);
-   setSlots([]);setError("");setNotice("");
- },[todoId,anchor,pattern.arrangement,pattern.period,pattern.weekdays.join(","),pattern.month_days.join(","),pattern.include_month_end]);
- const chosen=selected.filter(eligible);
- const addSelection=(ids:number[])=>setSelected([...new Set(ids.filter(eligible))].sort((a,b)=>a-b));
- const apply=()=>{
-   if(!chosen.length){setError(zh?"请先选择日期。":"Select dates first.");return;}
-   const added=chosen.map(day=>({id:crypto.randomUUID(),key:String(day),...shared}));
-   setSlots(previous=>{
-     return [...previous,...added].sort((a,b)=>Number(a.key)-Number(b.key));
-   });
-   setNotice(zh?"已添加时段。同一天可再添加，已有时段不会被覆盖。":"Slots added; apply again to add another time on the same day.");
- };
- const update=(id:string,changes:Partial<Slot>)=>setSlots(rows=>rows.map(r=>r.id===id?{...r,...changes}:r));
- const save=async()=>{
-   setError("");setNotice("");
-   if(!slots.length){setError(zh?"请先应用至少一个执行时段。":"Apply at least one time slot.");return;}
-   for(const slot of slots){
-     if(!eligible(Number(slot.key))){setError(zh?"包含过去或任务开始前的日期。":"A selected date is unavailable.");return;}
-     if(slot.mode!=="flexible"&&(!validTime(slot.start)||!validTime(slot.end)||slot.end<=slot.start)){setError(zh?"开始结束时间无效，暂不支持跨日预约。":"Invalid or overnight time range.");return;}
-     const mins=Number(slot.minutes);
-     if(slot.mode!=="fixed"&&(!Number.isInteger(mins)||mins<1||mins>1440)){setError(zh?"预计投入必须为 1–1440 分钟。":"Minutes must be between 1 and 1440.");return;}
-     if(slot.mode==="window"&&mins>(Number(slot.end.slice(0,2))*60+Number(slot.end.slice(3))-Number(slot.start.slice(0,2))*60-Number(slot.start.slice(3)))){setError(zh?"预计投入不能超过窗口长度。":"Estimated time exceeds window.");return;}
-   }
-   for(let i=0;i<slots.length;i++)for(let j=i+1;j<slots.length;j++){
-     const a=slots[i],b=slots[j];
-     if(a.key===b.key&&a.mode==="fixed"&&b.mode==="fixed"&&a.start<b.end&&b.start<a.end){
-       setError(zh?"同一天的固定时段不能相互重叠。":"Fixed slots on the same date cannot overlap.");return;
-     }
-   }
-   if(scope==="ongoing"&&pattern.period==="month"&&slots.some(s=>Number(s.key)>28)){
-     const confirmation=window.confirm(zh?"29–31 日并非每个月都存在，缺少这些日期的月份会跳过。继续？":"Dates 29–31 are skipped in shorter months. Continue?");
-     if(!confirmation)return;
-   }
-   setBusy(true);const db=createClient();let failure="";
-   if(scope==="ongoing"){
-     const startsOn=[periodStart,today,startDate].sort().at(-1)!; // Never materialize past virtual occurrences
-     const rows=slots.map(s=>({
-       todo_id:todoId,starts_on:startsOn,ends_on:null,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",
-       selector_kind:weekly?"weekday":pattern.include_month_end&&Number(s.key)===lastDayISO(anchor)&&!pattern.month_days.includes(Number(s.key))?"month_end":"month_day",selector_value:!weekly&&pattern.include_month_end&&Number(s.key)===lastDayISO(anchor)&&!pattern.month_days.includes(Number(s.key))?null:Number(s.key),
-       execution_mode:s.mode,replaces_slot_key:null,
-       start_time:s.mode==="fixed"?s.start:null,end_time:s.mode==="fixed"?s.end:null,
-       window_start:s.mode==="window"?s.start:null,window_end:s.mode==="window"?s.end:null,
-       planned_minutes:s.mode==="fixed"?null:Number(s.minutes)
-     }));
-     const duplicateRows=rows.some((a,i)=>rows.slice(i+1).some(b=>a.selector_kind===b.selector_kind&&a.selector_value===b.selector_value&&a.execution_mode===b.execution_mode&&(
-       a.execution_mode==="fixed"&&b.execution_mode==="fixed"&&Boolean(a.start_time&&a.end_time&&b.start_time&&b.end_time&&a.start_time<b.end_time&&b.start_time<a.end_time)
-       ||a.execution_mode==="window"&&a.window_start===b.window_start&&a.window_end===b.window_end&&a.planned_minutes===b.planned_minutes
-       ||a.execution_mode==="flexible"&&a.planned_minutes===b.planned_minutes
-     )));
-     if(duplicateRows){setBusy(false);setError(zh?"本次配置包含重复的周期时段。":"Duplicate recurring slots in the selection.");return;}
-     const existing=await db.from("todo_execution_templates").select("id,selector_kind,selector_value,starts_on,ends_on,execution_mode,start_time,end_time,window_start,window_end,planned_minutes").eq("todo_id",todoId);
-     if(existing.error)failure=existing.error.message;
-     else if(rows.some(row=>(existing.data??[]).some(t=>{
-       if(t.selector_kind!==row.selector_kind||t.selector_value!==row.selector_value||!(t.ends_on===null||t.ends_on>=row.starts_on))return false;
-       if(row.execution_mode==="fixed"&&t.execution_mode==="fixed")return Boolean(t.start_time&&t.end_time&&row.start_time&&row.end_time&&row.start_time<t.end_time.slice(0,5)&&t.start_time.slice(0,5)<row.end_time);
-       if(row.execution_mode==="window"&&t.execution_mode==="window")return row.window_start===t.window_start?.slice(0,5)&&row.window_end===t.window_end?.slice(0,5)&&row.planned_minutes===t.planned_minutes;
-       return row.execution_mode==="flexible"&&t.execution_mode==="flexible"&&row.planned_minutes===t.planned_minutes;
-     })))failure=zh?"已有相同或重叠的长期安排，请先调整现有时间。":"An identical or overlapping recurring slot already exists.";
-     else {const result=await db.from("todo_execution_templates").insert(rows);failure=result.error?.message??"";}
-   }else{
-     const rows: Array<{todo_id:string;mode:Mode;scheduled_start?:string;scheduled_end?:string;plan_date?:string;planned_minutes?:number;window_start?:string|null;window_end?:string|null}>=slots.map(s=>{
-       const day=dayFor(Number(s.key));
-       return s.mode==="fixed"
-       ?{todo_id:todoId,mode:"fixed",scheduled_start:toDate(day,s.start),scheduled_end:toDate(day,s.end)}
-       :{todo_id:todoId,mode:s.mode,plan_date:day,planned_minutes:Number(s.minutes),window_start:s.mode==="window"?s.start:null,window_end:s.mode==="window"?s.end:null};
-     });
-     const existing=await db.from("todo_sessions").select("id,mode,plan_date,scheduled_start,scheduled_end,window_start,window_end,planned_minutes").eq("todo_id",todoId);
-     if(existing.error)failure=existing.error.message;
-     else {
-       const overlap=rows.some(row=>(existing.data??[]).some(old=>{
-         if(row.mode==="fixed"&&old.mode==="fixed"&&row.scheduled_start&&row.scheduled_end&&old.scheduled_start&&old.scheduled_end){return Date.parse(row.scheduled_start)<Date.parse(old.scheduled_end)&&Date.parse(row.scheduled_end)>Date.parse(old.scheduled_start);}
-         return row.mode!=="fixed"&&old.mode===row.mode&&old.plan_date===row.plan_date&&old.planned_minutes===row.planned_minutes&&(row.mode==="flexible"||(old.window_start?.slice(0,5)===row.window_start?.slice(0,5)&&old.window_end?.slice(0,5)===row.window_end?.slice(0,5)));
-       }));
-       if(overlap)failure=zh?"已有相同或重叠的执行安排，请先编辑现有记录。":"An identical or overlapping plan exists; edit it instead.";
-       else {const result=await db.from("todo_sessions").insert(rows);failure=result.error?.message??"";}
-     }
-   }
-   setBusy(false);
-   if(failure){setError(failure);return;}
-   setSlots([]);setNotice(zh?"执行计划已保存。":"Execution plan saved.");await onSaved();
- };
- const input="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm";
- return <div className="space-y-4 rounded-xl border border-sage-200 bg-sage-50/30 p-4">
-   <div><h4 className="font-semibold text-ink">{zh?"制定执行计划":"Plan execution"}</h4><p className="text-xs text-ink-faint">{zh?"先选择日期、统一设置时间，再逐日微调并一次保存。完成目标不会被自动修改。":"Choose dates, apply timing, then adjust and save. Completion goals remain separate."}</p></div>
-   <div className="flex items-center justify-between gap-2"><button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={()=>setAnchor(weekly?addDaysISO(anchor,-7):dayAt(month===1?year-1:year,month===1?12:month-1,1))}>‹</button><strong className="text-sm">{weekly?periodStart+" – "+periodEnd:year+"-"+pad(month)}</strong><button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={()=>setAnchor(weekly?addDaysISO(anchor,7):nextCycle(anchor,"month"))}>›</button></div>
-   {weekly&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>addSelection([1,2,3,4,5])} className="rounded-lg border px-3 py-1.5 text-xs">{zh?"工作日":"Weekdays"}</button><button type="button" onClick={()=>addSelection([6,7])} className="rounded-lg border px-3 py-1.5 text-xs">{zh?"周末":"Weekend"}</button><button type="button" onClick={()=>addSelection([])} className="rounded-lg border px-3 py-1.5 text-xs">{zh?"清空":"Clear"}</button></div>}
-   <div className={weekly?"grid grid-cols-7 gap-1":"grid grid-cols-7 gap-1"}>
-     {values.map(v=><button key={v} type="button" disabled={!eligible(v)} onClick={()=>addSelection(selected.includes(v)?selected.filter(x=>x!==v):[...selected,v])} className={`min-h-9 rounded-lg border text-xs disabled:opacity-30 ${selected.includes(v)?"border-sage-500 bg-sage-100 text-sage-700":"border-line bg-white"}`} title={dayFor(v)}>{weekly?["一","二","三","四","五","六","日"][v-1]:v}{fixed&&defaultKeys().includes(v)?" •":""}</button>)}
-   </div>
-   <p className="text-xs text-ink-faint">{zh?"圆点代表规则日；其他日期也可以手动安排。弹性次数无需填满目标次数。":"Dots indicate rule days; other dates are optional. Flexible goals do not require booking every occurrence."}</p>
-   <div className="space-y-2"><strong className="text-sm">{zh?"统一时间配置":"Shared timing"}</strong><div className="flex flex-wrap gap-2">{(["fixed","window","flexible"] as Mode[]).map(m=><button key={m} type="button" onClick={()=>setShared(s=>({...s,mode:m}))} className={`rounded-lg border px-3 py-2 text-xs ${shared.mode===m?"border-sage-500 bg-sage-100":"border-line"}`}>{m==="fixed"?(zh?"固定":"Fixed"):m==="window"?(zh?"时间窗口":"Window"):(zh?"灵活投入":"Flexible")}</button>)}</div>
-     {shared.mode!=="flexible"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs">{zh?"开始":"Start"}<input type="time" className={input} value={shared.start} onChange={e=>setShared(s=>({...s,start:e.target.value}))}/></label><label className="text-xs">{zh?"结束":"End"}<input type="time" className={input} value={shared.end} onChange={e=>setShared(s=>({...s,end:e.target.value}))}/></label></div>}
-     {shared.mode!=="fixed"&&<label className="block text-xs">{zh?"预计分钟":"Minutes"}<input type="number" min="1" max="1440" className={input} value={shared.minutes} onChange={e=>setShared(s=>({...s,minutes:e.target.value}))}/></label>}
-     <button type="button" onClick={apply} disabled={!chosen.length} className="w-full rounded-lg border border-sage-400 bg-white p-2 text-sm text-sage-700">{zh?`应用到选中的 ${chosen.length} 天`:`Apply to ${chosen.length} days`}</button>
-   </div>
-   {slots.length>0&&<div className="space-y-2"><strong className="text-sm">{zh?"逐日微调":"Per-day adjustments"}</strong>{slots.map(s=><div key={s.id} className="rounded-lg border border-line bg-white p-3 space-y-2">
-     <div className="flex justify-between items-center"><strong className="text-xs">{dayFor(Number(s.key))}</strong><button type="button" className="text-xs text-blush-500" onClick={()=>setSlots(xs=>xs.filter(x=>x.id!==s.id))}>{zh?"移除":"Remove"}</button></div>
-     <div className="flex gap-2">{(["fixed","window","flexible"] as Mode[]).map(m=><button key={m} type="button" onClick={()=>update(s.id,{mode:m})} className={`rounded border px-2 py-1 text-xs ${s.mode===m?"bg-sage-50 border-sage-400":"border-line"}`}>{m==="fixed"?"Fixed":m==="window"?"Window":"Flexible"}</button>)}</div>
-     {s.mode!=="flexible"&&<div className="grid grid-cols-2 gap-2"><input type="time" aria-label="Start" className={input} value={s.start} onChange={e=>update(s.id,{start:e.target.value})}/><input type="time" aria-label="End" className={input} value={s.end} onChange={e=>update(s.id,{end:e.target.value})}/></div>}
-     {s.mode!=="fixed"&&<input type="number" aria-label="Planned minutes" className={input} value={s.minutes} onChange={e=>update(s.id,{minutes:e.target.value})}/>}
-   </div>)}</div>}
-   <fieldset className="space-y-2"><legend className="text-sm font-semibold">{zh?"重复范围":"Repeat range"}</legend><label className="flex gap-2 items-center text-sm"><input type="radio" checked={scope==="period"} onChange={()=>setScope("period")}/>{zh?"仅本周期":"This period only"}</label><label className="flex gap-2 items-center text-sm"><input type="radio" checked={scope==="ongoing"} onChange={()=>setScope("ongoing")}/>{zh?"以后持续按这些时间安排":"Repeat indefinitely"}</label></fieldset>
-   <button type="button" disabled={busy||!slots.length} className="btn-primary w-full" onClick={()=>void save()}>{busy?(zh?"保存中…":"Saving…"):(zh?"保存执行计划":"Save execution plan")}</button>
-   {error&&<p role="alert" className="text-xs text-blush-500">{error}</p>}{notice&&<p role="status" className="text-xs text-sage-700">{notice}</p>}
- </div>;
+import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import AppTimePicker from "@/components/ui/AppTimePicker";
+import { ModePicker } from "@/components/ui/ScheduleMode";
+import { addDaysISO, lastDayISO, weekdayISO, type HabitPatternV3 } from "@/lib/recurring-execution";
+import { conflictsWith, formatDay, isDuplicateKeyError, remainingQuota, timesOverlap, type DatedItem, type ScheduleMode as Mode } from "@/lib/schedule-utils";
+
+type Slot = { id: string; key: string; mode: Mode; start: string; end: string; minutes: string };
+type Props = { todoId: string; pattern: HabitPatternV3; today: string; startDate: string; existing: DatedItem[]; onSaved: () => Promise<void>; zh: boolean };
+const pad = (n: number) => String(n).padStart(2, "0");
+const dayAt = (year: number, month: number, day: number) => year + "-" + pad(month) + "-" + pad(day);
+const validTime = (x: string) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(x);
+const toIso = (d: string, t: string) => new Date(d + "T" + t + ":00").toISOString();
+const span = (a: string, b: string) => Number(b.slice(0, 2)) * 60 + Number(b.slice(3)) - Number(a.slice(0, 2)) * 60 - Number(a.slice(3));
+const WEEK = ["一", "二", "三", "四", "五", "六", "日"];
+
+export default function RoutinePlanComposer({ todoId, pattern, today, startDate, existing, onSaved, zh }: Props) {
+  const [anchor, setAnchor] = useState(today);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [shared, setShared] = useState<Omit<Slot, "id" | "key">>({ mode: "fixed", start: "09:00", end: "10:00", minutes: "45" });
+  const [scope, setScope] = useState<"period" | "ongoing">("period");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef<{ sig: string; ids: string[] } | null>(null);
+
+  const weekly = pattern.period !== "month";
+  const fixed = pattern.arrangement === "fixed";
+  const flexibleQuota = pattern.arrangement === "flexible" && pattern.period !== "day";
+  const unit = weekly ? (zh ? "周" : "week") : (zh ? "月" : "month");
+  const [year, month] = anchor.split("-").map(Number);
+  const weekStart = addDaysISO(anchor, 1 - weekdayISO(anchor));
+  const periodStart = weekly ? weekStart : dayAt(year, month, 1);
+  const periodEnd = weekly ? addDaysISO(weekStart, 6) : dayAt(year, month, lastDayISO(anchor));
+  const values = weekly ? [1, 2, 3, 4, 5, 6, 7] : Array.from({ length: lastDayISO(anchor) }, (_, i) => i + 1);
+  const dayFor = (v: number) => weekly ? addDaysISO(weekStart, v - 1) : dayAt(year, month, v);
+  const eligible = (v: number) => { const d = dayFor(v); return d >= today && d >= startDate; };
+  const ruleKeys = () => pattern.period === "day" ? [1, 2, 3, 4, 5, 6, 7] : pattern.period === "week" ? pattern.weekdays : [...pattern.month_days, ...(pattern.include_month_end ? [lastDayISO(anchor)] : [])];
+
+  // Flexible N-per-period: how many dates are already planned in the shown period, and how many more fit.
+  const plannedThisPeriod = new Set(existing.filter((r) => r.day >= periodStart && r.day <= periodEnd).map((r) => r.day)).size;
+  const cap = flexibleQuota ? (scope === "period" ? remainingQuota(pattern.target_count, plannedThisPeriod) : pattern.target_count) : Infinity;
+
+  useEffect(() => {
+    setSelected(fixed ? [...new Set(ruleKeys())].filter(eligible).sort((a, b) => a - b) : []);
+    setSlots([]); setError("");
+  }, [todoId, anchor, pattern.arrangement, pattern.period, pattern.weekdays.join(","), pattern.month_days.join(","), pattern.include_month_end]);
+
+  const chosen = selected.filter(eligible);
+  const choose = (ids: number[]) => setSelected([...new Set(ids.filter(eligible))].sort((a, b) => a - b).slice(0, cap));
+  const toggle = (v: number) => selected.includes(v) ? setSelected(selected.filter((x) => x !== v)) : selected.length < cap && choose([...selected, v]);
+
+  const apply = () => {
+    if (!chosen.length) { setError(zh ? "先选日子。" : "Pick days first."); return; }
+    setSlots((prev) => [...prev, ...chosen.map((day) => ({ id: crypto.randomUUID(), key: String(day), ...shared }))].sort((a, b) => Number(a.key) - Number(b.key) || a.start.localeCompare(b.start)));
+    setError("");
+  };
+  const update = (id: string, changes: Partial<Slot>) => setSlots((rows) => rows.map((r) => r.id === id ? { ...r, ...changes } : r));
+
+  async function insertOnce(table: string, records: Array<Record<string, unknown>>) {
+    const sig = table + JSON.stringify(records);
+    if (pending.current?.sig !== sig) pending.current = { sig, ids: records.map(() => crypto.randomUUID()) };
+    const result = await createClient().from(table).insert(records.map((r, i) => ({ ...r, id: pending.current!.ids[i] })));
+    if (result.error && !isDuplicateKeyError(result.error)) return result.error.message;
+    pending.current = null;
+    return "";
+  }
+
+  const save = async () => {
+    setError("");
+    if (!slots.length) { setError(zh ? "先把时间应用到至少一天。" : "Apply a time to at least one day."); return; }
+    for (const s of slots) {
+      if (!eligible(Number(s.key))) { setError(zh ? "有日子已经过去了。" : "A selected day has passed."); return; }
+      if (s.mode !== "flexible" && (!validTime(s.start) || !validTime(s.end) || s.end <= s.start)) { setError(zh ? "结束时间要晚于开始时间（暂不支持跨天）。" : "End must be after start (same day)."); return; }
+      const mins = Number(s.minutes);
+      if (s.mode !== "fixed" && (!Number.isInteger(mins) || mins < 1 || mins > 1440)) { setError(zh ? "预计时长请填 1–1440 分钟。" : "Minutes must be 1–1440."); return; }
+      if (s.mode === "window" && mins > span(s.start, s.end)) { setError(zh ? "预计时长不能超过这段时间。" : "Minutes exceed the window."); return; }
+    }
+    const asItems = slots.map((s) => ({ id: s.id, day: dayFor(Number(s.key)), mode: s.mode, start: s.mode === "flexible" ? "" : s.start, end: s.mode === "flexible" ? "" : s.end, minutes: s.mode === "fixed" ? span(s.start, s.end) : Number(s.minutes) }));
+    if (asItems.some((a, i) => conflictsWith(a, asItems.slice(i + 1)))) { setError(zh ? "同一天里有重叠或重复的时间。" : "Two slots on the same day overlap."); return; }
+    if (scope === "ongoing" && !weekly && slots.some((s) => Number(s.key) > 28)
+      && !window.confirm(zh ? "29–31 号不是每个月都有，没有这些日子的月份会跳过。继续？" : "Days 29–31 are skipped in shorter months. Continue?")) return;
+
+    setBusy(true);
+    let failure = "";
+    if (scope === "ongoing") {
+      const startsOn = [periodStart, today, startDate].sort().at(-1)!;
+      const records = slots.map((s) => {
+        const monthEnd = !weekly && pattern.include_month_end && Number(s.key) === lastDayISO(anchor) && !pattern.month_days.includes(Number(s.key));
+        return {
+          todo_id: todoId, starts_on: startsOn, ends_on: null, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          selector_kind: weekly ? "weekday" : monthEnd ? "month_end" : "month_day", selector_value: monthEnd ? null : Number(s.key),
+          execution_mode: s.mode, replaces_slot_key: null,
+          start_time: s.mode === "fixed" ? s.start : null, end_time: s.mode === "fixed" ? s.end : null,
+          window_start: s.mode === "window" ? s.start : null, window_end: s.mode === "window" ? s.end : null,
+          planned_minutes: s.mode === "fixed" ? null : Number(s.minutes),
+        };
+      });
+      const current = await createClient().from("todo_execution_templates").select("selector_kind,selector_value,ends_on,execution_mode,start_time,end_time,window_start,window_end,planned_minutes").eq("todo_id", todoId);
+      if (current.error) failure = current.error.message;
+      else if (records.some((r) => (current.data ?? []).some((t) => t.selector_kind === r.selector_kind && t.selector_value === r.selector_value && (t.ends_on === null || t.ends_on >= r.starts_on) && t.execution_mode === r.execution_mode && (
+        r.execution_mode === "fixed" ? timesOverlap(r.start_time!, r.end_time!, t.start_time.slice(0, 5), t.end_time.slice(0, 5))
+          : r.execution_mode === "window" ? r.window_start === t.window_start?.slice(0, 5) && r.window_end === t.window_end?.slice(0, 5) && r.planned_minutes === t.planned_minutes
+            : r.planned_minutes === t.planned_minutes))))
+        failure = zh ? "这些日子已经有相同或重叠的重复安排，请在列表里修改。" : "A matching repeating plan already exists; edit it in the list.";
+      else failure = await insertOnce("todo_execution_templates", records);
+    } else {
+      if (asItems.some((a) => conflictsWith(a, existing))) failure = zh ? "有的日子已经有重叠或相同的安排了。" : "Some days already have a matching plan.";
+      else failure = await insertOnce("todo_sessions", asItems.map((a) => a.mode === "fixed"
+        ? { todo_id: todoId, mode: "fixed", scheduled_start: toIso(a.day, a.start), scheduled_end: toIso(a.day, a.end) }
+        : { todo_id: todoId, mode: a.mode, plan_date: a.day, planned_minutes: a.minutes, window_start: a.mode === "window" ? a.start : null, window_end: a.mode === "window" ? a.end : null }));
+    }
+    setBusy(false);
+    if (failure) { setError(failure); return; }
+    setSlots([]);
+    await onSaved();
+  };
+
+  const scopeButton = (id: "period" | "ongoing", label: string) => <button type="button" aria-pressed={scope === id} onClick={() => { setScope(id); if (flexibleQuota) setSelected([]); }}
+    className={`flex-1 rounded-lg px-3 py-2 text-sm ${scope === id ? "bg-white font-semibold text-sage-700 shadow-sm" : "text-ink-soft"}`}>{label}</button>;
+
+  return <div className="space-y-4">
+    <div className="flex rounded-xl bg-paper p-1">
+      {scopeButton("period", zh ? `只排这${unit}` : `This ${unit} only`)}
+      {scopeButton("ongoing", zh ? `每${unit}都这样` : `Every ${unit}`)}
+    </div>
+
+    <div className="flex items-center justify-between gap-2">
+      <button type="button" aria-label={zh ? "上一个周期" : "Previous"} className="rounded-lg border border-line px-3 py-1 text-sm" onClick={() => setAnchor(weekly ? addDaysISO(anchor, -7) : dayAt(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1, 1))}>‹</button>
+      <strong className="text-sm">{weekly ? `${formatDay(periodStart, zh)} – ${formatDay(periodEnd, zh)}` : (zh ? `${year} 年 ${month} 月` : `${year}-${pad(month)}`)}</strong>
+      <button type="button" aria-label={zh ? "下一个周期" : "Next"} className="rounded-lg border border-line px-3 py-1 text-sm" onClick={() => setAnchor(weekly ? addDaysISO(anchor, 7) : dayAt(month === 12 ? year + 1 : year, month === 12 ? 1 : month + 1, 1))}>›</button>
+    </div>
+
+    {flexibleQuota && <p className="text-xs text-sage-700">{zh
+      ? `目标每${unit} ${pattern.target_count} 次${scope === "period" ? ` · 这${unit}已排 ${plannedThisPeriod} 天，还能选 ${cap} 天` : ""}`
+      : `Goal ${pattern.target_count} per ${unit}${scope === "period" ? ` · ${plannedThisPeriod} planned, ${cap} left` : ""}`}</p>}
+
+    {weekly && <div className="flex flex-wrap gap-2">
+      <button type="button" onClick={() => choose([1, 2, 3, 4, 5])} className="rounded-lg border border-line px-3 py-1.5 text-xs">{zh ? "工作日" : "Weekdays"}</button>
+      <button type="button" onClick={() => choose([6, 7])} className="rounded-lg border border-line px-3 py-1.5 text-xs">{zh ? "周末" : "Weekend"}</button>
+      <button type="button" onClick={() => setSelected([])} className="rounded-lg px-3 py-1.5 text-xs text-ink-soft">{zh ? "清空" : "Clear"}</button>
+    </div>}
+
+    <div className="grid grid-cols-7 gap-1">
+      {values.map((v) => {
+        const on = selected.includes(v), rule = fixed && ruleKeys().includes(v);
+        return <button key={v} type="button" disabled={!eligible(v) || (!on && selected.length >= cap)} aria-pressed={on} onClick={() => toggle(v)} title={formatDay(dayFor(v), zh)}
+          className={`relative min-h-10 rounded-lg border text-xs disabled:opacity-30 ${on ? "border-sage-500 bg-sage-100 font-semibold text-sage-700" : "border-line bg-white"}`}>
+          {weekly ? (zh ? WEEK[v - 1] : ["M", "T", "W", "T", "F", "S", "S"][v - 1]) : v}
+          {rule && <span aria-hidden="true" className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-sage-600" />}
+        </button>;
+      })}
+    </div>
+
+    <div className="space-y-2 rounded-xl border border-line bg-white p-3">
+      <ModePicker value={shared.mode} onChange={(m) => setShared((s) => ({ ...s, mode: m }))} zh={zh} />
+      {shared.mode !== "flexible" && <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs text-ink-soft">{shared.mode === "window" ? (zh ? "最早" : "From") : (zh ? "开始" : "Start")}<AppTimePicker value={shared.start} onChange={(v) => setShared((s) => ({ ...s, start: v }))} /></label>
+        <label className="text-xs text-ink-soft">{shared.mode === "window" ? (zh ? "最晚" : "Until") : (zh ? "结束" : "End")}<AppTimePicker value={shared.end} onChange={(v) => setShared((s) => ({ ...s, end: v }))} /></label>
+      </div>}
+      {shared.mode !== "fixed" && <label className="block text-xs text-ink-soft">{zh ? "大概多久（分钟）" : "About how long (min)"}<input type="number" min={1} max={1440} className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm" value={shared.minutes} onChange={(e) => setShared((s) => ({ ...s, minutes: e.target.value }))} /></label>}
+      <button type="button" onClick={apply} disabled={!chosen.length} className="w-full rounded-lg border border-sage-400 bg-white p-2 text-sm text-sage-700 disabled:opacity-40">{zh ? `用到选中的 ${chosen.length} 天` : `Use for ${chosen.length} days`}</button>
+    </div>
+
+    {slots.length > 0 && <div className="space-y-2">
+      {slots.map((s) => <div key={s.id} className="space-y-2 rounded-xl border border-line bg-white p-3">
+        <div className="flex items-center justify-between">
+          <strong className="text-xs">{scope === "ongoing" ? (weekly ? (zh ? `每周${WEEK[Number(s.key) - 1]}` : `Every ${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][Number(s.key) - 1]}`) : (zh ? `每月 ${s.key} 日` : `Day ${s.key} monthly`)) : formatDay(dayFor(Number(s.key)), zh)}</strong>
+          <button type="button" className="text-xs text-ink-soft" onClick={() => setSlots((xs) => xs.filter((x) => x.id !== s.id))}>{zh ? "移除" : "Remove"}</button>
+        </div>
+        <ModePicker compact value={s.mode} onChange={(m) => update(s.id, { mode: m })} zh={zh} />
+        {s.mode !== "flexible" && <div className="grid grid-cols-2 gap-2"><AppTimePicker value={s.start} onChange={(v) => update(s.id, { start: v })} /><AppTimePicker value={s.end} onChange={(v) => update(s.id, { end: v })} /></div>}
+        {s.mode !== "fixed" && <input type="number" aria-label={zh ? "预计分钟" : "Minutes"} className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm" value={s.minutes} onChange={(e) => update(s.id, { minutes: e.target.value })} />}
+      </div>)}
+    </div>}
+
+    <button type="button" disabled={busy || !slots.length} className="btn-primary w-full" onClick={() => void save()}>{busy ? (zh ? "保存中…" : "Saving…") : (zh ? "保存" : "Save")}</button>
+    {error && <p role="alert" className="text-xs text-blush-500">{error}</p>}
+  </div>;
 }
