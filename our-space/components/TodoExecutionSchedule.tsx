@@ -86,6 +86,12 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setReplaceSlotKey(next==="by_day"?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"");
   };
   const bookedDates=new Set([...plans.map(p=>p.plan_date),...sessions.map(x=>localDate(new Date(x.scheduled_start)))]);
+  const resetDraft=()=>{
+    setEditingTemplateId(null);setScope("once");setSelector("all");setMode("flexible");
+    setDate(localDate(new Date()));setMinutes("45");setDayPresets([]);setCopyFrom("");setCopyTo([]);
+    setReplaceSlotKey("");setShowCopyConfirm(false);setError("");
+  };
+
 
 
   async function save(){
@@ -267,6 +273,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       </div>
     </details>}
     {open&&<div className="mt-4 space-y-3 border-t border-line pt-4">
+      <div className="flex justify-end"><button type="button" className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft" onClick={resetDraft}>{zh?"重置当前编辑（不删除已保存安排）":"Reset draft (keep saved plans)"}</button></div>
       {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
       <p className="text-xs font-semibold text-ink-soft">{zh?"第一步 · 应用范围":"Step 1 · Scope"}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
