@@ -10,7 +10,7 @@ import {CATEGORY_VISUALS,taskCardVisual} from "@/lib/task-colors";
 import {useI18n} from "@/components/I18nProvider";
 import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
 
-type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
+type EventSession = { id:string; scheduled_start:string|null; scheduled_end:string|null; reminder_minutes_before:number|null; mode?:"fixed"|"window"|"flexible"; plan_date?:string|null; planned_minutes?:number|null; window_start?:string|null; window_end?:string|null };
 type CalendarTask = { id:string; category?:string|null; color_hex?:string|null; title:string; task_date?:string; task_type?:"one_time"|"project"|"routine"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
 type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
 const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
@@ -96,6 +96,19 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     }));
   }
   function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d),...movedOverrideEvents(d)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter);}
+  const dailyPlans=tasks.flatMap(todo=>(todo.todo_sessions??[]).filter(s=>s.plan_date===date&&s.mode!=="fixed").map(s=>({
+    id:s.id,todo_id:todo.id,title:todo.title,category:todo.category??null,color_hex:todo.color_hex??null,
+    mode:s.mode??"flexible",planned_minutes:s.planned_minutes??0,
+    window_start:s.window_start??null,window_end:s.window_end??null
+  })));
+  const recurringPlans=templates.filter(t=>t.execution_mode!=="fixed"&&tasks.some(todo=>todo.id===t.todo_id)
+      &&templateEligible(date,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)
+      &&!overrides.some(o=>o.todo_id===t.todo_id&&o.slot_key===t.slot_key&&o.occurrence_date===date&&o.action==="cancel"))
+    .map(t=>({id:"template:"+t.slot_key+":"+date,todo_id:t.todo_id,title:tasks.find(x=>x.id===t.todo_id)?.title??"Task",
+      category:tasks.find(x=>x.id===t.todo_id)?.category??null,color_hex:tasks.find(x=>x.id===t.todo_id)?.color_hex??null,
+      mode:t.execution_mode,planned_minutes:t.planned_minutes??0,
+      window_start:t.window_start??null,window_end:t.window_end??null}));
+  const allDailyPlans=[...dailyPlans,...recurringPlans];
   const taskTitle = new Map(tasks.map(t=>[t.id,t.title]));
   const activeJourney=journeys.find(j=>j.todo_id===selectedTodo)??journeys[0];
   return <div className="mt-6">
@@ -112,7 +125,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       {key!=="all"&&<span className="h-2.5 w-2.5 rounded-full" style={{backgroundColor:CATEGORY_VISUALS[key].accent}}/>}{key==="all"?(zh?"全部":"All"):(zh?CATEGORY_VISUALS[key].labelZh:CATEGORY_VISUALS[key].labelEn)}</button>)}
     </div>
     {mode==="day" ? <div className="space-y-3">
-      <CalendarPlanner key={categoryFilter} initialTodos={initialTodos.filter(t=>categoryFilter==="all"||(t.category??"none")===categoryFilter)} initialDate={date} onDateChange={setDate}
+      <CalendarPlanner key={categoryFilter} windowPlans={allDailyPlans.filter(p=>categoryFilter==="all"||(p.category??"none")===categoryFilter)} initialTodos={initialTodos.filter(t=>categoryFilter==="all"||(t.category??"none")===categoryFilter)} initialDate={date} onDateChange={setDate}
         virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter).map(e=>({
           todo_id:e.todoId,id:e.virtualId,
           scheduled_start:e.start,scheduled_end:e.end,
