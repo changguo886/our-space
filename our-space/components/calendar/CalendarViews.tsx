@@ -59,11 +59,20 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
   const tasks=initialTodos as CalendarTask[];
   const eventVisual=(todoId:string)=>{const task=tasks.find(t=>t.id===todoId);return taskCardVisual(task?.category,task?.color_hex);};
+  // A dated one-off schedule takes precedence over virtual recurring defaults
+  // for that todo and day. It is not a completion and no override rows are fabricated.
+  const hasOneOffPlan=(todoId:string,day:string)=>{
+    const todo=tasks.find(t=>t.id===todoId);
+    return (todo?.todo_sessions??[]).some(session=>
+      session.mode==="window"||session.mode==="flexible"
+        ? session.plan_date===day
+        : Boolean(session.scheduled_start&&inDay(session.scheduled_start,day)));
+  };
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start!,end:s.scheduled_end!})),
     ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
     const active=templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&
-      templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date));
+      templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)&&!hasOneOffPlan(t.todo_id,d));
     const effective=active.filter(t=>{
       if(t.selector_kind==="all"&&active.some(other=>other.todo_id===t.todo_id&&other.replaces_slot_key===t.slot_key)){
         // A specific weekday/month-day preset replaces this generic slot.
@@ -102,7 +111,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     window_start:s.window_start??null,window_end:s.window_end??null
   })));
   const matchingPlanTemplates=templates.filter(t=>t.execution_mode!=="fixed"&&tasks.some(todo=>todo.id===t.todo_id)
-      &&templateEligible(date,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)
+      &&templateEligible(date,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)&&!hasOneOffPlan(t.todo_id,date)
       &&!overrides.some(o=>o.todo_id===t.todo_id&&o.slot_key===t.slot_key&&o.occurrence_date===date&&o.action==="cancel"));
   const recurringPlans=matchingPlanTemplates.filter(t=>!(t.selector_kind==="all"&&matchingPlanTemplates.some(other=>
       other.todo_id===t.todo_id&&other.replaces_slot_key===t.slot_key)))
