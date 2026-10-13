@@ -64,6 +64,11 @@ type TodoSession = {
   scheduled_start: string;
   scheduled_end: string;
   reminder_minutes_before: number | null;
+  mode?: "fixed"|"window"|"flexible";
+  plan_date?:string|null;
+  planned_minutes?:number|null;
+  window_start?:string|null;
+  window_end?:string|null;
   virtual?: boolean;
 };
 
@@ -89,6 +94,7 @@ type Props = {
   initialTodos: CalendarTodo[];
   initialDate: string;
   virtualSessions?: Array<{todo_id:string;id:string;scheduled_start:string;scheduled_end:string}>;
+  windowPlans?:Array<{id:string;todo_id:string;title:string;category:string|null;color_hex:string|null;mode:string;planned_minutes:number;window_start:string|null;window_end:string|null}>;
   onDateChange?: (date:string)=>void;
 };
 
@@ -1204,6 +1210,7 @@ export default function CalendarPlanner({
   initialTodos,
   initialDate,
   virtualSessions = [],
+  windowPlans = [],
   onDateChange,
 }: Props) {
   const router = useRouter();
@@ -1315,6 +1322,12 @@ export default function CalendarPlanner({
     [todos, now]
   );
 
+  const flexiblePlans=windowPlans.filter(p=>p.mode==="flexible");
+  const windows=windowPlans.filter(p=>p.mode==="window"&&p.window_start&&p.window_end&&p.window_start<p.window_end);
+  const groupedWindows=Object.values(windows.reduce<Record<string,typeof windows>>((groups,p)=>{
+    const key=p.window_start+"-"+p.window_end;
+    (groups[key]??=[]).push(p);return groups;
+  },{}));
   const scheduledSessions = useMemo(() => {
     const result: SessionWithTodo[] = [];
 
@@ -2173,6 +2186,12 @@ export default function CalendarPlanner({
               ))}
             </div>
 
+            {flexiblePlans.length>0&&<section className="mt-4 border-t border-line pt-3">
+              <h3 className="mb-2 text-xs font-semibold text-ink-soft">{language==="zh-CN"?"今日灵活投入（未指定时段）":"Flexible plans (unbooked time)"}</h3>
+              <div className="space-y-2">{flexiblePlans.map(p=><div key={p.id} className="rounded-xl border px-3 py-2 text-xs text-ink-soft" style={taskCardVisual(p.category,p.color_hex)}>
+                <strong className="block text-ink">{p.title}</strong>{p.planned_minutes} {language==="zh-CN"?"分钟 · 不占用小时格":"min · No hour-grid booking"}
+              </div>)}</div>
+            </section>}
             {fullyPlannedTodos.length > 0 && (
               <details className="mt-4 border-t border-line pt-3">
                 <summary className="cursor-pointer select-none text-[11px] text-ink-faint transition hover:text-ink-soft">
@@ -2308,6 +2327,22 @@ export default function CalendarPlanner({
                     </div>
                   )}
 
+                  {/* Window overlays are planning ranges, not fixed bookings. */}
+                  {groupedWindows.map(group=>{
+                    const start=group[0].window_start!;const end=group[0].window_end!;
+                    const startMinutes=Number(start.slice(0,2))*60+Number(start.slice(3));
+                    const endMinutes=Number(end.slice(0,2))*60+Number(end.slice(3));
+                    const top=(startMinutes-visibleStartHour*60)/60*HOUR_HEIGHT;
+                    const height=Math.max(24,(endMinutes-startMinutes)/60*HOUR_HEIGHT);
+                    if(top+height<0||top>visibleTotalHeight)return null;
+                    const category=group.length===1?group[0].category:null;
+                    return <div key={start+end} className="pointer-events-none absolute left-3 right-3 z-[5] overflow-hidden rounded-xl border-2 border-dashed p-2 text-xs"
+                      style={{top:Math.max(0,top),height:Math.min(height,visibleTotalHeight-Math.max(0,top)),backgroundColor:category?(taskCardVisual(category,group[0].color_hex).backgroundColor):"#F5F7FB",borderColor:group.length===1?taskCardVisual(category,group[0].color_hex).borderLeftColor:"#98A9C6",opacity:0.85}}>
+                      <strong>{start}–{end} · {group.length} {language==="zh-CN"?"项窗口任务":"window tasks"}</strong>
+                      {group.slice(0,3).map(p=><div key={p.id} className="mt-1 truncate">{p.title} · {p.planned_minutes} min</div>)}
+                      {group.length>3&&<div>+{group.length-3}</div>}
+                    </div>;
+                  })}
                   {/* Sessions */}
                   <div className="absolute inset-0">
                     {scheduledSessions.map(({ todo, session }) => (
