@@ -1336,10 +1336,13 @@ export default function CalendarPlanner({
 
   const flexiblePlans=windowPlans.filter(p=>p.mode==="flexible");
   const windows=windowPlans.filter(p=>p.mode==="window"&&p.window_start&&p.window_end&&p.window_start<p.window_end);
-  const groupedWindows=Object.values(windows.reduce<Record<string,typeof windows>>((groups,p)=>{
-    const key=p.window_start+"-"+p.window_end;
-    (groups[key]??=[]).push(p);return groups;
-  },{}));
+  // Merge intersecting windows for readable visual groups; this never changes bookings.
+  const groupedWindows:typeof windows[]=[];
+  for(const win of [...windows].sort((a,b)=>(a.window_start??"").localeCompare(b.window_start??""))){
+    const last=groupedWindows[groupedWindows.length-1];
+    if(last&&last.some(p=>p.window_end!>win.window_start!))last.push(win);
+    else groupedWindows.push([win]);
+  }
   const scheduledSessions = useMemo(() => {
     const result: SessionWithTodo[] = [];
 
@@ -2342,7 +2345,7 @@ export default function CalendarPlanner({
 
                   {/* Window overlays are planning ranges, not fixed bookings. */}
                   {groupedWindows.map(group=>{
-                    const start=group[0].window_start!;const end=group[0].window_end!;
+                    const start=group.map(p=>p.window_start!).sort()[0];const end=group.map(p=>p.window_end!).sort().at(-1)!;
                     const startMinutes=Number(start.slice(0,2))*60+Number(start.slice(3));
                     const endMinutes=Number(end.slice(0,2))*60+Number(end.slice(3));
                     const top=(startMinutes-visibleStartHour*60)/60*HOUR_HEIGHT;
@@ -2351,7 +2354,7 @@ export default function CalendarPlanner({
                     const category=group.length===1?group[0].category:null;
                     return <div key={start+end} className="pointer-events-none absolute left-3 right-3 z-[5] overflow-hidden rounded-xl border-2 border-dashed p-2 text-xs"
                       style={{top:Math.max(0,top),height:Math.min(height,visibleTotalHeight-Math.max(0,top)),backgroundColor:category?(taskCardVisual(category,group[0].color_hex).backgroundColor):"#F5F7FB",borderColor:group.length===1?taskCardVisual(category,group[0].color_hex).borderLeftColor:"#98A9C6",opacity:0.85}}>
-                      <strong>{start}–{end} · {group.length} {language==="zh-CN"?"项窗口任务":"window tasks"}</strong>
+                      <strong>{start}–{end} · {group.length} {language==="zh-CN"?"项窗口任务":"window tasks"} · {group.reduce((n,p)=>n+p.planned_minutes,0)} min</strong>
                       {group.slice(0,3).map(p=><div key={p.id} className="mt-1 truncate">{p.title} · {p.planned_minutes} min</div>)}
                       {group.length>3&&<div>+{group.length-3}</div>}
                     </div>;
