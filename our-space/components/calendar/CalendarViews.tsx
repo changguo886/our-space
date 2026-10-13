@@ -109,7 +109,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       </div>
     </div>
     <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={zh?"类别筛选":"Category filter"}>
-      {["all","work","study","life","rest","other","none"].map(key=><button key={key} type="button" aria-pressed={categoryFilter===key} onClick={()=>setCategoryFilter(key)} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${categoryFilter===key?"border-sage-300 bg-sage-50 font-semibold":"border-line bg-white hover:bg-paper"}`}>
+      {["all","work","study","life","rest","other","none"].map(key=><button key={key} type="button" aria-pressed={categoryFilter===key} onClick={()=>setCategoryFilter(key)} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${categoryFilter===key?"font-semibold ring-1 ring-ink/15":"hover:brightness-95"}`} style={key==="all"?{backgroundColor:categoryFilter===key?"#E8F1E8":"#FFFFFF",borderColor:"#D8DDD6"}:{backgroundColor:CATEGORY_VISUALS[key].background,borderColor:CATEGORY_VISUALS[key].border}}>
       {key!=="all"&&<span className="h-2.5 w-2.5 rounded-full" style={{backgroundColor:CATEGORY_VISUALS[key].accent}}/>}{key==="all"?(zh?"全部":"All"):(zh?CATEGORY_VISUALS[key].labelZh:CATEGORY_VISUALS[key].labelEn)}</button>)}
     </div>
     {mode==="day" ? <div className="space-y-3">
