@@ -1227,7 +1227,6 @@ export default function CalendarPlanner({
   ];
 
   const [todos, setTodos] = useState<CalendarTodo[]>(initialTodos);
-  useEffect(()=>{setTodos(initialTodos);},[initialTodos]);
   const [selectedDate, setSelectedDate] = useState(initialDate);
   useEffect(()=>{onDateChange?.(selectedDate);},[selectedDate,onDateChange]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
