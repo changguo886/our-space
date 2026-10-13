@@ -34,7 +34,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
  const values=weekly?[1,2,3,4,5,6,7]:Array.from({length:lastDayISO(anchor)},(_,i)=>i+1);
  const dayFor=(v:number)=>weekly?addDaysISO(weekdayStart,v-1):dayAt(year,month,v);
  const eligible=(v:number)=>{const d=dayFor(v);return d>=today&&d>=startDate;};
- const defaultKeys=()=>pattern.period==="week"?pattern.weekdays:pattern.period==="month"?[...pattern.month_days,...(pattern.include_month_end?[lastDayISO(anchor)]:[])]:[];
+ const defaultKeys=()=>pattern.period==="day"?[1,2,3,4,5,6,7]:pattern.period==="week"?pattern.weekdays:pattern.period==="month"?[...pattern.month_days,...(pattern.include_month_end?[lastDayISO(anchor)]:[])]:[];
  useEffect(()=>{
    const ids=[...new Set(defaultKeys())].filter(eligible);
    setSelected(fixed?ids:[]);
@@ -68,7 +68,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
    }
    setBusy(true);const db=createClient();let failure="";
    if(scope==="ongoing"){
-     const startsOn=periodStart; // Start of the selected week/month, never the following week
+     const startsOn=[periodStart,today,startDate].sort().at(-1)!; // Never materialize past virtual occurrences
      const rows=slots.map(s=>({
        todo_id:todoId,starts_on:startsOn,ends_on:null,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",
        selector_kind:weekly?"weekday":"month_day",selector_value:Number(s.key),
@@ -88,7 +88,16 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
        ?{todo_id:todoId,mode:"fixed",scheduled_start:toDate(day,s.start),scheduled_end:toDate(day,s.end)}
        :{todo_id:todoId,mode:s.mode,plan_date:day,planned_minutes:Number(s.minutes),window_start:s.mode==="window"?s.start:null,window_end:s.mode==="window"?s.end:null};
      });
-     const result=await db.from("todo_sessions").insert(rows);failure=result.error?.message??"";
+     const existing=await db.from("todo_sessions").select("id,mode,plan_date,scheduled_start,scheduled_end,window_start,window_end,planned_minutes").eq("todo_id",todoId);
+     if(existing.error)failure=existing.error.message;
+     else {
+       const overlap=rows.some(row=>(existing.data??[]).some(old=>{
+         if(row.mode==="fixed"&&old.mode==="fixed"&&old.scheduled_start&&old.scheduled_end){return Date.parse(row.scheduled_start!)<Date.parse(old.scheduled_end)&&Date.parse(row.scheduled_end!)>Date.parse(old.scheduled_start);}
+         return row.mode!=="fixed"&&old.mode===row.mode&&old.plan_date===row.plan_date&&old.planned_minutes===row.planned_minutes&&(row.mode==="flexible"||(old.window_start?.slice(0,5)===row.window_start?.slice(0,5)&&old.window_end?.slice(0,5)===row.window_end?.slice(0,5)));
+       }));
+       if(overlap)failure=zh?"已有相同或重叠的执行安排，请先编辑现有记录。":"An identical or overlapping plan exists; edit it instead.";
+       else {const result=await db.from("todo_sessions").insert(rows);failure=result.error?.message??"";}
+     }
    }
    setBusy(false);
    if(failure){setError(failure);return;}
