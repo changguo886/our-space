@@ -1327,8 +1327,8 @@ export default function CalendarPlanner({
           return false;
         }
 
-        const remaining =
-          remainingPlannableMinutes(todo, now);
+        const quota=dailyQuota(todo);
+        const remaining=quota?Math.max(0,quota.goal-quota.booked):remainingPlannableMinutes(todo,now);
         return remaining !== null && remaining === 0;
       }),
     [todos, now]
@@ -1373,9 +1373,9 @@ export default function CalendarPlanner({
         scheduledSessions,
         selectedDate,
         now,
-        showFullDay
+        showFullDay || windows.length>0
       ),
-    [scheduledSessions, selectedDate, now, showFullDay]
+    [scheduledSessions, selectedDate, now, showFullDay, windows.length]
   );
 
   const visibleStartHour = visibleWindow.startHour;
