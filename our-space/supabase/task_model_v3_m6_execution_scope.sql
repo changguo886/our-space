@@ -5,6 +5,7 @@ ALTER TABLE public.todo_execution_templates
  ADD COLUMN IF NOT EXISTS execution_mode text NOT NULL DEFAULT 'fixed',
  ADD COLUMN IF NOT EXISTS selector_kind text NOT NULL DEFAULT 'all',
  ADD COLUMN IF NOT EXISTS selector_value smallint,
+ ADD COLUMN IF NOT EXISTS replaces_slot_key uuid,
  ADD COLUMN IF NOT EXISTS planned_minutes integer,
  ADD COLUMN IF NOT EXISTS window_start time,
  ADD COLUMN IF NOT EXISTS window_end time;
@@ -34,6 +35,9 @@ ALTER TABLE public.todo_execution_templates
  ADD CONSTRAINT execution_template_effort_valid CHECK (
  planned_minutes IS NULL OR planned_minutes BETWEEN 1 AND 1440
  );
+ALTER TABLE public.todo_execution_templates DROP CONSTRAINT IF EXISTS execution_template_replace_scope_valid;
+ALTER TABLE public.todo_execution_templates ADD CONSTRAINT execution_template_replace_scope_valid CHECK (replaces_slot_key IS NULL OR (selector_kind <> 'all' AND replaces_slot_key <> slot_key));
+CREATE INDEX IF NOT EXISTS todo_execution_templates_replacement_lookup ON public.todo_execution_templates(todo_id,replaces_slot_key);
 CREATE INDEX IF NOT EXISTS todo_execution_templates_rule_lookup
  ON public.todo_execution_templates(todo_id,selector_kind,selector_value,starts_on,ends_on);
 COMMIT;
