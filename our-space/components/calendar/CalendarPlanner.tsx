@@ -63,6 +63,7 @@ type TodoSession = {
   scheduled_start: string;
   scheduled_end: string;
   reminder_minutes_before: number | null;
+  virtual?: boolean;
 };
 
 type CalendarTodo = {
@@ -85,6 +86,7 @@ type CalendarTodo = {
 type Props = {
   initialTodos: CalendarTodo[];
   initialDate: string;
+  virtualSessions?: Array<{todo_id:string;id:string;scheduled_start:string;scheduled_end:string}>;
 };
 
 type SessionWithTodo = {
@@ -921,6 +923,7 @@ function ScheduledSession({
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `session:${session.id}`,
+    disabled: session.virtual === true,
   });
 
   const [previewEnd, setPreviewEnd] = useState<string | null>(null);
@@ -1012,6 +1015,7 @@ function ScheduledSession({
         shadow-[0_3px_14px_rgba(60,50,40,0.045)]
         transition-[transform,box-shadow,opacity,filter] duration-150
         ${category.card}
+        ${session.virtual ? "border-dashed opacity-85" : ""}
         ${selected ? "ring-2 ring-sage-300/50" : ""}
         ${isDragging ? "opacity-25" : ""}
         ${justPlaced ? "scale-[1.02] ring-2 ring-sage-300/45" : ""}
@@ -1020,7 +1024,7 @@ function ScheduledSession({
     >
       <div className={`relative h-full ${compact ? "px-3 py-1.5" : "px-3 py-2"}`}>
         <div className="flex items-start gap-2">
-          <button
+          {!session.virtual && <button
             type="button"
             {...attributes}
             {...listeners}
@@ -1030,7 +1034,7 @@ function ScheduledSession({
             title={cal.dragSession}
           >
             <GripVertical className="h-3.5 w-3.5" />
-          </button>
+          </button>}
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
@@ -1088,7 +1092,7 @@ function ScheduledSession({
           </div>
         )}
 
-        {!isDragging && (
+        {!session.virtual && !isDragging && (
           <button
             type="button"
             onPointerDown={beginResize}
@@ -1200,6 +1204,7 @@ function ContextTabButton({
 export default function CalendarPlanner({
   initialTodos,
   initialDate,
+  virtualSessions = [],
 }: Props) {
   const router = useRouter();
   const { dictionary, language } = useI18n();
@@ -1319,13 +1324,22 @@ export default function CalendarPlanner({
         }
       }
     }
+    for(const item of virtualSessions){
+      const todo=todos.find(x=>x.id===item.todo_id);
+      if(todo&&localDatePart(item.scheduled_start)===selectedDate){
+        result.push({todo,session:{
+          id:item.id,scheduled_start:item.scheduled_start,scheduled_end:item.scheduled_end,
+          reminder_minutes_before:null,virtual:true,
+        }});
+      }
+    }
 
     return result.sort(
       (a, b) =>
         new Date(a.session.scheduled_start).getTime() -
         new Date(b.session.scheduled_start).getTime()
     );
-  }, [todos, selectedDate]);
+  }, [todos, selectedDate, virtualSessions]);
 
   const visibleWindow = useMemo(
     () =>
@@ -2307,11 +2321,12 @@ export default function CalendarPlanner({
                         saving={busyId === session.id}
                         starting={startingFocusTodoId === todo.id}
                         onSelect={() => {
+                          if (session.virtual) {router.push("/todo?todoId="+encodeURIComponent(todo.id));return;}
                           if (!activeDragId) {
                             openSelectedSession(session.id);
                           }
                         }}
-                        onResize={handleResize}
+                        onResize={session.virtual?()=>{}:handleResize}
                       />
                     ))}
                   </div>
