@@ -56,7 +56,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     ]);
     if(p.error)setError("读取灵活计划失败（请确认已在当前环境执行 V3 M2）："+p.error.message);
     else if(s.error)setError("读取预约时段失败："+s.error.message);
-    else {setPlans((p.data??[]) as Plan[]);setSessions((s.data??[]) as Session[]);setError(t.error?t.error.message:"");if(!h.error)setPattern(h.data as HabitPatternV3|null);if(!t.error)setTemplates((t.data??[]) as ExecutionTemplateV3[]);if(!td.error&&td.data){setTodoStart(td.data.plan_start_date??td.data.task_date);setProjectEnd(td.data.target_finish_date??null);}}
+    else {setPlans((p.data??[]) as Plan[]);setSessions((s.data??[]) as Session[]);setError(t.error?t.error.message:"");if(!h.error)setPattern(h.data as HabitPatternV3|null);if(!t.error)setTemplates((t.data??[]) as ExecutionTemplateV3[]);if(!td.error&&td.data){setTodoStart(td.data.plan_start_date??td.data.task_date??"");setProjectEnd(td.data.target_finish_date??null);}}
     setLoading(false);
   }
   useEffect(()=>{void refresh();},[todoId]);
@@ -84,12 +84,13 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(repeating&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
     if(repeating&&!editingTemplateId&&templates.some(t=>
       t.selector_kind===selectorKind&&t.selector_value===selectorValue&&
-      t.starts_on<=date&&(t.ends_on===null||date<=t.ends_on)&&
+      t.starts_on<=effectiveStart&&(t.ends_on===null||effectiveStart<=t.ends_on)&&
       t.execution_mode===mode&&
       (mode!=="fixed"||(t.start_time?.slice(0,5)===fixedStartTime&&t.end_time?.slice(0,5)===fixedEndTime))&&
       (mode!=="window"||(t.window_start?.slice(0,5)===windowStart&&t.window_end?.slice(0,5)===windowEnd))&&
       (mode==="fixed"||t.planned_minutes===Number(minutes))
     )){setSaving(false);setError("相同的重复安排已经存在，请直接修改原模板。");return;}
+    const effectiveStart=date<todoStart?todoStart:date;
     const result=repeating&&editingTemplateId
       ? await db.rpc("revise_execution_template_v3",{
           p_template_id:editingTemplateId,
@@ -103,7 +104,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         })
       : repeating
       ? await db.from("todo_execution_templates").insert({
-          todo_id:todoId,starts_on:date<todoStart?todoStart:date,ends_on:projectEnd,
+          todo_id:todoId,starts_on:effectiveStart,ends_on:projectEnd,
           timezone,execution_mode:mode,selector_kind:selectorKind,selector_value:selectorValue,
           replaces_slot_key:scope==="by_day"?(replaceSlotKey||null):null,
           start_time:mode==="fixed"?fixedStartTime:null,end_time:mode==="fixed"?fixedEndTime:null,
