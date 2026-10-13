@@ -6,7 +6,7 @@ import CalendarPlanner from "@/components/calendar/CalendarPlanner";
 import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import {normalizeTaskColor,CATEGORY_VISUALS} from "@/lib/task-colors";
+import {CATEGORY_VISUALS,taskCardVisual} from "@/lib/task-colors";
 import {useI18n} from "@/components/I18nProvider";
 import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
 
@@ -58,8 +58,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const [y,m]=date.split("-").map(Number);const month=date.slice(0,7);
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
   const tasks=initialTodos as CalendarTask[];
-  const eventColor=(todoId:string)=>normalizeTaskColor(tasks.find(t=>t.id===todoId)?.color_hex);
-  const eventCategory=(todoId:string)=>CATEGORY_VISUALS[tasks.find(t=>t.id===todoId)?.category??"none"]??CATEGORY_VISUALS.none;
+  const eventVisual=(todoId:string)=>{const task=tasks.find(t=>t.id===todoId);return taskCardVisual(task?.category,task?.color_hex);};
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
     ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
@@ -120,7 +119,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
         }))}/>
       {(recurringEvents(date).length+movedOverrideEvents(date).length)>0&&<section className="rounded-xl border border-line bg-white p-3">
         <p className="mb-2 text-xs font-semibold text-ink-soft">重复固定时段（预览，不创建独立预约）</p>
-        {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg border border-l-4 px-3 py-2 text-xs text-ink" style={{borderLeftColor:eventColor(e.todoId),backgroundColor:eventCategory(e.todoId).background,borderTopColor:eventCategory(e.todoId).border,borderRightColor:eventCategory(e.todoId).border,borderBottomColor:eventCategory(e.todoId).border}}>{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
+        {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg border border-l-4 px-3 py-2 text-xs text-ink" style={eventVisual(e.todoId)}>{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
       </section>}
     </div> :
     <div className="space-y-4">
@@ -153,7 +152,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
-                <div key={e.todoId+j} className="truncate rounded-md border border-l-4 px-1.5 py-1 text-[10px] font-medium text-ink" style={{borderLeftColor:eventColor(e.todoId),backgroundColor:eventCategory(e.todoId).background,borderTopColor:eventCategory(e.todoId).border,borderRightColor:eventCategory(e.todoId).border,borderBottomColor:eventCategory(e.todoId).border}}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
+                <div key={e.todoId+j} className="truncate rounded-md border border-l-4 px-1.5 py-1 text-[10px] font-medium text-ink" style={eventVisual(e.todoId)}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
                 {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
 </>}
             </button>)}
