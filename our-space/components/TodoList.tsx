@@ -52,6 +52,7 @@ export type Todo = {
   scheduled_start?: string | null;
   scheduled_end?: string | null;
   category?: TodoCategory | null;
+  color_hex?: string | null;
   custom_tag?: string | null;
   task_type?: "one_time" | "project" | "routine" | "recurring" | "habit" | null;
   plan_start_date?: string | null;
