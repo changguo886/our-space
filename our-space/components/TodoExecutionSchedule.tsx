@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import AppDatePicker from "@/components/ui/AppDatePicker";
 import AppTimePicker from "@/components/ui/AppTimePicker";
 import CopyDateCalendar from "@/components/ui/CopyDateCalendar";
+import RoutinePlanComposer from "@/components/RoutinePlanComposer";
 import { useI18n } from "@/components/I18nProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addDaysISO, lastDayISO, weekdayISO, templateEligible, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
@@ -456,7 +457,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         <button type="button" disabled={saving||!overrideSlot} className="btn-primary w-full" onClick={()=>void saveOverride()}>{saving?(zh?"保存中…":"Saving…"):(zh?"仅保存这一次":"Save this occurrence")}</button>
       </div>
     </details>}
-    {open&&<div className="mt-4 space-y-4 border-t border-line pt-4">
+    {open&&pattern&& !editingTemplateId&&!copyOpen&&<div className="mt-4 border-t border-line pt-4"><RoutinePlanComposer todoId={todoId} pattern={pattern} today={todayISO} startDate={todoStart||todayISO} onSaved={refresh} zh={zh}/></div>}
+    {open&&(!pattern||Boolean(editingTemplateId)||copyOpen)&&<div className="mt-4 space-y-4 border-t border-line pt-4">
       {!editingTemplateId&&copySource&&copyOpen&&<div className="rounded-xl border border-line bg-paper/30 p-3 space-y-3">
         <div className="flex items-center justify-between">
           <strong className="text-sm">{zh?"复制这条已保存的安排":"Copy saved schedule"}</strong>
