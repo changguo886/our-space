@@ -31,6 +31,7 @@ export default function RoutineCheckIn({ todoId, day, onChange }: { todoId: stri
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [undoId, setUndoId] = useState<string | null>(null);
+  const [showLog, setShowLog] = useState(false);
   const pendingKey = useRef<string | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -63,7 +64,8 @@ export default function RoutineCheckIn({ todoId, day, onChange }: { todoId: stri
     await load(); onChange?.();
   }
 
-  async function undo(id: string) {
+  async function undo(id: string, confirmFirst = false) {
+    if (confirmFirst && !window.confirm(zh ? "删除这条打卡记录？" : "Delete this check-in?")) return;
     setBusy(true); setError("");
     const res = await createClient().rpc("undo_completion_v4", { p_log_id: id });
     setBusy(false);
@@ -89,6 +91,18 @@ export default function RoutineCheckIn({ todoId, day, onChange }: { todoId: stri
     {undoId && <button type="button" disabled={busy} onClick={() => void undo(undoId)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-ink-soft underline-offset-2 hover:underline">
       <Undo2 className="h-3.5 w-3.5" />{zh ? "撤销" : "Undo"}
     </button>}
+    {done > 0 && <button type="button" onClick={() => setShowLog((v) => !v)} aria-expanded={showLog} className="rounded-lg px-2 py-1 text-ink-soft underline-offset-2 hover:underline">{showLog ? (zh ? "收起记录" : "Hide") : (zh ? "记录" : "History")}</button>}
     {error && <span role="alert" className="text-blush-500">{error}</span>}
+    {showLog && <ul className="w-full space-y-0.5 pt-1">
+      {logs.map((log) => {
+        const at = new Date(log.completed_at);
+        const when = `${log.occurred_on.slice(5).replace("-", "/")} ${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+        return <li key={log.id} className="flex items-center gap-2 text-ink-soft">
+          <Check className="h-3 w-3 text-sage-600" /><span className="tabular-nums">{when}</span>
+          {log.duration_minutes ? <span>· {log.duration_minutes} {zh ? "分钟" : "min"}</span> : null}
+          <button type="button" disabled={busy} onClick={() => void undo(log.id, log.id !== undoId)} className="ml-auto rounded px-1.5 text-ink-faint hover:text-blush-500" aria-label={zh ? "删除这条记录" : "Delete check-in"}>×</button>
+        </li>;
+      })}
+    </ul>}
   </div>;
 }

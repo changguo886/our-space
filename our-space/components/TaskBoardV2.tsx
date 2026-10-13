@@ -24,7 +24,7 @@ type Props = {
 const typeLabel: Record<string,string> = {
   one_time: "单次任务",
   recurring: "旧版重复任务",
-  habit: "习惯养成",
+  habit: "周期任务",
   routine: "周期任务",
   project: "长期项目",
 };
