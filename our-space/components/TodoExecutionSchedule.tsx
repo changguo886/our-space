@@ -137,7 +137,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     let writeError="";
     if(recurring){
       const selectors=pattern?.period==="week"&&pattern.arrangement==="fixed"
-        ?pattern.weekdays.map(n=>({selector_kind:"weekday",selector_value:n}))
+        ?pattern.weekdays.filter(n=>copyChoice!=="weekdays"||n<=5).map(n=>({selector_kind:"weekday",selector_value:n}))
         :pattern?.period==="month"&&pattern.arrangement==="fixed"
         ?[...pattern.month_days.map(n=>({selector_kind:"month_day",selector_value:n})),...(pattern.include_month_end?[{selector_kind:"month_end",selector_value:null}]:[])]
         :copyChoice==="weekdays"?[1,2,3,4,5].map(n=>({selector_kind:"weekday",selector_value:n})):[{selector_kind:"all",selector_value:null}];
