@@ -708,7 +708,7 @@ function PoolTask({
         userSelect: "none",
         ...taskCardVisual(todo.category,todo.color_hex),
         ...((quota?.goal??todo.estimated_minutes??0)>0 ? {
-          backgroundImage: `linear-gradient(to right, transparent 0%, transparent ${progress}%, rgba(255,255,255,0.88) ${progress}%, rgba(255,255,255,0.88) 100%)`
+          backgroundImage: `linear-gradient(to right, transparent 0%, transparent ${100-progress}%, rgba(255,255,255,0.88) ${100-progress}%, rgba(255,255,255,0.88) 100%)`
         } : {}),
       }}
       className={`
@@ -1316,7 +1316,7 @@ export default function CalendarPlanner({
         const remaining=quota?Math.max(0,quota.goal-quota.booked):remainingPlannableMinutes(todo,now);
         return remaining === null || remaining > 0;
       }),
-    [todos, now]
+    [todos, now, selectedDate, windowPlans]
   );
 
   const fullyPlannedTodos = useMemo(
