@@ -4,10 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import DurationInput, {
-  durationValueToMinutes,
-  type DurationUnit,
-} from "@/components/DurationInput";
+
 
 function formatWorkDate(value: string, chinese: boolean): string {
   const day = value.slice(0,10);
@@ -62,16 +59,9 @@ export default function AddTodoForm({
     setDescription,
   ] = useState("");
 
-  const [minutes, setMinutes] =
-    useState("");
 
-  const [
-    durationUnit,
-    setDurationUnit,
-  ] =
-    useState<DurationUnit>(
-      "minute"
-    );
+
+
 
   const [
     category,
@@ -95,15 +85,15 @@ export default function AddTodoForm({
     >("private");
 
   const [taskType,setTaskType]=useState<"one_time"|"planned"|"habit">("one_time");
-  const [planMode,setPlanMode]=useState<"flexible"|"fixed">("flexible");
+
   const [cadence,setCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
   const [weekdays,setWeekdays]=useState<number[]>([]);
   const [habitArrangement,setHabitArrangement]=useState<"flexible"|"fixed">("flexible");
   const [monthDays,setMonthDays]=useState<number[]>([]);
   const [includeMonthEnd,setIncludeMonthEnd]=useState(false);
   const [timesPerWeek,setTimesPerWeek]=useState(3);
-  const [sessionStart,setSessionStart]=useState("");
-  const [sessionEnd,setSessionEnd]=useState("");
+
+
 
   const [journeyColor, setJourneyColor] = useState("blue");
   const [goalPeriod, setGoalPeriod] = useState<"day" | "week" | "month">("week");
@@ -139,30 +129,8 @@ export default function AddTodoForm({
       return;
     }
 
-    const parsedMinutes =
-      durationValueToMinutes(
-        minutes,
-        durationUnit
-      );
+    const parsedMinutes = null;
 
-    if (
-      parsedMinutes !== null &&
-      Number.isNaN(
-        parsedMinutes
-      )
-    ) {
-      setError(
-        t.invalidDuration
-      );
-      return;
-    }
-
-    if(false && taskType==="one_time" && planMode==="fixed"){
-      const from=new Date(sessionStart).getTime(),to=new Date(sessionEnd).getTime();
-      if(!sessionStart||!sessionEnd||!Number.isFinite(from)||!Number.isFinite(to)||to<=from){
-        setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
-      }
-    }
     if (taskType==="habit") {
       if (cadence==="weekly_days" && weekdays.length===0) {
         setError("请选择至少一天 / Select at least one weekday"); return;
@@ -219,20 +187,6 @@ export default function AddTodoForm({
     }
     const error = createError;
 
-    if (!error && created && taskType === "one_time" && planMode === "fixed") {
-      const { error: sessionError } = await supabase.from("todo_sessions").insert({
-        todo_id: created.id,
-        scheduled_start: new Date(sessionStart).toISOString(),
-        scheduled_end: new Date(sessionEnd).toISOString(),
-      });
-      if (sessionError) {
-        setError("任务已创建，但时间安排未保存 / Task created but schedule failed: " + sessionError.message);
-        setBusy(false);
-        router.refresh();
-        return;
-      }
-    }
-
     // Habit recurrence is persisted atomically by save_habit_v3.
     // Do not write habit_patterns_v3 or duplicate the frequency in
     // task_goal_settings from this form. Optional performance-goal
@@ -257,16 +211,16 @@ export default function AddTodoForm({
      */
     setTitle("");
     setDescription("");
-    setMinutes("");
+
     setCustomTag("");
 
     setJourneyColor("blue");
     setGoalPeriod("week");
     setGoalValue("4");
     setTaskType("one_time");
-    setPlanMode("flexible");
+
     setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setHabitArrangement("flexible");setMonthDays([]);setIncludeMonthEnd(false);
-    setSessionStart("");setSessionEnd("");
+
     setStartDate(taskDate);
     setTargetFinish("");
     setOfficialDeadline("");
