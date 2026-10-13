@@ -48,7 +48,7 @@ export default function AddTodoForm({
   activeSpaceId: string;
   activeSpaceName: string;
   taskDate: string;
-  onCreated?: () => void;
+  onCreated?: (createdId:string, planNow:boolean) => void;
 }) {
   const router = useRouter();
   const { dictionary } = useI18n();
@@ -106,6 +106,7 @@ export default function AddTodoForm({
   const [officialDeadline, setOfficialDeadline] = useState("");
 
 
+  const [planAfterCreate,setPlanAfterCreate]=useState(false);
   const [busy, setBusy] =
     useState(false);
 
@@ -233,7 +234,7 @@ export default function AddTodoForm({
      * 连续创建任务时，
      * 不需要每次重新选择。
      */
-    onCreated?.();
+    if(created)onCreated?.(created.id,planAfterCreate);
     router.refresh();
   }
 
@@ -322,6 +323,7 @@ export default function AddTodoForm({
           <label className="block text-xs text-ink-soft">{zh?"可见范围":"Visibility"}<select className={field+" mt-1"} value={visibility} onChange={e=>setVisibility(e.target.value as typeof visibility)} disabled={busy}><option value="private">{zh?"仅自己":"Private"}</option><option value="space">{activeSpaceName}</option></select></label>
         </div>
       </details>
+      <label className="flex items-center gap-2 rounded-xl border border-line bg-sage-50/30 p-3 text-sm text-ink-soft"><input type="checkbox" checked={planAfterCreate} onChange={e=>setPlanAfterCreate(e.target.checked)} disabled={busy}/>{zh?"创建后立即制定执行计划（可选）":"Plan execution after creating (optional)"}</label>
       <button className="btn-primary w-full" type="submit" disabled={busy}>{busy?(zh?"保存中…":"Saving..."):(zh?"创建任务":"Create task")}</button>
       {error&&<p role="alert" className="text-sm text-blush-500">{error}</p>}
     </form>
