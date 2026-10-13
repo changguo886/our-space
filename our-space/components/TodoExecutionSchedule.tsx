@@ -277,7 +277,13 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(scope==="once"&&mode==="fixed"&&(!validDate(fixedStartDate)||!validDate(fixedEndDate)||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setError("请填写有效日期（YYYY-MM-DD）与24小时制时间（HH:mm）。");return;}
     if(scope==="once"&&mode==="fixed"&&fixedStartDate<todayISO){setError(zh?"不能在过去日期创建新预约。":"Cannot create a new plan in the past.");return;}
     if(scope==="once"&&mode!=="fixed"&&date<todayISO){setError(zh?"不能在过去日期创建新计划。":"Cannot create a new plan in the past.");return;}
-    if(scope==="once"&&bookedDates.has(mode==="fixed"?fixedStartDate:date)){setError(zh?"当天已有该任务的执行安排。请修改或取消现有记录，而不是再次创建。":"This task already has a dated plan. Edit or cancel it instead.");return;}
+    if(scope==="once"){
+      const conflict=mode==="fixed"
+        ?sessions.some(entry=>toFixedDateTime(fixedStartDate,fixedStartTime).getTime()<new Date(entry.scheduled_end).getTime()&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()>new Date(entry.scheduled_start).getTime())
+        :plans.some(entry=>entry.plan_date===date&&entry.mode===mode&&entry.planned_minutes===Number(minutes)&&
+          (mode==="flexible"||(entry.window_start?.slice(0,5)===windowStart&&entry.window_end?.slice(0,5)===windowEnd)));
+      if(conflict){setError(zh?"该任务已有重叠的固定预约或完全相同的日期安排。请修改现有记录。":"This task already has an overlapping fixed slot or an identical dated plan.");return;}
+    }
     if(scope==="once"&&mode==="fixed"&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()<=toFixedDateTime(fixedStartDate,fixedStartTime).getTime()){setError("固定结束时间必须晚于开始时间。");return;}
     setSaving(true);
     const db=createClient();
