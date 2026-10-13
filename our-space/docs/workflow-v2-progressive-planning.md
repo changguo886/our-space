@@ -3,6 +3,31 @@
 Status: **Product workflow accepted; incremental implementation underway**. This document is the source of truth for Todo / Calendar / Focus / History semantics. It supersedes earlier assumptions that every Todo must be fully specified at creation. Existing architecture and production migration safety documents remain in force.
 
 
+## APPROVED EXECUTION-ARRANGEMENT UI AND DATE BUCKETS (2026-10-12)
+
+**Blocking feature for local acceptance test.** The pre-existing TodoExecutionSchedule.tsx is only a *single-date* writer; a visual mock-up is NOT implementation. Complete data persistence, read-back, Calendar rendering and date classification before asking for end-to-end testing.
+
+**Terminology:** The recurring definition is *which dates*, not a Calendar booking. One habit parent Todo represents monthly 13/14/15, each month indefinitely (until optional end). Each eligible date is a virtual occurrence with identity (todo_id,slot_key,occurrence_date), not another parent Todo. One-time planned projects can have finite execution-date templates inside plan_start_date–target_finish_date without becoming habits.
+
+**Execution drawer sequence:**
+1. Show existing recurrence summary with next eligible dates and selected task's timezone. Scope: (a) one specific eligible date, (b) apply same arrangement to *all future eligible dates* in one save, (c) assign different templates to weekday/month-day groups (e.g. monthly 13 at 09:00, 14 at 15:00, 15 flexible). Offer this-and-future vs entire series when editing; never edit already completed history.
+2. Execution mode per scope: **flexible** (optional effort minutes; no specific booking), **preferred time window** (e.g. 08:00–12:00, not continuously reserved), **exact time** (fixed start/end, Calendar hourly booking). Allow multiple fixed slots on same eligible date; daily N is a count goal and does not automatically create N bookings. Explicitly communicate which modes occupy Calendar.
+3. Preview at least next three eligible dates and intended time in the selected timezone, then save and show persisted summary with edit/delete controls. For a date-specific change store an override, not a new indefinite template. For this-and-future split effective dates while retaining slot_key and history. A future monthly 31st that does not exist is skipped; month-end token is dynamically resolved and deduplicated.
+4. Keep exact-time series as rule/template + override, not bulk inserted todo_sessions. Existing todo_sessions are real one-off appointments. Enforce idempotent save, no double rendering.
+
+**Todo list membership MUST use the selected view date, not just todos.task_date:**
+- **Today**: habits ONLY when *today itself is eligible* under the recurrence pattern and date range; one-time tasks due/scheduled today. A monthly 13/14/15 habit created on the 12th MUST NOT appear in Today on the 12th merely because its Todo was created on the 12th. It belongs in **待安排** if future occurrences have no execution arrangement.
+- **待安排**: active future/unbooked work with no execution arrangement yet, even if its next eligible occurrence is the 13th; do not treat a past task_date as automatically a missed habit occurrence.
+- **即将到来**: forthcoming *booked exact-time* occurrences and optionally separately labelled forthcoming flexible/window plans; show actual future occurrence dates rather than incorrectly reusing Todo creation date. Do not repeat parent cards for every virtual occurrence.
+- **全部**: one card per parent Todo regardless of recurrence; category grouping/filtering remains orthogonal. Completed Focus/habit logs are not inferred from mere time passage.
+- Future booking must not cause the Todo to appear in Today unless today is eligible. Calendar shows fixed-time slots only. User can create a next-month repeat series now.
+
+**Persistence gate:** M4 todo_execution_templates holds only exact start/end and effective dates; it does **not** yet encode per-weekday/monthday selector, flexible/window recurring intentions, or repeated finite project working-day policy. Before claiming feature complete, provide a reviewed additive migration or a better normalized data model (do not overload slot_key strings as an undocumented pseudo-schema), implement create/edit/delete and read-back, and integrate Day/Week/Month Calendar. No silent partial implementation.
+
+**Testing acceptance scenarios:** On Oct 12 create monthly 13/14/15 habit; absent from Today on 12, visible in 待安排 before booking. One click assign 09:00–10:00 to all future matching dates; preview Oct 13/14/15 and Nov 13/14/15 in Calendar after save, with no future todo_sessions generated. Change only Nov 14 to 11:00, other events untouched. Switch future series time without changing Oct completed actuals. Test daily, weekly flexible/fixed, monthly 28/29/30/31/month-end, timezone/DST, individual cancel, and a finite planned project. Verify refresh persistence and Tauri Notes/Focus regression.
+
+---
+
 ## V3 CANONICAL FIELD DICTIONARY — 2026-10-12
 
 The complete field ownership/deprecation registry is at [Todo V3 Field Contract](./todo-v3-field-contract.md). This registry is binding for future Todo/Calendar/Focus code reviews. **Do not add fields to solve a UI-only problem**; first identify the canonical owner.
