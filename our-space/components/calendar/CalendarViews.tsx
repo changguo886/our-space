@@ -34,7 +34,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     let live=true;const db=createClient();
     void Promise.all([
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end"),
-      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end"),
+      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end,replaces_slot_key"),
       db.from("todo_execution_overrides").select("todo_id,slot_key,occurrence_date,action,scheduled_start,scheduled_end")
     ]).then(([p,t,o])=>{if(!live)return;
       if(!p.error)setPatterns(Object.fromEntries(((p.data??[]) as HabitPatternV3[]).map(x=>[x.todo_id,x])));
@@ -57,8 +57,20 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
     ...(todo.todo_sessions?.length?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
-    return templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&t.execution_mode==="fixed"&&t.start_time&&t.end_time&&
-      templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)).flatMap(t=>{
+    const active=templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&
+      templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date));
+    const effective=active.filter(t=>{
+      if(t.selector_kind==="all"&&active.some(other=>other.todo_id===t.todo_id&&other.replaces_slot_key===t.slot_key)){
+        // A specific weekday/month-day preset replaces this generic slot.
+        return overrides.some(o=>o.todo_id===t.todo_id&&o.slot_key===t.slot_key&&o.occurrence_date===d);
+      }
+      if(t.replaces_slot_key&&overrides.some(o=>o.todo_id===t.todo_id&&o.slot_key===t.replaces_slot_key&&o.occurrence_date===d)){
+        // A one-off override of the base slot takes precedence over its day preset.
+        return false;
+      }
+      return true;
+    });
+    return effective.filter(t=>t.execution_mode==="fixed"&&t.start_time&&t.end_time).flatMap(t=>{
       const change=overrides.find(x=>x.todo_id===t.todo_id&&x.slot_key===t.slot_key&&x.occurrence_date===d);
       if(change?.action==="cancel")return [];
       const title=tasks.find(x=>x.id===t.todo_id)?.title??"任务";
