@@ -30,6 +30,9 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [copyDays,setCopyDays]=useState<string[]>([]);
   const [copyBusy,setCopyBusy]=useState(false);
   const [copyNotice,setCopyNotice]=useState("");
+  const [continuationDays,setContinuationDays]=useState<string[]>([]);
+  const [continuationSource,setContinuationSource]=useState<typeof copySource>(null);
+  const [continuationBusy,setContinuationBusy]=useState(false);
 
   const [selector,setSelector]=useState("all");
   const [dayPresets,setDayPresets]=useState<DayPreset[]>([]);
@@ -166,7 +169,61 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setCopyBusy(false);
     if(writeError){setError((zh?"复制失败：":"Copy failed: ")+writeError);return;}
     setCopyNotice((zh?"复制完成；跳过已有单次安排 ":"Copied; skipped existing plans ")+skipped);
+    if(pattern&&(pattern.period==="week"||pattern.period==="month")){setContinuationSource(copySource);setContinuationDays([...new Set([sourceDay,...target])].sort());}
     setCopyOpen(false);setCopySource(null);setCopyDays([]);await refresh();
+  }
+  const shiftPeriod=(day:string)=>{
+    if(pattern?.period==="week")return addDaysISO(day,7);
+    const [year,month,d]=day.split("-").map(Number);
+    const next=new Date(Date.UTC(year,month,1));
+    const max=new Date(Date.UTC(next.getUTCFullYear(),next.getUTCMonth()+1,0)).getUTCDate();
+    if(d>max)return null; // A 31st does not silently become the 30th.
+    return [next.getUTCFullYear(),String(next.getUTCMonth()+1).padStart(2,"0"),String(d).padStart(2,"0")].join("-");
+  };
+  const dismissContinuation=()=>{setContinuationDays([]);setContinuationSource(null);};
+  async function applyContinuation(forever:boolean){
+    if(!pattern||!continuationSource||!continuationDays.length)return;
+    setError("");setContinuationBusy(true);
+    const db=createClient();
+    const original=continuationSource;
+    const targets=continuationDays.map(shiftPeriod).filter((d):d is string=>Boolean(d))
+      .filter(d=>!projectEnd||d<=projectEnd)
+      .filter(d=>pattern.arrangement==="flexible"||copyEligible(d));
+    const unique=[...new Set(targets)];
+    const occupied=new Set([...plans.map(p=>p.plan_date),...sessions.map(p=>localDate(new Date(p.scheduled_start)))]);
+    let failure="";
+    if(forever){
+      const selectors=[...new Set(continuationDays.map(d=>pattern.period==="week"?"weekday:"+weekdayISO(d):"month_day:"+Number(d.slice(-2))))];
+      const start=shiftPeriod(continuationDays[0]);
+      if(!start){failure=zh?"下周期不存在对应日期。":"No matching date next period.";}
+      else {
+        const rows=selectors.map(key=>({
+          todo_id:todoId,starts_on:start,ends_on:projectEnd,timezone,replaces_slot_key:null,
+          selector_kind:key.split(":")[0],selector_value:Number(key.split(":")[1]),
+          execution_mode:original.mode,
+          start_time:original.mode==="fixed"?original.start:null,end_time:original.mode==="fixed"?original.end:null,
+          window_start:original.mode==="window"?original.start:null,window_end:original.mode==="window"?original.end:null,
+          planned_minutes:original.mode==="fixed"?null:original.minutes
+        }));
+        const conflicts=rows.some(row=>templates.some(t=>t.selector_kind===row.selector_kind&&t.selector_value===row.selector_value&&(t.ends_on===null||t.ends_on>=start)));
+        if(conflicts)failure=zh?"已有覆盖相同日期的重复安排，请先修改已有规则。":"An active recurring rule already covers these dates.";
+        else {const result=await db.from("todo_execution_templates").insert(rows);failure=result.error?.message??"";}
+      }
+    } else {
+      const newDays=unique.filter(d=>!occupied.has(d));
+      if(!newDays.length)failure=zh?"下一周期的对应日期都已有安排，或不存在可复制日期。":"There are no free matching dates next period.";
+      else {
+        const rows=newDays.map(day=>original.mode==="fixed"
+          ?{todo_id:todoId,mode:"fixed",scheduled_start:toFixedDateTime(day,original.start).toISOString(),scheduled_end:toFixedDateTime(day,original.end).toISOString()}
+          :{todo_id:todoId,mode:original.mode,plan_date:day,planned_minutes:original.minutes,window_start:original.mode==="window"?original.start:null,window_end:original.mode==="window"?original.end:null});
+        const result=await db.from("todo_sessions").insert(rows);
+        failure=result.error?.message??"";
+      }
+    }
+    setContinuationBusy(false);
+    if(failure){setError(failure);return;}
+    dismissContinuation();setCopyNotice(forever?(zh?"已启用后续周期的虚拟重复安排。":"Future recurring plan saved."):(zh?"已复制到下一周期。":"Copied to next period."));
+    await refresh();
   }
   async function save(){
     setError("");
@@ -398,6 +455,18 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         {saving?(zh?"保存中…":"Saving…"):editingTemplateId?(zh?"保存以后安排":"Save future schedule"):(zh?"保存这一次":"Save this occurrence")}
       </button>
       {copyNotice&&<p role="status" className="text-xs text-sage-700">{copyNotice}</p>}
+    </div>}
+    {continuationSource&&pattern&&<div role="dialog" aria-modal="true" aria-label={zh?"延续周期安排":"Continue recurring plan"} className="fixed inset-0 z-[90] flex items-center justify-center bg-ink/40 p-4">
+      <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-xl">
+        <h3 className="text-lg font-semibold text-ink">{pattern.period==="week"?(zh?"下周怎么安排？":"How about next week?"):(zh?"下个月怎么安排？":"How about next month?")}</h3>
+        <p className="text-xs text-ink-soft">{zh?"本周期已保存的日期与时间方式可以沿用，完成次数不会增加。":"Reuse dates and timing next period; completion counts do not change."}</p>
+        <div className="space-y-2">
+          <button type="button" disabled={continuationBusy} onClick={dismissContinuation} className="w-full rounded-xl border border-line p-3 text-left text-sm">{pattern.period==="week"?(zh?"下周再决定":"Decide next week"):(zh?"下个月再决定":"Decide next month")}</button>
+          <button type="button" disabled={continuationBusy} onClick={()=>void applyContinuation(false)} className="w-full rounded-xl border border-line p-3 text-left text-sm">{pattern.period==="week"?(zh?"下周沿用本周安排":"Reuse for next week"):(zh?"下个月沿用本月安排":"Reuse for next month")}</button>
+          <button type="button" disabled={continuationBusy} onClick={()=>void applyContinuation(true)} className="w-full rounded-xl border border-sage-300 bg-sage-50 p-3 text-left text-sm text-sage-700">{pattern.period==="week"?(zh?"以后每周都这样":"Repeat every week"):(zh?"以后每月都这样":"Repeat every month")}</button>
+        </div>
+        {error&&<p role="alert" className="text-xs text-blush-500">{error}</p>}
+      </div>
     </div>}
     {error&&<p role="alert" className="mt-2 text-xs text-blush-500">{error}</p>}
   </section>;
