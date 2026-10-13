@@ -15,6 +15,10 @@ export type DatedItem = {
 
 export type TemplateLike = {
   id: string;
+  /** One repeating time slot; every revision of that slot keeps the same slot_key. */
+  slot_key: string;
+  /** All slots created by one save share a batch_id (NULL before migration v4_11). */
+  batch_id?: string | null;
   starts_on: string;
   ends_on: string | null;
   execution_mode: ScheduleMode;
@@ -27,9 +31,22 @@ export type TemplateLike = {
   planned_minutes: number | null;
 };
 
+export type SlotView = {
+  slot_key: string;
+  /** Version in effect today (or the next one, if the slot starts later). */
+  current: TemplateLike;
+  /** Later revisions already scheduled for this slot. */
+  later: TemplateLike[];
+};
+
 export type TemplateGroup = {
+  /** batch_id when present, otherwise the slot_key: never inferred from timing or timestamps. */
   key: string;
+  slots: SlotView[];
+  /** All current versions (one per slot), for labels and selector descriptions. */
   templates: TemplateLike[];
+  /** True when every slot shares the same mode and times, so one timing line describes the group. */
+  uniformTiming: boolean;
   mode: ScheduleMode;
   start: string;
   end: string;
@@ -68,19 +85,23 @@ export function timesOverlap(aStart: string, aEnd: string, bStart: string, bEnd:
 }
 
 /**
- * One shared conflict rule for every entry point (single save, copy, routine composer):
- * - two fixed slots on the same day conflict only if their times overlap;
- * - a window / flexible plan conflicts only with an identical plan on that day;
- * - different modes on the same day never conflict (a day may hold a fixed slot and a flexible plan).
+ * Hard rule (blocks saving): two FIXED slots of the same task on the same day may not overlap.
+ * Window and flexible plans never block: they describe intent, not exclusive time.
  */
-export function conflictsWith(candidate: Omit<DatedItem, "id">, existing: Omit<DatedItem, "id">[]): boolean {
-  return existing.some((other) => {
-    if (other.day !== candidate.day || other.mode !== candidate.mode) return false;
-    if (candidate.mode === "fixed") return timesOverlap(candidate.start, candidate.end, other.start, other.end);
-    if (candidate.mode === "window")
-      return other.start === candidate.start && other.end === candidate.end && other.minutes === candidate.minutes;
-    return other.minutes === candidate.minutes;
-  });
+export function fixedOverlap(candidate: Omit<DatedItem, "id">, existing: Omit<DatedItem, "id">[]): boolean {
+  if (candidate.mode !== "fixed") return false;
+  return existing.some((o) => o.day === candidate.day && o.mode === "fixed" && timesOverlap(candidate.start, candidate.end, o.start, o.end));
+}
+
+/**
+ * Soft rule (warn, then allow): a window/flexible plan identical to one already on that day.
+ * It may be intentional independent work, so the user decides. Retried requests are handled
+ * separately by client-generated ids, not by comparing content.
+ */
+export function sameNonFixed(candidate: Omit<DatedItem, "id">, existing: Omit<DatedItem, "id">[]): boolean {
+  if (candidate.mode === "fixed") return false;
+  return existing.some((o) => o.day === candidate.day && o.mode === candidate.mode && o.minutes === candidate.minutes
+    && (candidate.mode === "flexible" || (o.start === candidate.start && o.end === candidate.end)));
 }
 
 /** Chronological order: earlier day first, then earlier start time; flexible plans sort before timed ones. */
@@ -99,48 +120,62 @@ export function isEditable(originalDay: string, today: string): boolean {
   return originalDay >= today;
 }
 
-function templateSignature(t: TemplateLike): string {
-  return [
-    t.starts_on,
-    t.ends_on ?? "",
-    t.execution_mode,
-    hhmm(t.start_time),
-    hhmm(t.end_time),
-    hhmm(t.window_start),
-    hhmm(t.window_end),
-    t.execution_mode === "fixed" ? "" : String(t.planned_minutes ?? ""),
-  ].join("|");
-}
-
 function selectorOrder(t: TemplateLike): number {
   if (t.selector_kind === "all") return 0;
   if (t.selector_kind === "month_end") return 100;
   return t.selector_value ?? 0;
 }
 
-/** Templates saved in one batch share timing and effective range; show them as one series. */
-export function groupTemplates(templates: TemplateLike[]): TemplateGroup[] {
-  const groups = new Map<string, TemplateLike[]>();
-  for (const t of templates) {
-    const key = templateSignature(t);
-    groups.set(key, [...(groups.get(key) ?? []), t]);
+function timingKey(t: TemplateLike): string {
+  return [t.execution_mode, hhmm(t.start_time), hhmm(t.end_time), hhmm(t.window_start), hhmm(t.window_end), t.execution_mode === "fixed" ? "" : String(t.planned_minutes ?? "")].join("|");
+}
+
+/**
+ * Groups repeating slots for display by explicit identity only:
+ * batch_id (one save) when available, otherwise each slot_key on its own.
+ * Two independent series with identical timing therefore never merge.
+ * Versions that ended before `today` are hidden.
+ */
+export function groupTemplates(templates: TemplateLike[], today: string): TemplateGroup[] {
+  const active = templates.filter((t) => t.ends_on === null || t.ends_on >= today);
+  const bySlot = new Map<string, TemplateLike[]>();
+  for (const t of active) bySlot.set(t.slot_key, [...(bySlot.get(t.slot_key) ?? []), t]);
+  const groups = new Map<string, SlotView[]>();
+  for (const [slot_key, versions] of bySlot) {
+    const sorted = [...versions].sort((a, b) => a.starts_on.localeCompare(b.starts_on));
+    const currentIndex = Math.max(0, sorted.findIndex((v, i) => v.starts_on <= today && (i === sorted.length - 1 || sorted[i + 1].starts_on > today)));
+    const view: SlotView = { slot_key, current: sorted[currentIndex], later: sorted.slice(currentIndex + 1) };
+    const key = view.current.batch_id ?? slot_key;
+    groups.set(key, [...(groups.get(key) ?? []), view]);
   }
   return [...groups.entries()]
-    .map(([key, list]) => {
-      const sorted = [...list].sort((a, b) => selectorOrder(a) - selectorOrder(b));
-      const first = sorted[0];
+    .map(([key, slots]) => {
+      const ordered = [...slots].sort((a, b) => selectorOrder(a.current) - selectorOrder(b.current) || hhmm(a.current.start_time).localeCompare(hhmm(b.current.start_time)));
+      const templatesNow = ordered.map((x) => x.current);
+      const first = templatesNow[0];
       return {
         key,
-        templates: sorted,
+        slots: ordered,
+        templates: templatesNow,
+        uniformTiming: templatesNow.every((t) => timingKey(t) === timingKey(first)),
         mode: first.execution_mode,
         start: first.execution_mode === "fixed" ? hhmm(first.start_time) : hhmm(first.window_start),
         end: first.execution_mode === "fixed" ? hhmm(first.end_time) : hhmm(first.window_end),
         minutes: first.planned_minutes,
-        starts_on: first.starts_on,
-        ends_on: first.ends_on,
+        starts_on: templatesNow.map((t) => t.starts_on).sort()[0],
+        ends_on: templatesNow.every((t) => t.ends_on) ? templatesNow.map((t) => t.ends_on as string).sort().at(-1) ?? null : null,
       };
     })
-    .sort((a, b) => a.starts_on.localeCompare(b.starts_on) || a.start.localeCompare(b.start));
+    .sort((a, b) => a.starts_on.localeCompare(b.starts_on) || a.start.localeCompare(b.start) || a.key.localeCompare(b.key));
+}
+
+export function slotTiming(t: TemplateLike) {
+  return {
+    mode: t.execution_mode,
+    start: t.execution_mode === "fixed" ? hhmm(t.start_time) : hhmm(t.window_start),
+    end: t.execution_mode === "fixed" ? hhmm(t.end_time) : hhmm(t.window_end),
+    minutes: t.planned_minutes,
+  };
 }
 
 /** "每周一、三、五" / "每月 1、15 日、月末" / "每天". */

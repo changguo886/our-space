@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import AppTimePicker from "@/components/ui/AppTimePicker";
 import { ModePicker } from "@/components/ui/ScheduleMode";
 import { addDaysISO, lastDayISO, weekdayISO, type HabitPatternV3 } from "@/lib/recurring-execution";
-import { conflictsWith, formatDay, isDuplicateKeyError, remainingQuota, timesOverlap, type DatedItem, type ScheduleMode as Mode } from "@/lib/schedule-utils";
+import { fixedOverlap, sameNonFixed, formatDay, isDuplicateKeyError, remainingQuota, timesOverlap, type DatedItem, type ScheduleMode as Mode } from "@/lib/schedule-utils";
 
 type Slot = { id: string; key: string; mode: Mode; start: string; end: string; minutes: string };
 type Props = { todoId: string; pattern: HabitPatternV3; today: string; startDate: string; existing: DatedItem[]; onSaved: () => Promise<void>; zh: boolean };
@@ -78,7 +78,11 @@ export default function RoutinePlanComposer({ todoId, pattern, today, startDate,
       if (s.mode === "window" && mins > span(s.start, s.end)) { setError(zh ? "预计时长不能超过这段时间。" : "Minutes exceed the window."); return; }
     }
     const asItems = slots.map((s) => ({ id: s.id, day: dayFor(Number(s.key)), mode: s.mode, start: s.mode === "flexible" ? "" : s.start, end: s.mode === "flexible" ? "" : s.end, minutes: s.mode === "fixed" ? span(s.start, s.end) : Number(s.minutes) }));
-    if (asItems.some((a, i) => conflictsWith(a, asItems.slice(i + 1)))) { setError(zh ? "同一天里有重叠或重复的时间。" : "Two slots on the same day overlap."); return; }
+    if (asItems.some((a, i) => fixedOverlap(a, asItems.slice(i + 1)))) { setError(zh ? "同一天的两个固定时段重叠了。" : "Two fixed slots on the same day overlap."); return; }
+    const duplicatePlans = scope === "period"
+      ? asItems.some((a, i) => sameNonFixed(a, [...asItems.slice(i + 1), ...existing]))
+      : asItems.some((a, i) => sameNonFixed(a, asItems.slice(i + 1)));
+    if (duplicatePlans && !window.confirm(zh ? "有的日子会出现两条相同的安排。仍然保存吗？" : "Some days will have two identical plans. Save anyway?")) return;
     if (scope === "ongoing" && !weekly && slots.some((s) => Number(s.key) > 28)
       && !window.confirm(zh ? "29–31 号不是每个月都有，没有这些日子的月份会跳过。继续？" : "Days 29–31 are skipped in shorter months. Continue?")) return;
 
@@ -101,12 +105,11 @@ export default function RoutinePlanComposer({ todoId, pattern, today, startDate,
       if (current.error) failure = current.error.message;
       else if (records.some((r) => (current.data ?? []).some((t) => t.selector_kind === r.selector_kind && t.selector_value === r.selector_value && (t.ends_on === null || t.ends_on >= r.starts_on) && t.execution_mode === r.execution_mode && (
         r.execution_mode === "fixed" ? timesOverlap(r.start_time!, r.end_time!, t.start_time.slice(0, 5), t.end_time.slice(0, 5))
-          : r.execution_mode === "window" ? r.window_start === t.window_start?.slice(0, 5) && r.window_end === t.window_end?.slice(0, 5) && r.planned_minutes === t.planned_minutes
-            : r.planned_minutes === t.planned_minutes))))
-        failure = zh ? "这些日子已经有相同或重叠的重复安排，请在列表里修改。" : "A matching repeating plan already exists; edit it in the list.";
+          : false))))
+        failure = zh ? "这些日子已经有重叠的固定重复时段，请在列表里修改。" : "An overlapping fixed repeating slot already exists; edit it in the list.";
       else failure = await insertOnce("todo_execution_templates", records);
     } else {
-      if (asItems.some((a) => conflictsWith(a, existing))) failure = zh ? "有的日子已经有重叠或相同的安排了。" : "Some days already have a matching plan.";
+      if (asItems.some((a) => fixedOverlap(a, existing))) failure = zh ? "有的日子和已有的固定时段重叠了。" : "Some days overlap an existing fixed slot.";
       else failure = await insertOnce("todo_sessions", asItems.map((a) => a.mode === "fixed"
         ? { todo_id: todoId, mode: "fixed", scheduled_start: toIso(a.day, a.start), scheduled_end: toIso(a.day, a.end) }
         : { todo_id: todoId, mode: a.mode, plan_date: a.day, planned_minutes: a.minutes, window_start: a.mode === "window" ? a.start : null, window_end: a.mode === "window" ? a.end : null }));

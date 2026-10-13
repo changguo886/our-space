@@ -74,6 +74,7 @@ type TodoSession = {
 
 type CalendarTodo = {
   id: string;
+  task_type?: string | null;
   color_hex?: string | null;
   title: string;
   description: string | null;
@@ -1932,6 +1933,8 @@ export default function CalendarPlanner({
   }
 
   async function completeTodo(todo: CalendarTodo) {
+    // Routines are completed per occurrence, never as a whole task.
+    if (todo.task_type === "routine" || todo.task_type === "habit") return;
     const previousTodos = todos;
     let elapsed = todo.elapsed_seconds ?? 0;
 
@@ -2778,14 +2781,14 @@ export default function CalendarPlanner({
                             {common.edit}
                           </button>
 
-                          <button
+                          {selectedSessionInfo.todo.task_type !== "routine" && selectedSessionInfo.todo.task_type !== "habit" && <button
                             type="button"
                             onClick={() => completeTodo(selectedSessionInfo.todo)}
                             className="flex items-center justify-center gap-2 rounded-xl bg-blush-50 px-3 py-2 text-xs font-medium text-blush-500 transition hover:bg-blush-100"
                           >
                             <Check className="h-3.5 w-3.5" />
                             {todoText.completed}
-                          </button>
+                          </button>}
                         </div>
 
                         {!selectedSessionInfo.session.virtual && (

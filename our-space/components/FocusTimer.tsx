@@ -38,6 +38,7 @@ type FocusTimerProps = {
     status: string;
     started_at: string | null;
     elapsed_seconds: number;
+    task_type?: string | null;
   };
   initialPreferences: UserPreferences;
   disableFloatingWindow?: boolean;
@@ -988,6 +989,11 @@ export default function FocusTimer({
    */
   async function completeTimer() {
     if (busy) {
+      return;
+    }
+    if (todo.task_type === "routine" || todo.task_type === "habit") {
+      // Phase 0 safeguard: never mark a routine as completed as a whole.
+      alert("周期任务请结束本次专注，并在任务卡片上打卡。");
       return;
     }
 

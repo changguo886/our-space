@@ -271,6 +271,10 @@ function categoryInfo(
    Main component
 ========================================================= */
 
+export function isRoutineTask(todo: { task_type?: string | null }) {
+  return todo.task_type === "routine" || todo.task_type === "habit";
+}
+
 export default function TodoList({
   todos,
   onOpenNotes,
@@ -381,6 +385,8 @@ export default function TodoList({
   async function toggleTodo(
     todo: Todo
   ) {
+    // A routine is never completed as a whole; each occurrence is a completion event.
+    if (isRoutineTask(todo)) return;
     if (busyId) return;
 
     setBusyId(todo.id);
@@ -920,7 +926,8 @@ export default function TodoList({
                 onClick={() =>
                   toggleTodo(todo)
                 }
-                disabled={busy}
+                disabled={busy||isRoutineTask(todo)}
+                aria-hidden={isRoutineTask(todo)||undefined}
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
                 title={
                   completed
@@ -928,7 +935,7 @@ export default function TodoList({
                     : t.markComplete
                 }
               >
-                {completed ? (
+                {isRoutineTask(todo) ? <span className="h-6 w-6"/> : completed ? (
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-white">
                     <Check className="h-4 w-4" />
                   </span>

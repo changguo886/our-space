@@ -34,7 +34,7 @@ export default function CopyDateCalendar({start,end,selected,booked,blocked=[],e
        const isSource=day===start;
        const inRange=day>start&&day<=end&&day>=cutoff,active=chosen.has(day),conflict=taken.has(day),hasPlan=reserved.has(day);
        const allowed=inRange&&eligible(day)&&!conflict&&(active||!limitReached);
-       const title=isSource?(zh?"复制来源":"Source"):conflict?(zh?"这天已有相同或重叠的安排":"Already has a matching plan"):!inRange||!eligible(day)?(zh?"不可选":"Unavailable"):limitReached&&!active?(zh?"已达到本周期次数":"Period goal reached"):day;
+       const title=isSource?(zh?"复制来源":"Source"):conflict?(zh?"和这天的固定时段重叠":"Overlaps a fixed slot that day"):!inRange||!eligible(day)?(zh?"不可选":"Unavailable"):limitReached&&!active?(zh?"已达到本周期次数":"Period goal reached"):day;
        return <button key={day} type="button" disabled={!allowed} aria-pressed={active} title={title}
          onClick={()=>onToggle(day)}
          className={`relative min-h-10 rounded-lg border text-xs ${isSource?"border-sage-600 bg-sage-600 text-white":active?"border-2 border-dashed border-sage-500 bg-sage-50 font-semibold text-sage-700":allowed?"border-line hover:border-sage-400":"border-transparent bg-paper/50 text-ink-faint"}`}>

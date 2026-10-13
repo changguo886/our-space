@@ -2,13 +2,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  conflictsWith, describeSelectors, formatDay, groupTemplates, isDuplicateKeyError, isEditable,
+  fixedOverlap, sameNonFixed, describeSelectors, formatDay, groupTemplates, isDuplicateKeyError, isEditable,
   remainingQuota, splitByToday, timesOverlap,
 } from "../lib/schedule-utils.ts";
 
 const item = (id, day, mode, start = "", end = "", minutes = 45) => ({ id, day, mode, start, end, minutes });
 const tpl = (over) => ({
-  id: crypto.randomUUID(), starts_on: "2026-10-14", ends_on: null, execution_mode: "fixed",
+  id: crypto.randomUUID(), slot_key: crypto.randomUUID(), starts_on: "2026-10-14", ends_on: null, execution_mode: "fixed",
   selector_kind: "weekday", selector_value: 1, start_time: "19:00:00", end_time: "20:00:00",
   window_start: null, window_end: null, planned_minutes: null, ...over,
 });
@@ -24,14 +24,22 @@ test("timesOverlap treats touching slots as free", () => {
   assert.equal(timesOverlap("09:00", "10:30", "10:00", "11:00"), true);
 });
 
-test("conflict rule (B09): fixed overlaps only, window/flexible only identical, modes independent", () => {
-  const existing = [item("a", "2026-10-14", "fixed", "19:00", "20:00", 60), item("b", "2026-10-14", "flexible", "", "", 30)];
-  assert.equal(conflictsWith(item("x", "2026-10-14", "fixed", "19:30", "20:30"), existing), true);
-  assert.equal(conflictsWith(item("x", "2026-10-14", "fixed", "07:00", "08:00"), existing), false, "second fixed slot on the same day is allowed (A08)");
-  assert.equal(conflictsWith(item("x", "2026-10-14", "flexible", "", "", 30), existing), true);
-  assert.equal(conflictsWith(item("x", "2026-10-14", "flexible", "", "", 45), existing), false);
-  assert.equal(conflictsWith(item("x", "2026-10-14", "window", "18:00", "22:00"), existing), false);
-  assert.equal(conflictsWith(item("x", "2026-10-15", "fixed", "19:00", "20:00"), existing), false);
+test("fixed slots of one task may not overlap; touching is fine", () => {
+  const existing = [item("a", "2026-10-14", "fixed", "19:00", "20:00", 60)];
+  assert.equal(fixedOverlap(item("x", "2026-10-14", "fixed", "19:30", "20:30"), existing), true);
+  assert.equal(fixedOverlap(item("x", "2026-10-14", "fixed", "20:00", "21:00"), existing), false);
+  assert.equal(fixedOverlap(item("x", "2026-10-14", "fixed", "07:00", "08:00"), existing), false, "a second slot that day is allowed");
+  assert.equal(fixedOverlap(item("x", "2026-10-15", "fixed", "19:00", "20:00"), existing), false);
+});
+
+test("window and flexible never block; identical ones only trigger a warning", () => {
+  const existing = [item("a", "2026-10-14", "fixed", "09:00", "12:00", 180), item("b", "2026-10-14", "window", "09:00", "12:00", 90), item("c", "2026-10-14", "flexible", "", "", 30)];
+  assert.equal(fixedOverlap(item("x", "2026-10-14", "window", "10:00", "12:00", 45), existing), false, "overlapping windows are allowed");
+  assert.equal(sameNonFixed(item("x", "2026-10-14", "window", "10:00", "12:00", 45), existing), false);
+  assert.equal(sameNonFixed(item("x", "2026-10-14", "window", "09:00", "12:00", 90), existing), true, "identical window: warn");
+  assert.equal(sameNonFixed(item("x", "2026-10-14", "flexible", "", "", 30), existing), true, "identical flexible: warn");
+  assert.equal(sameNonFixed(item("x", "2026-10-14", "flexible", "", "", 45), existing), false);
+  assert.equal(sameNonFixed(item("x", "2026-10-14", "fixed", "09:00", "12:00", 180), existing), false, "fixed is never a soft duplicate");
 });
 
 test("list order (D07): upcoming ascending by day then time, past newest first", () => {
@@ -52,15 +60,32 @@ test("history protection (C06): only today or later is editable", () => {
   assert.equal(isEditable("2026-10-13", "2026-10-13"), true);
 });
 
-test("series grouping (D06): one batch becomes one row", () => {
+test("grouping uses explicit identity only: identical independent series stay separate", () => {
+  const before = groupTemplates([
+    tpl({ slot_key: "s1", selector_value: 1 }), tpl({ slot_key: "s2", selector_value: 1 }),
+  ], "2026-10-13");
+  assert.equal(before.length, 2, "same weekday and time, no batch_id: two rows");
+  const batched = groupTemplates([
+    tpl({ slot_key: "a5", batch_id: "A", selector_value: 5, start_time: "20:00:00", end_time: "21:00:00" }),
+    tpl({ slot_key: "a1", batch_id: "A", selector_value: 1 }), tpl({ slot_key: "a3", batch_id: "A", selector_value: 3 }),
+    tpl({ slot_key: "b1", batch_id: "B", selector_value: 1 }),
+  ], "2026-10-13");
+  assert.equal(batched.length, 2);
+  const a = batched.find((g) => g.key === "A");
+  assert.deepEqual(a.slots.map((x) => x.slot_key), ["a1", "a3", "a5"]);
+  assert.equal(a.uniformTiming, false, "Friday has its own time");
+  assert.equal(describeSelectors(a.templates, true), "每周一、三、五");
+});
+
+test("slot versions: the current one is shown, later revisions listed, ended ones hidden", () => {
   const groups = groupTemplates([
-    tpl({ selector_value: 5 }), tpl({ selector_value: 1 }), tpl({ selector_value: 3 }),
-    tpl({ selector_value: 6, start_time: "08:00:00", end_time: "09:00:00" }),
-  ]);
-  assert.equal(groups.length, 2);
-  const evening = groups.find((g) => g.start === "19:00");
-  assert.deepEqual(evening.templates.map((t) => t.selector_value), [1, 3, 5]);
-  assert.equal(describeSelectors(evening.templates, true), "每周一、三、五");
+    tpl({ id: "old", slot_key: "s", starts_on: "2026-09-01", ends_on: "2026-09-30" }),
+    tpl({ id: "now", slot_key: "s", starts_on: "2026-10-01", ends_on: "2026-10-31" }),
+    tpl({ id: "next", slot_key: "s", starts_on: "2026-11-01", ends_on: null, start_time: "07:00:00", end_time: "08:00:00" }),
+  ], "2026-10-13");
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].slots[0].current.id, "now");
+  assert.deepEqual(groups[0].slots[0].later.map((v) => v.id), ["next"]);
 });
 
 test("describeSelectors covers weekdays, month days and month end", () => {

@@ -12,8 +12,8 @@ import { useI18n } from "@/components/I18nProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addDaysISO, lastDayISO, weekdayISO, templateEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
 import {
-  conflictsWith, describeSelectors, describeTiming, formatDay, groupTemplates, hhmm, isDuplicateKeyError,
-  isEditable, remainingQuota, splitByToday, timesOverlap, type DatedItem, type ScheduleMode as Mode, type TemplateGroup,
+  fixedOverlap, sameNonFixed, describeSelectors, describeTiming, formatDay, groupTemplates, hhmm, isDuplicateKeyError,
+  isEditable, remainingQuota, slotTiming, splitByToday, timesOverlap, type DatedItem, type ScheduleMode as Mode, type TemplateGroup, type TemplateLike,
 } from "@/lib/schedule-utils";
 
 type SessionRow = {
@@ -26,7 +26,7 @@ type Panel =
   | { kind: "edit"; item: DatedItem }
   | { kind: "copy"; source: DatedItem }
   | { kind: "override"; group: TemplateGroup }
-  | { kind: "revise"; group: TemplateGroup }
+  | { kind: "revise"; group: TemplateGroup; slotKeys: string[] }
   | null;
 
 function localDate(d: Date) { return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-"); }
@@ -115,6 +115,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   const [continuation, setContinuation] = useState<DatedItem[] | null>(null);
   const [overrideDay, setOverrideDay] = useState(todayISO);
   const [overrideAction, setOverrideAction] = useState<"reschedule" | "cancel">("reschedule");
+  const [overrideSlot, setOverrideSlot] = useState("");
   const [multi, setMulti] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [bulkStart, setBulkStart] = useState("19:00");
@@ -163,7 +164,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   }
 
   const { upcoming, past } = useMemo(() => splitByToday(rows, todayISO), [rows, todayISO]);
-  const groups = useMemo(() => groupTemplates(templates), [templates]);
+  const groups = useMemo(() => groupTemplates(templates as unknown as TemplateLike[], todayISO), [templates, todayISO]);
   const isFlexibleQuota = Boolean(pattern && pattern.arrangement === "flexible" && pattern.period !== "day");
 
   // ---------- period helpers (routine) ----------
@@ -185,7 +186,8 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     if (problem) { setError(problem); return; }
     if (draft.day < todayISO) { setError(zh ? "不能安排在过去的日期。" : "Cannot plan in the past."); return; }
     const candidate = { day: draft.day, mode: draft.mode, start: draft.start, end: draft.end, minutes: Number(draft.minutes) };
-    if (conflictsWith(candidate, rows)) { setError(zh ? "这天已经有重叠或相同的安排了。" : "This day already has an overlapping or identical plan."); return; }
+    if (fixedOverlap(candidate, rows)) { setError(zh ? "和这天的另一个固定时段重叠了。" : "Overlaps another fixed slot that day."); return; }
+    if (sameNonFixed(candidate, rows) && !window.confirm(zh ? "这天已经有一条相同的安排。仍然再加一条吗？" : "That day already has an identical plan. Add another one?")) return;
     void run(
       () => insertOnce("todo_sessions", [{ todo_id: todoId, ...sessionColumns(candidate) }]),
       () => { setPanel(null); setFollowUp({ id: "new", ...candidate }); });
@@ -203,7 +205,9 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     if (problem) { setError(problem); return; }
     if (draft.day < todayISO) { setError(zh ? "不能改到过去的日期。" : "Cannot move a plan into the past."); return; }
     const next = { day: draft.day, mode: draft.mode, start: draft.start, end: draft.end, minutes: draft.mode === "fixed" ? spanMinutes(draft.start, draft.end) : Number(draft.minutes) };
-    if (conflictsWith(next, rows.filter((r) => r.id !== item.id))) { setError(zh ? "和这天的其他安排重叠了。" : "Overlaps another plan that day."); return; }
+    const others = rows.filter((r) => r.id !== item.id);
+    if (fixedOverlap(next, others)) { setError(zh ? "和这天的另一个固定时段重叠了。" : "Overlaps another fixed slot that day."); return; }
+    if (sameNonFixed(next, others) && !window.confirm(zh ? "这天已经有一条相同的安排。仍然再加一条吗？" : "That day already has an identical plan. Add another one?")) return;
     void run(async () => {
       const r = await createClient().from("todo_sessions").update(sessionColumns(next)).eq("id", item.id).eq("todo_id", todoId);
       return r.error?.message ?? "";
@@ -225,7 +229,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     const chosen = futureFixed.filter((r) => picked.includes(r.id));
     if (!chosen.length) return;
     const others = rows.filter((r) => !picked.includes(r.id));
-    if (chosen.some((c) => conflictsWith({ ...c, start: bulkStart, end: bulkEnd }, others))) { setError(zh ? "新时间和某天的其他安排重叠了。" : "The new time overlaps another plan."); return; }
+    if (chosen.some((c) => fixedOverlap({ ...c, start: bulkStart, end: bulkEnd }, others))) { setError(zh ? "新时间和某天的其他安排重叠了。" : "The new time overlaps another plan."); return; }
     void run(async () => {
       // One upsert statement: either every selected plan moves or none does.
       const r = await createClient().from("todo_sessions").upsert(
@@ -249,7 +253,8 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     for (let d = addDaysISO(copySource.day, 1); d <= copyLimit && out.length < 120; d = addDaysISO(d, 1)) if (d >= todayISO && ruleDay(d)) out.push(d);
     return out;
   }, [copySource, copyLimit, todayISO, pattern]);
-  const blockedDays = copySource ? copyCandidates.filter((d) => conflictsWith({ ...copySource, day: d }, rows)) : [];
+  const blockedDays = copySource ? copyCandidates.filter((d) => fixedOverlap({ ...copySource, day: d }, rows)) : [];
+  const duplicateDays = copySource ? copyCandidates.filter((d) => sameNonFixed({ ...copySource, day: d }, rows)) : [];
   const freeCandidates = copyCandidates.filter((d) => !blockedDays.includes(d));
   const quotaLeft = isFlexibleQuota && pattern && copySource
     ? remainingQuota(pattern.target_count, rows.filter((r) => r.day >= periodStart(copySource.day) && r.day <= periodEnd(copySource.day)).length)
@@ -259,6 +264,8 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   function applyCopy() {
     if (!copySource || !copySelected.length) return;
     const target = copySelected.filter((d) => !blockedDays.includes(d)).slice(0, quotaLeft);
+    const dupCount = target.filter((d) => duplicateDays.includes(d)).length;
+    if (dupCount && !window.confirm(zh ? `其中 ${dupCount} 天已经有一条相同的安排。仍然都加上吗？` : `${dupCount} of these days already have an identical plan. Add anyway?`)) return;
     const useTemplates = !pattern && Boolean(projectEnd) && copyChoice !== "dates";
     void run(async () => {
       if (useTemplates) {
@@ -297,6 +304,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   function continueNext(forever: boolean) {
     if (!pattern || !continuation) return;
     const items = continuation.map((c) => ({ ...c, target: shiftPeriod(c.day) })).filter((c): c is DatedItem & { target: string } => c.target !== null);
+    if (!forever && items.some((i) => sameNonFixed({ ...i, day: i.target }, rows)) && !window.confirm(zh ? "下个周期有些日子已经有相同的安排。仍然都加上吗？" : "Some days next period already have an identical plan. Add anyway?")) return;
     void run(async () => {
       if (!items.length) return zh ? "下个周期没有对应的日期。" : "No matching dates next period.";
       if (forever) {
@@ -315,61 +323,99 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
           return zh ? "这些日子已经有重复安排了，请在列表里修改。" : "These days already repeat; edit that series instead.";
         return insertOnce("todo_execution_templates", records);
       }
-      const free = items.filter((i) => !conflictsWith({ ...i, day: i.target }, rows));
+      const free = items.filter((i) => !fixedOverlap({ ...i, day: i.target }, rows));
       if (!free.length) return zh ? "下个周期的这些日子都已有安排。" : "Those days are already planned next period.";
       return insertOnce("todo_sessions", free.map((i) => ({ todo_id: todoId, ...sessionColumns({ ...i, day: i.target }) })));
     }, () => { setContinuation(null); setNotice(forever ? (zh ? "以后每个周期都会按这些日子安排。" : "Will repeat every period.") : (zh ? "已安排到下个周期。" : "Planned for next period.")); });
   }
 
   // ---------- series actions ----------
-  function openRevise(group: TemplateGroup) {
-    setDraft({ day: group.starts_on > todayISO ? group.starts_on : todayISO, mode: group.mode, start: group.start || "19:00", end: group.end || "20:00", minutes: String(group.minutes ?? 45) });
-    setPanel({ kind: "revise", group });
+  // Identity rules: a group is a batch_id (or a single slot_key before v4_11); a slot is a slot_key;
+  // a version is a template id. Actions name their slots explicitly, never infer them from timing.
+  const hasBatchIds = templates.some((t) => Boolean((t as ExecutionTemplateV3 & { batch_id?: string | null }).batch_id));
+  const versionsOf = (slotKey: string) => templates.filter((t) => t.slot_key === slotKey).sort((a, b) => a.starts_on.localeCompare(b.starts_on));
+  const coveringVersion = (slotKey: string, day: string) => {
+    const versions = versionsOf(slotKey);
+    return versions.find((v) => v.starts_on <= day && (v.ends_on === null || v.ends_on >= day)) ?? versions.find((v) => v.starts_on > day);
+  };
+
+  function openRevise(group: TemplateGroup, slotKeys: string[]) {
+    const first = group.slots.find((x) => slotKeys.includes(x.slot_key))?.current ?? group.templates[0];
+    const timing = slotTiming(first);
+    setDraft({ day: group.starts_on > todayISO ? group.starts_on : todayISO, mode: timing.mode, start: timing.start || "19:00", end: timing.end || "20:00", minutes: String(timing.minutes ?? 45) });
+    setPanel({ kind: "revise", group, slotKeys });
   }
-  function saveRevise(group: TemplateGroup) {
+  function saveRevise(group: TemplateGroup, slotKeys: string[]) {
     const problem = draftError(draft, zh);
     if (problem) { setError(problem); return; }
     const effective = draft.day < todayISO ? todayISO : draft.day;
+    const timing = {
+      p_new_mode: draft.mode,
+      p_start_time: draft.mode === "fixed" ? draft.start : null, p_end_time: draft.mode === "fixed" ? draft.end : null,
+      p_window_start: draft.mode === "window" ? draft.start : null, p_window_end: draft.mode === "window" ? draft.end : null,
+      p_planned_minutes: draft.mode === "fixed" ? null : Number(draft.minutes),
+    };
     void run(async () => {
       const db = createClient();
-      for (const t of group.templates) {
-        const r = await db.rpc("revise_execution_template_v3", {
-          p_template_id: t.id, p_effective_on: effective < t.starts_on ? t.starts_on : effective, p_new_mode: draft.mode,
-          p_start_time: draft.mode === "fixed" ? draft.start : null, p_end_time: draft.mode === "fixed" ? draft.end : null,
-          p_window_start: draft.mode === "window" ? draft.start : null, p_window_end: draft.mode === "window" ? draft.end : null,
-          p_planned_minutes: draft.mode === "fixed" ? null : Number(draft.minutes),
-        });
+      if (hasBatchIds) {
+        // v4_11: one transaction for every named slot; re-running the same call is a no-op.
+        const r = await db.rpc("revise_execution_batch_v4", { p_batch_id: group.key, p_slot_keys: slotKeys, p_effective_on: effective, ...timing });
+        return r.error?.message ?? "";
+      }
+      for (const slotKey of slotKeys) {
+        const version = coveringVersion(slotKey, effective);
+        if (!version) continue;
+        if (versionsOf(slotKey).some((v) => v.starts_on > (effective < version.starts_on ? version.starts_on : effective)))
+          return zh ? "这个时段之后已经有另一次修改，请先执行数据库更新 v4_11 再改。" : "This slot already has a later revision; apply migration v4_11 first.";
+        const r = await db.rpc("revise_execution_template_v3", { p_template_id: version.id, p_effective_on: effective < version.starts_on ? version.starts_on : effective, ...timing });
         if (r.error) return r.error.message;
       }
       return "";
     }, () => setPanel(null));
   }
-  function stopSeries(group: TemplateGroup) {
+  function stopSeries(group: TemplateGroup, slotKeys: string[]) {
     const effective = group.starts_on > todayISO ? group.starts_on : todayISO;
-    if (!window.confirm(zh ? `从 ${formatDay(effective, true)} 起不再重复？之前的安排保留。` : `Stop repeating from ${formatDay(effective, false)}? Earlier plans stay.`)) return;
+    const what = slotKeys.length === group.slots.length ? (zh ? "这组重复安排" : "this series") : (zh ? "这个时段" : "this slot");
+    if (!window.confirm(zh ? `从 ${formatDay(effective, true)} 起停止${what}？之前的安排保留。` : `Stop ${what} from ${formatDay(effective, false)}? Earlier plans stay.`)) return;
     void run(async () => {
       const db = createClient();
-      for (const t of group.templates) {
-        const r = await db.rpc("stop_execution_template_future_v3", { p_template_id: t.id, p_effective_on: effective < t.starts_on ? t.starts_on : effective });
-        if (r.error) return r.error.message;
+      if (hasBatchIds) {
+        const r = await db.rpc("stop_execution_batch_v4", { p_batch_id: group.key, p_slot_keys: slotKeys, p_effective_on: effective });
+        return r.error?.message ?? "";
+      }
+      for (const slotKey of slotKeys) {
+        for (const v of versionsOf(slotKey).filter((x) => x.ends_on === null || x.ends_on >= effective)) {
+          const r = await db.rpc("stop_execution_template_future_v3", { p_template_id: v.id, p_effective_on: effective < v.starts_on ? v.starts_on : effective });
+          if (r.error) return r.error.message;
+        }
       }
       return "";
     });
   }
+  const eligibleSlots = (group: TemplateGroup, day: string) => group.slots.filter((x) => {
+    const v = coveringVersion(x.slot_key, day);
+    return v && v.starts_on <= day && templateEligible(day, v as ExecutionTemplateV3, pattern ?? undefined, todoStart || undefined);
+  });
   function openOverride(group: TemplateGroup) {
-    setOverrideDay(todayISO); setOverrideAction(group.mode === "fixed" ? "reschedule" : "cancel");
-    setDraft({ day: todayISO, mode: "fixed", start: group.start || "19:00", end: group.end || "20:00", minutes: "45" });
+    const first = slotTiming(group.templates[0]);
+    setOverrideDay(todayISO); setOverrideAction(first.mode === "fixed" ? "reschedule" : "cancel"); setOverrideSlot("");
+    setDraft({ day: todayISO, mode: "fixed", start: first.start || "19:00", end: first.end || "20:00", minutes: "45" });
     setPanel({ kind: "override", group });
   }
   function saveOverride(group: TemplateGroup) {
-    const template = group.templates.find((t) => templateEligible(overrideDay, t as ExecutionTemplateV3, pattern ?? undefined, todoStart || undefined));
     if (!validDate(overrideDay) || overrideDay < todayISO) { setError(zh ? "请选择今天或以后的日期。" : "Choose today or a later date."); return; }
-    if (!template) { setError(zh ? "这天不在这组重复安排里。" : "That day is not part of this series."); return; }
+    const candidates = eligibleSlots(group, overrideDay);
+    const slot = candidates.length === 1 ? candidates[0] : candidates.find((x) => x.slot_key === overrideSlot);
+    if (!candidates.length) { setError(zh ? "这天不在这组重复安排里。" : "That day is not part of this series."); return; }
+    if (!slot) { setError(zh ? "这天有几个时段，请选一个。" : "Pick which slot to change."); return; }
+    const version = coveringVersion(slot.slot_key, overrideDay)!;
+    if (overrideAction === "reschedule" && version.execution_mode !== "fixed") { setError(zh ? "只有固定时段可以换时间；其他方式可以选“这天不做”。" : "Only fixed slots can be moved."); return; }
     if (overrideAction === "reschedule" && (!validTime(draft.start) || !validTime(draft.end) || draft.end <= draft.start)) { setError(zh ? "请填写有效的开始和结束时间。" : "Enter a valid time range."); return; }
     void run(async () => {
+      // Identity of one occurrence = (todo_id, slot_key, occurrence_date); saving twice overwrites the same row.
       const change = overrideAction === "cancel" ? { scheduled_start: null, scheduled_end: null } : { scheduled_start: toIso(overrideDay, draft.start), scheduled_end: toIso(overrideDay, draft.end) };
       const r = await createClient().from("todo_execution_overrides").upsert(
-        { todo_id: todoId, slot_key: (template as ExecutionTemplateV3).slot_key, occurrence_date: overrideDay, action: overrideAction, ...change },
+        { todo_id: todoId, slot_key: slot.slot_key, occurrence_date: overrideDay, action: overrideAction, ...change },
         { onConflict: "todo_id,slot_key,occurrence_date" });
       return r.error?.message ?? "";
     }, () => setPanel(null));
@@ -390,18 +436,35 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     </div>
 
     {loading ? <p className="mt-3 text-xs text-ink-faint">{zh ? "读取中…" : "Loading…"}</p> : <div className="mt-3 space-y-1.5">
-      {groups.map((g) => <div key={g.key} className="flex items-center gap-3 rounded-xl border border-sage-100 bg-sage-50/60 px-3 py-2.5">
-        <Repeat role="img" aria-label={zh ? "重复" : "Repeats"} className="h-4 w-4 shrink-0 text-sage-700" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-ink">{describeSelectors(g.templates, zh)} · {describeTiming(g.mode, g.start, g.end, g.minutes, zh)}</p>
-          <p className="text-[11px] text-ink-soft">{formatDay(g.starts_on, zh)}{zh ? " 起" : " onward"}{g.ends_on ? (zh ? ` · 到 ${formatDay(g.ends_on, true)}` : ` · until ${formatDay(g.ends_on, false)}`) : ""}</p>
-        </div>
-        <RowMenu zh={zh} items={[
-          { label: zh ? "只改某一天…" : "Change one day…", onClick: () => openOverride(g) },
-          { label: zh ? "从某天起修改…" : "Change from a date…", onClick: () => openRevise(g) },
-          { label: zh ? "停止重复" : "Stop repeating", onClick: () => stopSeries(g), danger: true },
-        ]} />
-      </div>)}
+      {groups.map((g) => {
+        const all = g.slots.map((x) => x.slot_key);
+        const several = g.slots.length > 1;
+        return <div key={g.key} className="rounded-xl border border-sage-100 bg-sage-50/60">
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            <Repeat role="img" aria-label={zh ? "重复" : "Repeats"} className="h-4 w-4 shrink-0 text-sage-700" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm text-ink">{describeSelectors(g.templates, zh)} · {g.uniformTiming ? describeTiming(g.mode, g.start, g.end, g.minutes, zh) : (zh ? "每个时段时间不同" : "times vary")}</p>
+              <p className="text-[11px] text-ink-soft">{formatDay(g.starts_on, zh)}{zh ? " 起" : " onward"}{g.ends_on ? (zh ? ` · 到 ${formatDay(g.ends_on, true)}` : ` · until ${formatDay(g.ends_on, false)}`) : ""}</p>
+            </div>
+            <RowMenu zh={zh} items={[
+              { label: zh ? "只改某一天…" : "Change one day…", onClick: () => openOverride(g) },
+              { label: several ? (zh ? "整组从某天起修改…" : "Change all from a date…") : (zh ? "从某天起修改…" : "Change from a date…"), onClick: () => openRevise(g, all) },
+              { label: several ? (zh ? "整组停止重复" : "Stop whole series") : (zh ? "停止重复" : "Stop repeating"), onClick: () => stopSeries(g, all), danger: true },
+            ]} />
+          </div>
+          {several && <div className="space-y-0.5 border-t border-sage-100 px-3 py-1.5">
+            {g.slots.map((x) => { const t = slotTiming(x.current); return <div key={x.slot_key} className="flex items-center gap-3 py-1">
+              <span className="w-[92px] shrink-0 text-xs text-ink-soft">{describeSelectors([x.current], zh)}</span>
+              <ModeIcon mode={t.mode} zh={zh} />
+              <span className="min-w-0 flex-1 truncate text-xs text-ink">{describeTiming(t.mode, t.start, t.end, t.minutes, zh)}{x.later.length ? (zh ? ` · ${formatDay(x.later[0].starts_on, true)} 起有新时间` : ` · changes ${formatDay(x.later[0].starts_on, false)}`) : ""}</span>
+              <RowMenu zh={zh} items={[
+                { label: zh ? "只改这个时段…" : "Change this slot…", onClick: () => openRevise(g, [x.slot_key]) },
+                { label: zh ? "停止这个时段" : "Stop this slot", onClick: () => stopSeries(g, [x.slot_key]), danger: true },
+              ]} />
+            </div>; })}
+          </div>}
+        </div>;
+      })}
 
       {upcoming.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5">
         {multi && item.mode === "fixed" && <input type="checkbox" aria-label={zh ? "选择这条安排" : "Select plan"} checked={picked.includes(item.id)} onChange={(e) => setPicked((ids) => e.target.checked ? [...ids, item.id] : ids.filter((x) => x !== item.id))} />}
@@ -493,21 +556,25 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     </div>}
 
     {panel?.kind === "revise" && <div className="mt-4 space-y-3 border-t border-line pt-4">
-      <p className="text-sm font-semibold text-ink">{zh ? `修改「${describeSelectors(panel.group.templates, true)}」` : `Change "${describeSelectors(panel.group.templates, false)}"`}</p>
+      <p className="text-sm font-semibold text-ink">{zh ? `修改「${describeSelectors(panel.group.templates.filter((t) => panel.slotKeys.includes(t.slot_key)), true)}」` : `Change "${describeSelectors(panel.group.templates.filter((t) => panel.slotKeys.includes(t.slot_key)), false)}"`}</p>
       <label className="block text-xs text-ink-soft">{zh ? "从哪天起" : "From"}<AppDatePicker value={draft.day} onChange={(v) => setDraft({ ...draft, day: v })} /></label>
       <DraftFields draft={draft} setDraft={setDraft} zh={zh} showDate={false} />
       <p className="text-[11px] text-ink-soft">{zh ? "这天之前的安排保持不变。" : "Earlier days stay as they were."}</p>
       <div className="flex gap-2">
         <button type="button" className="flex-1 rounded-lg border border-line py-2.5 text-sm" onClick={close}>{zh ? "取消" : "Cancel"}</button>
-        <button type="button" disabled={busy} className="btn-primary flex-[2]" onClick={() => saveRevise(panel.group)}>{zh ? "保存" : "Save"}</button>
+        <button type="button" disabled={busy} className="btn-primary flex-[2]" onClick={() => saveRevise(panel.group, panel.slotKeys)}>{zh ? "保存" : "Save"}</button>
       </div>
     </div>}
 
     {panel?.kind === "override" && <div className="mt-4 space-y-3 border-t border-line pt-4">
       <p className="text-sm font-semibold text-ink">{zh ? "只改某一天" : "Change one day"}</p>
       <label className="block text-xs text-ink-soft">{zh ? "哪天" : "Which day"}<AppDatePicker value={overrideDay} onChange={setOverrideDay} /></label>
+      {eligibleSlots(panel.group, overrideDay).length > 1 && <div className="flex flex-wrap gap-2">
+        {eligibleSlots(panel.group, overrideDay).map((x) => { const v = coveringVersion(x.slot_key, overrideDay)!; const t = slotTiming(v); return <button key={x.slot_key} type="button" aria-pressed={overrideSlot === x.slot_key} onClick={() => setOverrideSlot(x.slot_key)}
+          className={`rounded-lg border px-3 py-2 text-xs ${overrideSlot === x.slot_key ? "border-sage-500 bg-sage-50 text-sage-700" : "border-line"}`}>{describeTiming(t.mode, t.start, t.end, t.minutes, zh)}</button>; })}
+      </div>}
       <div className="grid grid-cols-2 gap-2">
-        {panel.group.mode === "fixed" && <button type="button" aria-pressed={overrideAction === "reschedule"} onClick={() => setOverrideAction("reschedule")} className={`rounded-lg border p-2.5 text-xs ${overrideAction === "reschedule" ? "border-sage-500 bg-sage-50" : "border-line"}`}>{zh ? "这天换个时间" : "New time that day"}</button>}
+        {panel.group.templates.some((t) => t.execution_mode === "fixed") && <button type="button" aria-pressed={overrideAction === "reschedule"} onClick={() => setOverrideAction("reschedule")} className={`rounded-lg border p-2.5 text-xs ${overrideAction === "reschedule" ? "border-sage-500 bg-sage-50" : "border-line"}`}>{zh ? "这天换个时间" : "New time that day"}</button>}
         <button type="button" aria-pressed={overrideAction === "cancel"} onClick={() => setOverrideAction("cancel")} className={`rounded-lg border p-2.5 text-xs ${overrideAction === "cancel" ? "border-sage-500 bg-sage-50" : "border-line"}`}>{zh ? "这天不做" : "Skip that day"}</button>
       </div>
       {overrideAction === "reschedule" && <div className="grid grid-cols-2 gap-2">
