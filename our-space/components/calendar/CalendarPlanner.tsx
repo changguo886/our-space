@@ -334,7 +334,7 @@ function sessionDurationMinutes(session: TodoSession) {
  * 不要拿它判断一个未完成 Todo 现在是否“已经排满”。
  */
 function scheduledMinutes(todo: CalendarTodo) {
-  return (todo.todo_sessions ?? []).reduce(
+  return (todo.todo_sessions ?? []).filter(session=>session.scheduled_start&&session.scheduled_end).reduce(
     (total, session) => total + sessionDurationMinutes(session),
     0
   );
@@ -353,6 +353,7 @@ function activeScheduledMinutes(
 ) {
   return (todo.todo_sessions ?? []).reduce(
     (total, session) => {
+      if(!session.scheduled_start||!session.scheduled_end)return total;
       const endMs = new Date(
         session.scheduled_end
       ).getTime();
@@ -373,7 +374,7 @@ function expiredSessionCount(
 ) {
   return (todo.todo_sessions ?? []).filter(
     (session) =>
-      new Date(session.scheduled_end).getTime() < nowMs
+      Boolean(session.scheduled_start&&session.scheduled_end)&&new Date(session.scheduled_end).getTime() < nowMs
   ).length;
 }
 
