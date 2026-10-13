@@ -3,6 +3,19 @@
 Status: **Product workflow accepted; incremental implementation underway**. This document is the source of truth for Todo / Calendar / Focus / History semantics. It supersedes earlier assumptions that every Todo must be fully specified at creation. Existing architecture and production migration safety documents remain in force.
 
 
+## IMPLEMENTATION HANDOFF — REPEATING EXECUTION (code committed 2026-10-12)
+
+Implementation source paths and canonical variables:
+- `supabase/task_model_v3_m6_execution_scope.sql`: `todo_execution_templates.execution_mode` (flexible/window/fixed), `selector_kind` (all/weekday/month_day/month_end), `selector_value`, `replaces_slot_key`, `planned_minutes`, `window_start/end`. Set `replaces_slot_key` when a specific-day preset substitutes for one generic slot; NULL adds another independent slot.
+- `supabase/task_model_v3_m7_template_revision.sql`: authenticated RPCs `revise_execution_template_v3` and `stop_execution_template_future_v3` split/stop future effective intervals.
+- `lib/recurring-execution.ts`: eligibility, month-end handling, stable occurrence date utilities, timezone wall-clock conversion; no materialization of all future `todo_sessions`.
+- `components/TodoExecutionSchedule.tsx`: one-off / all future / specific weekdays-monthdays; flexible / window / fixed; one-date override; series revision; stop future.
+- `components/TaskBoardV2.tsx`: Today's eligibility and unarranged/upcoming buckets based on real occurrence/booking, not only parent Todo creation date.
+- `components/calendar/CalendarViews.tsx` and `components/calendar/CalendarPlanner.tsx`: virtual fixed bookings in month/week and day hourly grid, disabled drag/resize and stable (todo_id, slot_key, occurrence_date) IDs; click to edit via Todo.
+- **Current status: code committed, NOT yet migration-applied/tested/locally built in this conversation.** Apply M6 then M7 only once after review, run build and all acceptance tests from [recurring execution checklist](./task-v3-recurring-execution-acceptance.md). Never claim feature released solely from a code commit.
+
+---
+
 ## APPROVED EXECUTION-ARRANGEMENT UI AND DATE BUCKETS (2026-10-12)
 
 **Blocking feature for local acceptance test.** The pre-existing TodoExecutionSchedule.tsx is only a *single-date* writer; a visual mock-up is NOT implementation. Complete data persistence, read-back, Calendar rendering and date classification before asking for end-to-end testing.
