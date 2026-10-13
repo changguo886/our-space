@@ -157,7 +157,7 @@ export default function AddTodoForm({
       return;
     }
 
-    if(taskType==="one_time" && planMode==="fixed"){
+    if(false && taskType==="one_time" && planMode==="fixed"){
       const from=new Date(sessionStart).getTime(),to=new Date(sessionEnd).getTime();
       if(!sessionStart||!sessionEnd||!Number.isFinite(from)||!Number.isFinite(to)||to<=from){
         setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
@@ -329,17 +329,8 @@ export default function AddTodoForm({
           </div>
         </section>
       ):taskType==="one_time" ? (
-        <section className="space-y-3">
-          <p className="text-xs font-medium text-ink-soft">{zh?"什么时候处理？（可选）":"When? (optional)"}</p>
-          <div className="grid grid-cols-2 gap-2">
-            {([{value:"flexible",label:zh?"灵活安排":"Flexible"},{value:"fixed",label:zh?"固定时段":"Booked time"}] as const).map(item=>
-              <button type="button" key={item.value} onClick={()=>setPlanMode(item.value)} aria-pressed={planMode===item.value} disabled={busy} className={`rounded-xl border px-3 py-2 text-sm ${planMode===item.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{item.label}</button>)}
-          </div>
-          {planMode==="fixed"&&<div className="space-y-3 rounded-xl bg-paper/40 p-3">
-            <label className="block text-xs text-ink-soft">{zh?"开始":"Start"}<input className={field+" mt-1"} type="datetime-local" value={sessionStart} disabled={busy} onChange={e=>{setSessionStart(e.target.value);if(minutes&&Number(minutes)>0){const d=new Date(e.target.value);if(!Number.isNaN(d.getTime())){d.setMinutes(d.getMinutes()+Number(minutes)*(durationUnit==="hour"?60:1));const local=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);setSessionEnd(local);}}}}/></label>
-            <label className="block text-xs text-ink-soft">{zh?"结束":"End"}<input className={field+" mt-1"} type="datetime-local" value={sessionEnd} disabled={busy} min={sessionStart||undefined} onChange={e=>setSessionEnd(e.target.value)}/></label>
-            <p className="text-xs text-ink-faint">{zh?"输入开始时间和预计时长可自动推算结束；也可以自行调整。":"Start and estimate can suggest an end; you can adjust it."}</p>
-          </div>}
+        <section className="rounded-xl border border-line bg-paper/30 p-3">
+          <p className="text-xs text-ink-soft">{zh?"单次任务只需要先记录内容。具体执行日期、时间窗口和预计投入，请创建后在「执行安排」设置。":"Create the task first. Choose its execution date, window, and effort later."}</p>
         </section>
       ):(
         <section className="space-y-3 rounded-xl bg-paper/40 p-3">
@@ -369,7 +360,7 @@ export default function AddTodoForm({
       <details className="rounded-xl border border-line px-3 py-3">
         <summary className="cursor-pointer text-xs font-medium text-ink-soft">{zh?"更多选项（可选）":"More options (optional)"}</summary>
         <div className="mt-4 space-y-4">
-          {taskType==="one_time"&&<label className="block text-xs text-ink-soft">{zh?"预计投入（可选）":"Estimated effort (optional)"}<DurationInput value={minutes} unit={durationUnit} onValueChange={setMinutes} onUnitChange={setDurationUnit} disabled={busy}/></label>}
+          
 
           
           <label className="block text-xs text-ink-soft">{zh?"可见范围":"Visibility"}<select className={field+" mt-1"} value={visibility} onChange={e=>setVisibility(e.target.value as typeof visibility)} disabled={busy}><option value="private">{zh?"仅自己":"Private"}</option><option value="space">{activeSpaceName}</option></select></label>
