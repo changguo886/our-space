@@ -156,7 +156,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
       <p className="text-xs font-semibold text-ink-soft">1. 应用范围</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");setReplaceSlotKey(x.id==="by_day"?[...new Set(templates.filter(t=>t.selector_kind==="all").map(t=>t.slot_key))].length===1?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"":"");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
+        {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");setReplaceSlotKey(x.id==="by_day"?[...new Set(templates.filter(t=>t.selector_kind==="all").map(t=>t.slot_key))].length===1?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"":"");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
       </div>
       {scope==="by_day"&&<label className="block text-xs text-ink-soft">选择重复日期
         <select className={field+" mt-1"} value={selector} onChange={e=>setSelector(e.target.value)}>
@@ -177,7 +177,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {pattern&&<p className="text-xs text-ink-faint">接下来：{upcomingEligible(pattern,todoStart||date,date,370,3).join("、")||"暂无符合日期"}</p>}
       <p className="text-xs font-semibold text-ink-soft">2. 时间方式</p>
       <div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:"灵活安排"},{id:"window",label:"时间窗口"},{id:"fixed",label:"固定时段"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>
-      {(scope!=="once"||mode!=="fixed")&&<><label className="block text-xs text-ink-soft">执行日期<input className={field+" mt-1"} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label></>}
+      {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"以后重复安排从哪天开始？"}<input className={field+" mt-1"} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>}
+      {mode!=="fixed"&&<label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
       {mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input className={field+" mt-1"} type="time" value={windowStart} onChange={e=>setWindowStart(e.target.value)}/></label><label className="text-xs text-ink-soft">最晚结束<input className={field+" mt-1"} type="time" value={windowEnd} onChange={e=>setWindowEnd(e.target.value)}/></label></div>}
       {mode==="fixed"&&<div className="space-y-3">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -186,7 +187,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           {scope==="once"&&<label className="block text-xs text-ink-soft">结束日期（YYYY-MM-DD）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="2026-10-15" value={fixedEndDate} onChange={e=>setFixedEndDate(e.target.value)}/></label>}
           <label className="block text-xs text-ink-soft">结束时间（24小时制）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="20:45" value={fixedEndTime} onChange={e=>setFixedEndTime(e.target.value)}/></label>
         </div>
-        <p className="text-xs text-ink-faint">支持直接输入日期与时间，例如 2026-10-15、20:45；可以跨日期预约。</p>
+        <p className="text-xs text-ink-faint">{scope==="once"?"单次固定预约允许跨日期。":"重复固定预约按当地时钟时间自动应用于未来日期，当前只支持同一天内的时段。"}</p>
       </div>}
       <p className="text-xs text-ink-faint">{mode==="fixed"?"固定时段会显示在 Calendar；重复设置自动生成未来时段。":mode==="window"?"窗口不是连续预约时长，也不会显示在 Calendar。":"只记录投入计划，不占用 Calendar。"}</p>
       <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>{saving?"保存中…":editingTemplateId?"从选定日期起更新":"保存执行安排"}</button>
