@@ -6,7 +6,7 @@ import CalendarPlanner from "@/components/calendar/CalendarPlanner";
 import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { templateEligible, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
+import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
 type CalendarTask = { id:string; title:string; task_date?:string; task_type?:"one_time"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
@@ -65,7 +65,10 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       if(change?.action==="reschedule"&&change.scheduled_start&&change.scheduled_end){
         return inDay(change.scheduled_start,d)?[{todoId:t.todo_id,title:title+"（已调整）",start:change.scheduled_start,end:change.scheduled_end}]:[];
       }
-      return [{todoId:t.todo_id,title:title+"（重复）",start:d+"T"+t.start_time!.slice(0,5)+":00",end:d+"T"+t.end_time!.slice(0,5)+":00"}];
+      const start=wallClockISO(d,t.start_time!,t.timezone);
+      const end=wallClockISO(d,t.end_time!,t.timezone);
+      if(!start||!end||end<=start)return [];
+      return [{todoId:t.todo_id,title:title+"（重复）",start,end}];
     });
   }
   function movedOverrideEvents(d:string){
