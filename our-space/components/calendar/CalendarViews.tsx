@@ -6,10 +6,11 @@ import CalendarPlanner from "@/components/calendar/CalendarPlanner";
 import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import {normalizeTaskColor} from "@/lib/task-colors";
 import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
-type CalendarTask = { id:string; title:string; task_date?:string; task_type?:"one_time"|"project"|"routine"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
+type CalendarTask = { id:string; color_hex?:string|null; title:string; task_date?:string; task_type?:"one_time"|"project"|"routine"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
 type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
 const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
@@ -54,6 +55,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const [y,m]=date.split("-").map(Number);const month=date.slice(0,7);
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
   const tasks=initialTodos as CalendarTask[];
+  const eventColor=(todoId:string)=>normalizeTaskColor(tasks.find(t=>t.id===todoId)?.color_hex);
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
     ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
@@ -110,7 +112,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
         }))}/>
       {(recurringEvents(date).length+movedOverrideEvents(date).length)>0&&<section className="rounded-xl border border-line bg-white p-3">
         <p className="mb-2 text-xs font-semibold text-ink-soft">重复固定时段（预览，不创建独立预约）</p>
-        {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
+        {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg border-l-4 bg-paper/40 px-3 py-2 text-xs text-ink-soft" style={{borderLeftColor:eventColor(e.todoId)}}>{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
       </section>}
     </div> :
     <div className="space-y-4">
@@ -143,7 +145,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
-                <div key={e.todoId+j} className="truncate rounded bg-sage-50 px-1 py-0.5 text-[10px] text-sage-700">{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
+                <div key={e.todoId+j} className="truncate rounded border-l-[3px] bg-paper/40 px-1 py-0.5 text-[10px] text-ink-soft" style={{borderLeftColor:eventColor(e.todoId)}}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
                 {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
 </>}
             </button>)}
