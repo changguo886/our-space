@@ -70,6 +70,12 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setLoading(false);
   }
   useEffect(()=>{void refresh();},[todoId]);
+  // Existing dated flexible/window plans are preserved when introducing a new future series.
+  const latestSinglePlan = plans.map(p=>p.plan_date).filter(Boolean).sort().at(-1)??null;
+  const nextUnplannedSeriesDate = latestSinglePlan?addDaysISO(latestSinglePlan,1):null;
+  const autoSeriesDate = scope!=="once"&&!editingTemplateId&&nextUnplannedSeriesDate&&date<=latestSinglePlan
+    ? nextUnplannedSeriesDate : date;
+
   async function save(){
     setError("");
     if(scope!=="by_day"&&mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
@@ -99,7 +105,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       setSaving(false);setError(zh?"灵活次数没有指定重复日期。请先在任务规则中改为固定日期，或仅安排一次。":"Flexible quotas have no recurring dates. Change the routine rule to fixed dates, or schedule a single session.");return;
     }
     if(repeating&&scope!=="by_day"&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
-    const effectiveStart=date<todoStart?todoStart:date;
+    const effectiveStart=autoSeriesDate<todoStart?todoStart:autoSeriesDate;
     if(repeating&&scope!=="by_day"&&!editingTemplateId&&templates.some(t=>
       t.selector_kind===selectorKind&&t.selector_value===selectorValue&&
       t.starts_on<=effectiveStart&&(t.ends_on===null||effectiveStart<=t.ends_on)&&
@@ -170,7 +176,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     const result=repeating&&editingTemplateId
       ? await db.rpc("revise_execution_template_v3",{
           p_template_id:editingTemplateId,
-          p_effective_on:date,
+          p_effective_on:effectiveStart,
           p_new_mode:mode,
           p_start_time:mode==="fixed"?fixedStartTime:null,
           p_end_time:mode==="fixed"?fixedEndTime:null,
