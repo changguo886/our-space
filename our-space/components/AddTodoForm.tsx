@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import AppDatePicker from "@/components/ui/AppDatePicker";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
@@ -265,10 +266,10 @@ export default function AddTodoForm({
       {taskType==="planned" ? (
         <section className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
           <p className="text-xs text-ink-faint">{zh?"围绕一个成果制定计划，不是重复打卡。具体步骤与时间可创建后再安排。":"Plan toward one outcome, not recurring check-ins."}</p>
-          <label className="block text-xs text-ink-soft">{zh?"计划开始":"Plan start"}<input type="date" className={field+" mt-1"} value={startDate} onChange={e=>setStartDate(e.target.value)} disabled={busy}/></label>
-          <label className="block text-xs text-ink-soft">{zh?"目标完成":"Target finish"}<input type="date" className={field+" mt-1"} min={startDate} value={targetFinish} onChange={e=>setTargetFinish(e.target.value)} disabled={busy} required/></label>
+          <label className="block text-xs text-ink-soft">{zh?"计划开始":"Plan start"}<input type="hidden" value={startDate} readOnly/><AppDatePicker value={startDate} onChange={setStartDate} disabled={busy}/></label>
+          <label className="block text-xs text-ink-soft">{zh?"目标完成":"Target finish"}<input type="hidden" value={targetFinish} readOnly/><AppDatePicker value={targetFinish} onChange={setTargetFinish} min={startDate} disabled={busy} required/></label>
           <details><summary className="cursor-pointer text-xs text-ink-soft">{zh?"正式截止日期（可选）":"Official deadline (optional)"}</summary>
-            <input type="date" className={field+" mt-2"} min={targetFinish||startDate} value={officialDeadline} onChange={e=>setOfficialDeadline(e.target.value)} disabled={busy}/>
+            <input type="hidden" value={officialDeadline} readOnly/><AppDatePicker value={officialDeadline} onChange={setOfficialDeadline} disabled={busy}/>
           </details>
           <div className="space-y-1.5">
             <p className="text-xs text-ink-soft">{zh?"旅程颜色（自动随计划建立）":"Journey color (created automatically)"}</p>
@@ -287,20 +288,20 @@ export default function AddTodoForm({
             {!(goalPeriod==="week"&&cadence==="weekly_days")&&!(goalPeriod==="month"&&habitArrangement==="fixed")&&<label className="text-xs text-ink-soft">{zh?"执行次数":"Occurrences"}<input className={field+" mt-1"} type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e=>{setGoalValue(e.target.value);setTimesPerWeek(Math.min(7,Math.max(1,Number(e.target.value)||1)));}}/></label>}
           </div>
           {goalPeriod==="week"&&<div className="space-y-2 rounded-xl border border-line bg-white p-3">
-            <p className="text-xs font-medium text-ink-soft">每周执行方式 / Weekly plan</p>
-            <div className="grid grid-cols-2 gap-2">{([{id:"weekly_quota",label:"灵活次数"},{id:"weekly_days",label:"固定星期"}] as const).map(option=><button key={option.id} type="button" disabled={busy} aria-pressed={cadence===option.id} onClick={()=>{setCadence(option.id);if(option.id==="weekly_days"){const selected=weekdays.length?weekdays:[1,3,5];setWeekdays(selected);setGoalValue(String(selected.length));}else{setGoalValue(String(timesPerWeek));}}} className={`rounded-lg border px-2 py-2 text-xs ${cadence===option.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
-            {cadence==="weekly_days"&&<><div className="grid grid-cols-7 gap-1">{["一","二","三","四","五","六","日"].map((label,index)=><button key={index} type="button" disabled={busy} aria-pressed={weekdays.includes(index+1)} onClick={()=>{const selected=weekdays.includes(index+1)?weekdays.filter(v=>v!==index+1):[...weekdays,index+1].sort((a,b)=>a-b);setWeekdays(selected);setGoalValue(String(selected.length));}} className={`rounded-lg border py-2 text-xs ${weekdays.includes(index+1)?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{label}</button>)}</div><p className="text-xs text-ink-faint">已选 {weekdays.length} 天，自动保存每周 {weekdays.length} 次；不自动占用日历。</p></>}
+            <p className="text-xs font-medium text-ink-soft">{zh?"每周执行方式":"Weekly pattern"}</p>
+            <div className="grid grid-cols-2 gap-2">{([{id:"weekly_quota",label:zh?"灵活次数":"Flexible quota"},{id:"weekly_days",label:zh?"固定星期":"Fixed weekdays"}] as const).map(option=><button key={option.id} type="button" disabled={busy} aria-pressed={cadence===option.id} onClick={()=>{setCadence(option.id);if(option.id==="weekly_days"){const selected=weekdays.length?weekdays:[1,3,5];setWeekdays(selected);setGoalValue(String(selected.length));}else{setGoalValue(String(timesPerWeek));}}} className={`rounded-lg border px-2 py-2 text-xs ${cadence===option.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
+            {cadence==="weekly_days"&&<><div className="grid grid-cols-7 gap-1">{(zh?["一","二","三","四","五","六","日"]:["M","T","W","T","F","S","S"]).map((label,index)=><button key={index} type="button" disabled={busy} aria-pressed={weekdays.includes(index+1)} onClick={()=>{const selected=weekdays.includes(index+1)?weekdays.filter(v=>v!==index+1):[...weekdays,index+1].sort((a,b)=>a-b);setWeekdays(selected);setGoalValue(String(selected.length));}} className={`rounded-lg border py-2 text-xs ${weekdays.includes(index+1)?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{label}</button>)}</div><p className="text-xs text-ink-faint">{zh?`已选 ${weekdays.length} 天；不自动占用日历。`:`${weekdays.length} selected days; no calendar time is booked automatically.`}</p></>}
           </div>}
           {goalPeriod==="month"&&<div className="space-y-3 rounded-xl border border-line bg-white p-3">
-            <p className="text-xs font-medium text-ink-soft">每月执行方式</p>
-            <div className="grid grid-cols-2 gap-2">{([{value:"flexible",label:"灵活次数"},{value:"fixed",label:"固定日期"}] as const).map(option=><button type="button" key={option.value} disabled={busy} onClick={()=>setHabitArrangement(option.value)} aria-pressed={habitArrangement===option.value} className={`rounded-lg border p-2 text-xs ${habitArrangement===option.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
+            <p className="text-xs font-medium text-ink-soft">{zh?"每月执行方式":"Monthly pattern"}</p>
+            <div className="grid grid-cols-2 gap-2">{([{value:"flexible",label:zh?"灵活次数":"Flexible quota"},{value:"fixed",label:zh?"固定日期":"Fixed dates"}] as const).map(option=><button type="button" key={option.value} disabled={busy} onClick={()=>setHabitArrangement(option.value)} aria-pressed={habitArrangement===option.value} className={`rounded-lg border p-2 text-xs ${habitArrangement===option.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
             {habitArrangement==="fixed"&&<>
               <div className="grid grid-cols-7 gap-1">{Array.from({length:31},(_,i)=>i+1).map(day=><button key={day} type="button" disabled={busy} onClick={()=>setMonthDays(current=>current.includes(day)?current.filter(x=>x!==day):[...current,day].sort((a,b)=>a-b))} aria-pressed={monthDays.includes(day)} className={`rounded-lg border py-2 text-xs ${monthDays.includes(day)?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{day}</button>)}</div>
-              <label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={includeMonthEnd} onChange={e=>setIncludeMonthEnd(e.target.checked)} disabled={busy}/> 每月最后一天（28/29/30/31 日自动适配）</label>
-              <p className="text-xs text-ink-faint">已选 {monthDays.length} 个日期{includeMonthEnd?"，另加当月最后一天":""}。不存在的日期当月跳过，不自动改期。</p>
+              <label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={includeMonthEnd} onChange={e=>setIncludeMonthEnd(e.target.checked)} disabled={busy}/> {zh?"每月最后一天（自动适配）":"Last day of month (automatic)"}</label>
+              <p className="text-xs text-ink-faint">{zh?`已选 ${monthDays.length} 个日期${includeMonthEnd?"，包含月末":""}。不存在的日期将跳过。`:`${monthDays.length} selected dates${includeMonthEnd?", including month-end":""}. Missing dates are skipped.`}</p>
             </>}
           </div>}
-          {goalPeriod==="week"&&Number(goalValue)>7&&<p className="text-xs text-amber-700">每周超过 7 次尚不支持，请改为 1–7 次。</p>}
+          {goalPeriod==="week"&&Number(goalValue)>7&&<p className="text-xs text-amber-700">{zh?"请使用有效的目标次数。":"Enter a supported target count."}</p>}
           <p className="text-xs text-ink-faint">{zh?"这里只制定执行频率；每次投入时间可在任务的执行安排中单独设置。":"Set the frequency here; choose execution times later."}</p>
         </section>
       )}
