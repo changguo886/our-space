@@ -169,6 +169,8 @@ export default function AddTodoForm({
       }
       if (goalPeriod==="week" && cadence==="weekly_quota" && (!Number.isInteger(Number(goalValue)) || Number(goalValue)<1 || Number(goalValue)>7)) {setError("目前每周灵活次数为 1–7 次。");return;}
       if (goalPeriod==="month" && habitArrangement==="fixed" && monthDays.length===0 && !includeMonthEnd){setError("请至少选择一个月度日期，或选择每月最后一天。");return;}
+      const fixedFrequency=(goalPeriod==="week"&&cadence==="weekly_days")||(goalPeriod==="month"&&habitArrangement==="fixed");
+      if(!fixedFrequency&&(!Number.isSafeInteger(Number(goalValue))||Number(goalValue)<1||Number(goalValue)>10000)){setError("请输入有效的执行次数（1–10000）。");return;}
     }
     if (taskType==="planned" && (!targetFinish || targetFinish<startDate || (officialDeadline && officialDeadline<targetFinish))) {
       setError("请确认目标完成日期不早于开始日期，正式截止日期不早于目标完成日期。");
