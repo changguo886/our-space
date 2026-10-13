@@ -23,6 +23,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [projectEnd,setProjectEnd]=useState<string|null>(null);
   const [templates,setTemplates]=useState<ExecutionTemplateV3[]>([]);
   const [timezone]=useState(()=>Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC");
+  const [editingTemplateId,setEditingTemplateId]=useState<string|null>(null);
   const [overrideSlot,setOverrideSlot]=useState("");
   const [overrideDate,setOverrideDate]=useState(()=>localDate(new Date()));
   const [overrideStart,setOverrideStart]=useState("09:00");
@@ -73,7 +74,18 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(repeating&&selectorKind==="all"&&scope==="by_day"){setSaving(false);setError("请先选择需要分别安排的日期。");return;}
     if(repeating&&!pattern&&!projectEnd){setSaving(false);setError("此任务没有重复规则或计划结束日期，请使用单次安排。");return;}
     if(repeating&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
-    const result=repeating
+    const result=repeating&&editingTemplateId
+      ? await db.rpc("revise_execution_template_v3",{
+          p_template_id:editingTemplateId,
+          p_effective_on:date,
+          p_new_mode:mode,
+          p_start_time:mode==="fixed"?fixedStartTime:null,
+          p_end_time:mode==="fixed"?fixedEndTime:null,
+          p_window_start:mode==="window"?windowStart:null,
+          p_window_end:mode==="window"?windowEnd:null,
+          p_planned_minutes:mode==="fixed"?null:Number(minutes),
+        })
+      : repeating
       ? await db.from("todo_execution_templates").insert({
           todo_id:todoId,starts_on:date<todoStart?todoStart:date,ends_on:projectEnd,
           timezone,execution_mode:mode,selector_kind:selectorKind,selector_value:selectorValue,
@@ -84,7 +96,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       : mode==="fixed" ? await db.from("todo_sessions").insert({todo_id:todoId,scheduled_start:toFixedDateTime(fixedStartDate,fixedStartTime).toISOString(),scheduled_end:toFixedDateTime(fixedEndDate,fixedEndTime).toISOString()}) : await db.from("todo_execution_plans").insert({todo_id:todoId,plan_date:date,mode,planned_minutes:Number(minutes),window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null});
     setSaving(false);
     if(result.error){setError("保存失败："+result.error.message);return;}
-    await refresh();setOpen(false);
+    await refresh();setOpen(false);setEditingTemplateId(null);
   }
   async function saveOverride(){
     const t=templates.find(x=>x.id===overrideSlot);
@@ -110,7 +122,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     {loading?<p className="mt-3 text-xs text-ink-faint">读取安排中…</p>:<div className="mt-3 space-y-1.5">
       {plans.map(p=><div key={p.id} className="rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft">{p.plan_date} · {p.mode==="flexible"?"灵活安排":`时间窗口 ${p.window_start?.slice(0,5)}–${p.window_end?.slice(0,5)}`} · {p.planned_minutes} 分钟</div>)}
       {sessions.map(s=><div key={s.id} className="rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">固定时段 · {new Date(s.scheduled_start).toLocaleString()} – {new Date(s.scheduled_end).toLocaleTimeString()}</div>)}
-      {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><button type="button" className="shrink-0 underline" onClick={async()=>{if(!window.confirm("删除这条未来重复安排？"))return;const x=await createClient().from("todo_execution_templates").delete().eq("id",t.id);if(x.error)setError(x.error.message);else await refresh();}}>删除</button></div>)}
+      {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><span className="flex shrink-0 gap-2"><button type="button" className="underline" onClick={()=>{setEditingTemplateId(t.id);setScope("all");setOpen(true);setDate(t.starts_on>date?t.starts_on:date);setMode(t.execution_mode);setFixedStartTime(t.start_time?.slice(0,5)??"09:00");setFixedEndTime(t.end_time?.slice(0,5)??"10:00");setWindowStart(t.window_start?.slice(0,5)??"08:00");setWindowEnd(t.window_end?.slice(0,5)??"12:00");setMinutes(String(t.planned_minutes??45));}}>从这天起修改</button><button type="button" className="underline" onClick={async()=>{if(!window.confirm("删除这条未来重复安排？"))return;const x=await createClient().from("todo_execution_templates").delete().eq("id",t.id);if(x.error)setError(x.error.message);else await refresh();}}>删除</button></span></div>)}
       {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">尚无执行安排。可以先不安排。</p>}
     </div>}
     {templates.some(t=>t.execution_mode==="fixed")&&<details className="mt-4 rounded-xl border border-line p-3">
@@ -124,6 +136,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       </div>
     </details>}
     {open&&<div className="mt-4 space-y-3 border-t border-line pt-4">
+      {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
       <p className="text-xs font-semibold text-ink-soft">1. 应用范围</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
@@ -153,7 +166,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         <p className="text-xs text-ink-faint">支持直接输入日期与时间，例如 2026-10-15、20:45；可以跨日期预约。</p>
       </div>}
       <p className="text-xs text-ink-faint">{mode==="fixed"?"固定时段会显示在 Calendar；重复设置自动生成未来时段。":mode==="window"?"窗口不是连续预约时长，也不会显示在 Calendar。":"只记录投入计划，不占用 Calendar。"}</p>
-      <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>{saving?"保存中…":"保存执行安排"}</button>
+      <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>{saving?"保存中…":editingTemplateId?"从选定日期起更新":"保存执行安排"}</button>
     </div>}
     {error&&<p role="alert" className="mt-2 text-xs text-blush-500">{error}</p>}
   </section>;
