@@ -68,7 +68,14 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       return [{todoId:t.todo_id,title:title+"（重复）",start:d+"T"+t.start_time!.slice(0,5)+":00",end:d+"T"+t.end_time!.slice(0,5)+":00"}];
     });
   }
-  function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d)];}
+  function movedOverrideEvents(d:string){
+    return overrides.filter(o=>o.action==="reschedule"&&o.scheduled_start&&o.occurrence_date!==d&&inDay(o.scheduled_start,d)
+      &&templates.some(t=>t.todo_id===o.todo_id&&t.slot_key===o.slot_key)).map(o=>({
+      todoId:o.todo_id,title:(tasks.find(t=>t.id===o.todo_id)?.title??"任务")+"（单次改期）",
+      start:o.scheduled_start!,end:o.scheduled_end!
+    }));
+  }
+  function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d),...movedOverrideEvents(d)];}
   const taskTitle = new Map(tasks.map(t=>[t.id,t.title]));
   const activeJourney=journeys.find(j=>j.todo_id===selectedTodo)??journeys[0];
   return <div className="mt-6">
@@ -82,9 +89,9 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     </div>
     {mode==="day" ? <div className="space-y-3">
       <CalendarPlanner initialTodos={initialTodos} initialDate={date}/>
-      {recurringEvents(date).length>0&&<section className="rounded-xl border border-line bg-white p-3">
+      {(recurringEvents(date).length+movedOverrideEvents(date).length)>0&&<section className="rounded-xl border border-line bg-white p-3">
         <p className="mb-2 text-xs font-semibold text-ink-soft">重复固定时段（预览，不创建独立预约）</p>
-        {recurringEvents(date).map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
+        {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
       </section>}
     </div> :
     <div className="space-y-4">
