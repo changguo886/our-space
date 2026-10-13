@@ -52,6 +52,8 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
     return p.arrangement==="fixed"?`每月 ${(p.month_days??[]).join("、")}${p.include_month_end?"、最后一天":""} 日`:`每月 ${p.target_count} 次`;
   };
   const [typeFilter,setTypeFilter] = useState<"all"|"one_time"|"recurring"|"habit">("all");
+  const [categoryFilter,setCategoryFilter] = useState("all");
+  const [collapsedCategories,setCollapsedCategories] = useState<string[]>([]);
 
   const buckets = useMemo(() => ({
     today: todos.filter(t=>t.task_date===today&&t.status!=="completed"),
@@ -62,7 +64,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   }),[todos,today]);
   const visible = buckets[filter].filter(t=>typeFilter==="all"||(t.task_type??"one_time")===typeFilter).sort((a,b)=>filter==="completed"?(b.completed_at??"").localeCompare(a.completed_at??""):0).slice(0,filter==="completed"?10:undefined);
   const categories: {key:string;label:string}[] = [{key:"work",label:"工作"},{key:"study",label:"学习"},{key:"life",label:"生活"},{key:"rest",label:"休息"},{key:"other",label:"其他"},{key:"none",label:"未分类"}];
-  const grouped = categories.map(c=>({ ...c, items:visible.filter(t=>(t.category??"none")===c.key) })).filter(c=>c.items.length>0);
+  const grouped = categories.filter(c=>categoryFilter==="all"||categoryFilter===c.key).map(c=>({ ...c, items:visible.filter(t=>(t.category??"none")===c.key) })).filter(c=>c.items.length>0);
   const selected = todos.find(t=>t.id===selectedId)??null;
   const displayType = (todo:Todo) => todo.task_type==="one_time" && todo.target_finish_date ? "定期任务" : typeLabel[todo.task_type??"one_time"];
   const tabs: {key:Filter;label:string}[] = [
@@ -98,7 +100,12 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
               onClick={()=>{setFilter(tab.key);setSelectedId(null);}}>{tab.label} <span className="opacity-65">{buckets[tab.key].length}</span></button>)}
           </div>
           <div className="flex items-center justify-between gap-2 py-3">
-            <span className="text-xs text-ink-faint">按分类查看</span>
+            <label className="flex min-w-0 items-center gap-2 text-xs text-ink-faint">分类
+              <select aria-label="按任务分类筛选" className="min-w-0 max-w-[145px] rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink-soft" value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setSelectedId(null);}}>
+                <option value="all">全部分类</option>
+                {categories.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+              </select>
+            </label>
             <select aria-label="任务类型筛选" className="rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink-soft" value={typeFilter} onChange={e=>setTypeFilter(e.target.value as typeof typeFilter)}>
               <option value="all">全部类型</option><option value="one_time">单次任务</option><option value="recurring">旧版重复任务</option><option value="habit">习惯养成</option>
             </select>
@@ -106,13 +113,16 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
           <div className="space-y-4">
             {visible.length===0&&<p className="rounded-xl bg-paper/40 p-3 text-sm text-ink-faint">这里暂时没有任务。</p>}
             {grouped.map(group=><div key={group.key}>
-              <div className="mb-1.5 flex items-center gap-2 px-1"><h3 className="text-xs font-semibold text-ink-soft">{group.label}</h3><span className="text-[10px] text-ink-faint">{group.items.length}</span></div>
-              <div className="space-y-1.5">{group.items.map(todo=><button key={todo.id} type="button" onClick={()=>setSelectedId(todo.id)} aria-pressed={selectedId===todo.id}
+              <button type="button" className="mb-1.5 flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-left hover:bg-paper/60" aria-expanded={!collapsedCategories.includes(group.key)} onClick={()=>setCollapsedCategories(current=>current.includes(group.key)?current.filter(k=>k!==group.key):[...current,group.key])}>
+                <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform ${collapsedCategories.includes(group.key)?"":"rotate-90"}`}/>
+                <h3 className="text-xs font-semibold text-ink-soft">{group.label}</h3><span className="text-[10px] text-ink-faint">{group.items.length}</span>
+              </button>
+              {!collapsedCategories.includes(group.key)&&<div className="space-y-1.5">{group.items.map(todo=><button key={todo.id} type="button" onClick={()=>setSelectedId(todo.id)} aria-pressed={selectedId===todo.id}
                 className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${selectedId===todo.id?"border-sage-300 bg-sage-50":"border-line/70 bg-white hover:bg-paper/50"}`}>
                 {todo.status==="completed"?<CheckCircle2 className="h-4 w-4 shrink-0 text-sage-600"/>:<span className={`h-2 w-2 shrink-0 rounded-full ${todo.task_type==="habit"?"bg-emerald-400":todo.task_type==="recurring"?"bg-amber-400":"bg-mist-300"}`}/>}
                 <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-medium ${todo.status==="completed"?"text-ink-faint line-through":"text-ink"}`}>{todo.title}</span><span className="block text-[10px] text-ink-faint">{displayType(todo)} · {ruleSummary(todo)|| (todo.target_finish_date?`目标 ${todo.target_finish_date}`:todo.task_date||"待安排")}{(bookedCounts[todo.id]??0)>0?` · 已预约 ${bookedCounts[todo.id]} 段`:""}</span></span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint"/>
-              </button>)}</div>
+              </button>)}</div>}
             </div>)}
             {filter==="completed"&&<div className="border-t border-line pt-3 text-center"><p className="mb-2 text-xs text-ink-faint">这里只显示最近 10 项已完成任务。</p><Link href="/history" className="text-xs font-medium text-sage-700 hover:underline">查看完整历史记录 →</Link></div>}
           </div>
