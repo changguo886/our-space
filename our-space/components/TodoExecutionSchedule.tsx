@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
+import { addDaysISO, lastDayISO, weekdayISO, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
 
 type Mode = "flexible" | "window" | "fixed";
 type Plan = { id:string; mode:"flexible"|"window"; plan_date:string; planned_minutes:number; window_start:string|null; window_end:string|null };
@@ -132,6 +132,17 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(writeError){setError("保存单次调整失败："+writeError.message);return;}
     setError("");await refresh();
   }
+  const preview = pattern
+    ? upcomingEligible(pattern,todoStart||date,date,800,40).filter(day=>{
+        if(scope!=="by_day"||selector==="all")return true;
+        const [kind,value]=selector.split(":");
+        return kind==="weekday"?weekdayISO(day)===Number(value)
+          :kind==="month_day"?Number(day.slice(-2))===Number(value)
+          :kind==="month_end"?Number(day.slice(-2))===lastDayISO(day):false;
+      }).slice(0,3)
+    : projectEnd ? Array.from({length:Math.min(90,Math.max(0,Math.round((new Date(projectEnd+"T12:00").getTime()-new Date(date+"T12:00").getTime())/86400000)+1))},(_,i)=>addDaysISO(date,i))
+        .filter(day=>day>=(todoStart||date)&&(scope!=="by_day"||selector==="all"||(selector.startsWith("weekday:")&&weekdayISO(day)===Number(selector.split(":")[1])))).slice(0,3)
+      : [];
   return <section className="mt-4 rounded-xl border border-line bg-white p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h3 className="text-sm font-semibold text-ink">执行安排</h3><p className="text-xs text-ink-faint">只有固定时段会显示在 Calendar。</p></div>
@@ -175,7 +186,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         </select>
       </label>}
       {scope!=="once"&&<p className="text-xs text-ink-faint">将从所选开始日期起，对未来符合任务规则的日期持续生效；不批量生成日历预约记录。</p>}
-      {pattern&&<p className="text-xs text-ink-faint">接下来：{upcomingEligible(pattern,todoStart||date,date,370,3).join("、")||"暂无符合日期"}</p>}
+      {scope!=="once"&&<p className="text-xs text-ink-faint">预计生效日期：{preview.join("、")||"当前选择暂无符合日期"}</p>}
       <p className="text-xs font-semibold text-ink-soft">2. 时间方式</p>
       <div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:"灵活安排"},{id:"window",label:"时间窗口"},{id:"fixed",label:"固定时段"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>
       {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"以后重复安排从哪天开始？"}<input className={field+" mt-1"} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>}
