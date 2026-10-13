@@ -462,7 +462,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           {!isFlexibleQuota&&projectEnd&&<button type="button" onClick={()=>setCopyChoice("weekdays")} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="weekdays"?"border-sage-400 bg-sage-50":"border-line"}`}>{zh?"剩余工作日":"Remaining weekdays"}</button>}
           <button type="button" onClick={()=>setCopyChoice("dates")} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="dates"?"border-sage-400 bg-sage-50":"border-line"}`}>{isFlexibleQuota?(zh?"本周期选日期":"Choose this period"):(zh?"自己选日期":"Choose dates")}</button>
         </div>
-        <CopyDateCalendar start={sourceDay} end={copyLimit} selected={copyChoice==="dates"?copyDays:copySelected} booked={[...bookedDates]} eligible={day=>copyEligible(day)&&(copyChoice==="dates"||copyChoice==="all"||weekdayISO(day)<=5)}
+        <CopyDateCalendar start={sourceDay} end={copyLimit} today={todayISO} deadline={projectEnd??undefined} selected={copyChoice==="dates"?copyDays:copySelected} booked={[...bookedDates]} eligible={day=>copyEligible(day)&&(copyChoice==="dates"||copyChoice==="all"||weekdayISO(day)<=5)}
           onToggle={day=>{setCopyChoice("dates");setCopyDays(old=>old.includes(day)?old.filter(x=>x!==day):[...old,day]);}} zh={zh}/>
         <p className="text-xs text-ink-soft">{zh?"拟复制":"Proposed"} {copySelected.length} {zh?"天；已有安排":"days; existing"} {copySelected.filter(day=>bookedDates.has(day)).length} {zh?"天将跳过":"days will be skipped"}</p>
         <button type="button" disabled={copyBusy||copySelected.length===0} onClick={()=>void copySchedule()} className="btn-primary w-full">{copyBusy?(zh?"复制中…":"Copying…"):(zh?"复制到所选日期":"Copy to selected days")}</button>
