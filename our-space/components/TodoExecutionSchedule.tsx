@@ -189,7 +189,13 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         })
       : mode==="fixed" ? await db.from("todo_sessions").insert({todo_id:todoId,scheduled_start:toFixedDateTime(fixedStartDate,fixedStartTime).toISOString(),scheduled_end:toFixedDateTime(fixedEndDate,fixedEndTime).toISOString()}) : await db.from("todo_sessions").insert({todo_id:todoId,plan_date:date,mode,planned_minutes:Number(minutes),window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null});
     setSaving(false);
-    if(result.error){setError("保存失败："+result.error.message);return;}
+    if(result.error){
+      const missingFlexibleColumns=scope==="once"&&mode!=="fixed"&&result.error.message.includes("scheduled_start")&&result.error.message.includes("not-null");
+      setError(missingFlexibleColumns
+        ? (zh?"当前数据库仍强制要求预约开始时间，无法保存灵活投入或时间窗口。请先核对并执行经过备份确认的 V4 Session 兼容迁移；系统不会自动添加虚假时间。":"The database still requires scheduled_start. Flexible/window plans need the reviewed V4 Session migration. No artificial time will be added.")
+        : (zh?"保存失败：":"Save failed: ")+result.error.message);
+      return;
+    }
     await refresh();setOpen(false);setEditingTemplateId(null);
   }
   async function saveOverride(){
