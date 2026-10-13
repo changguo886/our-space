@@ -73,7 +73,14 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   async function save(){
     setError("");
     if(scope!=="by_day"&&mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
-    if(scope!=="by_day"&&mode==="window"&&(!validTime(windowStart)||!validTime(windowEnd)||windowEnd<=windowStart||Number(minutes)>((Number(windowEnd.slice(0,2))*60+Number(windowEnd.slice(3)))-(Number(windowStart.slice(0,2))*60+Number(windowStart.slice(3))))){setError("时间窗口结束时间必须晚于开始时间。");return;}
+    if(scope!=="by_day"&&mode==="window"){
+      const startMinutes=Number(windowStart.slice(0,2))*60+Number(windowStart.slice(3));
+      const endMinutes=Number(windowEnd.slice(0,2))*60+Number(windowEnd.slice(3));
+      if(!validTime(windowStart)||!validTime(windowEnd)||endMinutes<=startMinutes||Number(minutes)>endMinutes-startMinutes){
+        setError(zh?"请检查时间窗口：结束须晚于开始，预计投入不能超过窗口时长。":"Check the time window: end must follow start and planned minutes must fit.");
+        return;
+      }
+    }
     if(scope==="once"&&mode==="fixed"&&(!validDate(fixedStartDate)||!validDate(fixedEndDate)||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setError("请填写有效日期（YYYY-MM-DD）与24小时制时间（HH:mm）。");return;}
     if(scope==="once"&&mode==="fixed"&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()<=toFixedDateTime(fixedStartDate,fixedStartTime).getTime()){setError("固定结束时间必须晚于开始时间。");return;}
     setSaving(true);
