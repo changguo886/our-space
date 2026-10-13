@@ -71,10 +71,12 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   }
   useEffect(()=>{void refresh();},[todoId]);
   // Existing dated flexible/window plans are preserved when introducing a new future series.
-  const latestSinglePlan = plans.map(p=>p.plan_date).filter(Boolean).sort().at(-1)??null;
-  const nextUnplannedSeriesDate = latestSinglePlan?addDaysISO(latestSinglePlan,1):null;
-  const autoSeriesDate = scope!=="once"&&!editingTemplateId&&nextUnplannedSeriesDate&&date<=latestSinglePlan
-    ? nextUnplannedSeriesDate : date;
+  // Protect today's already finished execution; never rewrite past periods.
+  // Future standalone plans remain separate and must not force the entire series past them.
+  const todayISO=localDate(new Date());
+  const hasPastOrTodaySingle=plans.some(p=>p.plan_date<=todayISO)||sessions.some(session=>localDate(new Date(session.scheduled_start))<=todayISO);
+  const autoSeriesDate=scope!=="once"&&!editingTemplateId&&date<=todayISO&&hasPastOrTodaySingle
+    ? addDaysISO(todayISO,1) : date;
 
   async function save(){
     setError("");
@@ -222,7 +224,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setError("");await refresh();
   }
   const preview = pattern
-    ? upcomingEligible(pattern,todoStart||date,date,800,40).filter(day=>{
+    ? upcomingEligible(pattern,todoStart||autoSeriesDate,autoSeriesDate,800,40).filter(day=>{
         if(scope!=="by_day")return true;
         if(dayPresets.length>0)return dayPresets.some(p=>p.key==="weekday:"+weekdayISO(day)||p.key==="month_day:"+Number(day.slice(-2))||(p.key==="month_end"&&Number(day.slice(-2))===lastDayISO(day)));
         const [kind,value]=selector.split(":");
@@ -230,7 +232,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           :kind==="month_day"?Number(day.slice(-2))===Number(value)
           :kind==="month_end"?Number(day.slice(-2))===lastDayISO(day):false;
       }).slice(0,3)
-    : projectEnd ? Array.from({length:Math.min(90,Math.max(0,Math.round((new Date(projectEnd+"T12:00").getTime()-new Date(date+"T12:00").getTime())/86400000)+1))},(_,i)=>addDaysISO(date,i))
+    : projectEnd ? Array.from({length:Math.min(90,Math.max(0,Math.round((new Date(projectEnd+"T12:00").getTime()-new Date(autoSeriesDate+"T12:00").getTime())/86400000)+1))},(_,i)=>addDaysISO(autoSeriesDate,i))
         .filter(day=>day>=(todoStart||date)&&(scope!=="by_day"||selector==="all"||(selector.startsWith("weekday:")&&weekdayISO(day)===Number(selector.split(":")[1])))).slice(0,3)
       : [];
   return <section className="mt-4 rounded-xl border border-line bg-white p-4">
@@ -290,7 +292,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {scope!=="once"&&<p className="text-xs text-ink-faint">{zh?"预计生效日期：":"Effective dates: "}{preview.join("、")|| (zh?"当前选择暂无符合日期":"No matching dates")}</p>}
       {scope!=="by_day"&&<p className="text-xs font-semibold text-ink-soft">{zh?"第二步 · 时间方式":"Step 2 · Timing"}</p>}
       {scope!=="by_day"&&<div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:zh?"灵活投入":"Flexible"},{id:"window",label:zh?"时间窗口":"Window"},{id:"fixed",label:zh?"固定时段":"Fixed"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>}
-      {scope!=="once"&&!editingTemplateId&&nextUnplannedSeriesDate&&date<nextUnplannedSeriesDate&&<p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{zh?`已有单次计划截至 ${latestSinglePlan}；新重复系列将自动从 ${autoSeriesDate} 起生效，历史计划保留。`:`Existing dated plans run through ${latestSinglePlan}; new series begins ${autoSeriesDate}. Earlier plans stay intact.`}</p>}
+      {scope!=="once"&&!editingTemplateId&&autoSeriesDate!==date&&<p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{zh?`今天或之前已有单次安排；新的重复系列建议从 ${autoSeriesDate} 开始，不覆盖已有记录。未来单次计划仍需检查冲突。`:`Earlier standalone plans are protected; the new series begins ${autoSeriesDate}. Review any future bookings for conflicts.`}</p>}
       {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"规则生效起始日期"}<AppDatePicker value={date} onChange={setDate}/></label>}
       {scope!=="by_day"&&mode!=="fixed"&&<label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
       {scope!=="by_day"&&mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input className={field+" mt-1"} type="time" value={windowStart} onChange={e=>setWindowStart(e.target.value)}/></label><label className="text-xs text-ink-soft">最晚结束<input className={field+" mt-1"} type="time" value={windowEnd} onChange={e=>setWindowEnd(e.target.value)}/></label></div>}
@@ -307,7 +309,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <div className="rounded-xl border border-line bg-paper/40 p-3 text-xs text-ink-soft">
         <p className="mb-1 font-semibold">{zh?"第三步 · 确认安排":"Step 3 · Review"}</p>
         <p>{scope==="once"?"只安排一次":scope==="all"?"以后所有符合规则的日期":"选定的星期／月日期"} · {scope==="by_day"?dayPresets.map(row=>(row.key==="month_end"?"月末":row.key.startsWith("weekday:")?"星期"+row.key.split(":")[1]:"每月"+row.key.split(":")[1]+"日")+" "+(row.mode==="fixed"?row.start+"–"+row.end:row.mode==="window"?row.windowStart+"–"+row.windowEnd:"灵活 "+row.minutes+" 分钟")).join("；")||"请先选择日期":mode==="fixed"?"固定 "+fixedStartTime+"–"+fixedEndTime:mode==="window"?"时间窗口 "+windowStart+"–"+windowEnd:"灵活安排，计划 "+minutes+" 分钟"}</p>
-        {scope!=="once"&&<p className="mt-1">起始生效：{date}；下一批符合日期：{preview.join("、")||"暂无"}。Calendar 会根据重复规则显示未来安排；无需提前逐日创建预约。</p>}
+        {scope!=="once"&&<p className="mt-1">起始生效：{autoSeriesDate}；下一批符合日期：{preview.join("、")||"暂无"}。Calendar 会根据重复规则显示未来安排；无需提前逐日创建预约。</p>}
       </div>
       <button type="button" disabled={saving||(scope==="by_day"&&dayPresets.length===0)} className="btn-primary w-full" onClick={()=>void save()}>{saving?(zh?"保存中…":"Saving…"):editingTemplateId?(zh?"从选定日期起更新":"Update future schedule"):(zh?"保存执行安排":"Save schedule")}</button>
     </div>}
