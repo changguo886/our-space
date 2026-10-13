@@ -59,7 +59,12 @@ export default async function CalendarPage() {
     id,
     scheduled_start,
     scheduled_end,
-    reminder_minutes_before
+    reminder_minutes_before,
+    mode,
+    plan_date,
+    planned_minutes,
+    window_start,
+    window_end
   )
 `)
     .eq(
