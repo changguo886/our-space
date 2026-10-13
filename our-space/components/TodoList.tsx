@@ -6,17 +6,18 @@ import {
   Check,
   Circle,
   Play,
-  Pencil,
-  Trash2,
   X,
   Save,
-  Clock3,
-} from "lucide-react";
+  Repeat } from "lucide-react";
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import RoutineCheckIn from "@/components/RoutineCheckIn";
 import { useI18n } from "@/components/I18nProvider";
-import {taskCardVisual,categoryBadgeVisual} from "@/lib/task-colors";
+import {taskCardCompactVisual,CATEGORY_VISUALS,CATEGORY_ORDER} from "@/lib/task-colors";
+import RowMenu from "@/components/ui/RowMenu";
+import { useNextPlans } from "@/components/useNextPlans";
+import { planStatus } from "@/lib/schedule-utils";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -140,58 +141,6 @@ const CATEGORIES: {
 
 
 
-function formatScheduledTime(
-  start: string | null | undefined,
-  end: string | null | undefined,
-  language: "zh-CN" | "en",
-  nextDayLabel: string
-) {
-  if (!start) return null;
-
-  const formatter =
-    new Intl.DateTimeFormat(
-      language === "zh-CN"
-        ? "zh-CN"
-        : "en-GB",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }
-    );
-
-  const startDate =
-    new Date(start);
-
-  const startText =
-    formatter.format(
-      startDate
-    );
-
-  if (!end) {
-    return startText;
-  }
-
-  const endDate =
-    new Date(end);
-
-  const endText =
-    formatter.format(
-      endDate
-    );
-
-  const sameDay =
-    startDate.getFullYear() ===
-      endDate.getFullYear() &&
-    startDate.getMonth() ===
-      endDate.getMonth() &&
-    startDate.getDate() ===
-      endDate.getDate();
-
-  return sameDay
-    ? `${startText} – ${endText}`
-    : `${startText} – ${endText} ${nextDayLabel}`;
-}
 
 
 function statusInfo(
@@ -271,6 +220,13 @@ function categoryInfo(
    Main component
 ========================================================= */
 
+function localDay(d: Date) { return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-"); }
+function localClock(d: Date) { return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+
+export function isRoutineTask(todo: { task_type?: string | null }) {
+  return todo.task_type === "routine" || todo.task_type === "habit";
+}
+
 export default function TodoList({
   todos,
   onOpenNotes,
@@ -289,6 +245,19 @@ export default function TodoList({
 
   const common =
     dictionary.common;
+
+  const todayISO = localDay(new Date());
+  // Same-category tasks sit together (work, study, life, rest, other, uncategorized); order inside a group is kept.
+  const categoryGroups = CATEGORY_ORDER.map((key) => {
+    const visual = CATEGORY_VISUALS[key];
+    return {
+      key,
+      label: language === "zh-CN" ? visual.labelZh : visual.labelEn,
+      accent: visual.accent,
+      todos: todos.filter((x) => ((x.category && x.category in CATEGORY_VISUALS) ? x.category : "none") === key),
+    };
+  }).filter((g) => g.todos.length > 0);
+  const nextPlans = useNextPlans(todos.map((x) => x.id));
 
   const [
     editingId,
@@ -381,6 +350,8 @@ export default function TodoList({
   async function toggleTodo(
     todo: Todo
   ) {
+    // A routine is never completed as a whole; each occurrence is a completion event.
+    if (isRoutineTask(todo)) return;
     if (busyId) return;
 
     setBusyId(todo.id);
@@ -651,7 +622,12 @@ export default function TodoList({
       )}
 
 
-      {todos.map((todo) => {
+      {categoryGroups.map((group) => <section key={group.key} aria-label={group.label} className="space-y-2">
+        {categoryGroups.length > 1 && <h4 className="flex items-center gap-2 px-1 pt-2 text-xs font-medium text-ink-soft first:pt-0">
+          <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: group.accent }} />
+          {group.label}<span className="text-ink-faint">{group.todos.length}</span>
+        </h4>}
+      {group.todos.map((todo) => {
         const completed =
           todo.status ===
           "completed";
@@ -680,13 +656,6 @@ export default function TodoList({
             t.categories
           );
 
-        const scheduledTime =
-          formatScheduledTime(
-            todo.scheduled_start,
-            todo.scheduled_end,
-            language,
-            t.nextDay
-          );
 
 
         /* =================================================
@@ -728,7 +697,7 @@ export default function TodoList({
 
                 <section className="space-y-3 rounded-xl border border-line p-3">
                   <p className="text-xs font-medium text-ink-soft">任务类型</p>
-                  <div className="grid grid-cols-3 gap-2">{([{id:"one_time",label:"单次任务"},{id:"planned",label:"定期任务"},{id:"habit",label:"习惯养成"}] as const).map(option=><button type="button" key={option.id} onClick={()=>setEditType(option.id)} aria-pressed={editType===option.id} className={`rounded-lg border px-2 py-2 text-xs ${editType===option.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
+                  <div className="grid grid-cols-3 gap-2">{([{id:"one_time",label:"单次任务"},{id:"planned",label:"长期项目"},{id:"habit",label:"周期任务"}] as const).map(option=><button type="button" key={option.id} onClick={()=>setEditType(option.id)} aria-pressed={editType===option.id} className={`rounded-lg border px-2 py-2 text-xs ${editType===option.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
                   {editType==="planned"&&<div className="space-y-2"><label className="block text-xs text-ink-soft">计划开始<input type="date" className="input mt-1 w-full" value={editPlanStart} onChange={e=>setEditPlanStart(e.target.value)}/></label><label className="block text-xs text-ink-soft">目标完成<input type="date" className="input mt-1 w-full" value={editTargetFinish} min={editPlanStart} onChange={e=>setEditTargetFinish(e.target.value)}/></label><label className="block text-xs text-ink-soft">正式截止（可选）<input type="date" className="input mt-1 w-full" value={editDeadline} min={editTargetFinish} onChange={e=>setEditDeadline(e.target.value)}/></label></div>}
                   {editType==="habit"&&todo.task_type!=="habit"&&<p className="text-xs text-amber-700">切换为习惯需要建立习惯规则和目标，此次暂不允许保存该转换。</p>}
                   {(todo.task_type==="routine"||todo.task_type==="habit")&&editType!=="habit"&&<p className="text-xs text-amber-700">已有习惯记录不会被删除。此转换暂不可保存。</p>}
@@ -905,170 +874,78 @@ export default function TodoList({
 
 
         /* =================================================
-           Normal Todo card
+           Normal Todo card (compact)
         ================================================= */
+        const routine = isRoutineTask(todo);
+        const zhCard = language === "zh-CN";
+        const legacyNext = !nextPlans[todo.id] && todo.scheduled_start && todo.scheduled_end && new Date(todo.scheduled_end).getTime() > Date.now()
+          ? { day: localDay(new Date(todo.scheduled_start)), mode: "fixed" as const, start: localClock(new Date(todo.scheduled_start)), end: localClock(new Date(todo.scheduled_end)) }
+          : null;
+        const plan = planStatus({ type: todo.task_type, taskDate: todo.task_date, today: todayISO, next: nextPlans[todo.id] ?? legacyNext, zh: zhCard });
+        const typeText = routine ? (zhCard ? "周期任务" : "Routine") : todo.task_type === "project" ? (zhCard ? "长期项目" : "Project") : (zhCard ? "单次任务" : "One-time");
 
         return (
           <div
             key={todo.id}
-            className="group rounded-2xl border shadow-sm transition hover:shadow-md"
-            style={taskCardVisual(todo.category,todo.color_hex)}
+            className="group rounded-xl border transition hover:shadow-sm"
+            style={taskCardCompactVisual(todo.category,todo.color_hex)}
           >
-            <div className="flex items-start gap-3 px-4 py-3.5">
+            <div className="flex items-center gap-2.5 px-3 py-2">
               <button
                 type="button"
-                onClick={() =>
-                  toggleTodo(todo)
-                }
-                disabled={busy}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                title={
-                  completed
-                    ? t.markIncomplete
-                    : t.markComplete
-                }
+                onClick={() => toggleTodo(todo)}
+                disabled={busy || routine}
+                aria-hidden={routine || undefined}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                title={routine ? undefined : completed ? t.markIncomplete : t.markComplete}
               >
-                {completed ? (
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-white">
-                    <Check className="h-4 w-4" />
+                {routine ? <Repeat aria-label={zhCard ? "周期任务" : "Routine"} className="h-[18px] w-[18px] text-sage-600" /> : completed ? (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sage-500 text-white">
+                    <Check className="h-3.5 w-3.5" />
                   </span>
                 ) : (
-                  <Circle className="h-6 w-6 text-ink-faint" />
+                  <Circle className="h-5 w-5 text-ink-faint" />
                 )}
               </button>
 
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p
-                    className={
-                      completed
-                        ? "truncate text-sm text-ink-faint line-through"
-                        : "truncate text-sm font-medium text-ink"
-                    }
-                  >
-                    {todo.title}
-                  </p>
-                  {todo.task_type&&<span className="rounded-full border border-line bg-white/70 px-2 py-0.5 text-[10px] text-ink-soft">{todo.task_type==="routine"||todo.task_type==="habit"?(language==="zh-CN"?"周期任务":"Routine"):todo.task_type==="project"?(language==="zh-CN"?"长期项目":"Project"):todo.task_type==="recurring"?(language==="zh-CN"?"重复任务":"Recurring"):(language==="zh-CN"?"单次任务":"One-time")}</span>}
-
-                  {category && (
-                    <span
-                      className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={categoryBadgeVisual(todo.category)}
-                    >
-                      {category.label}
-                    </span>
-                  )}
-
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] ${status.className}`}
-                  >
-                    {status.label}
-                  </span>
+              <div className="min-w-0 flex-1" title={todo.description ?? undefined}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className={`min-w-0 truncate text-sm ${completed ? "text-ink-faint line-through" : "font-medium text-ink"}`}>{todo.title}</p>
+                  {category && <span aria-label={category.label} title={category.label} className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CATEGORY_VISUALS[todo.category ?? "none"]?.accent }} />}
+                  {(todo.status === "running" || todo.status === "paused") && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${status.className}`}>{status.label}</span>}
                 </div>
-
-
-                {todo.description && (
-                  <p
-                    className={`mt-1 line-clamp-2 text-xs leading-relaxed ${
-                      completed
-                        ? "text-ink-faint"
-                        : "text-ink-soft"
-                    }`}
-                  >
-                    {todo.description}
-                  </p>
-                )}
-
-
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
-                  {todo.estimated_minutes && (
-                    <span>
-                      {t.estimatedShort}{" "}
-                      {todo.estimated_minutes}{" "}
-                      {common.minutes}
-                    </span>
-                  )}
-
-                  {scheduledTime && (
-                    <span className="flex items-center gap-1">
-                      <Clock3 className="h-3.5 w-3.5" />
-                      {scheduledTime}
-                    </span>
-                  )}
-
-                  {!scheduledTime &&
-                    !completed && (
-                    <span>
-                      {t.unscheduled}
-                    </span>
-                  )}
-                </div>
-
-
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleSubtasks(
-                        todo.id
-                      )
-                    }
-                    className="text-xs font-medium text-sage-700 transition hover:text-sage-500"
-                  >
-                    {expandedSubtasksId ===
-                    todo.id
-                      ? t.collapseSteps
-                      : t.splitTask}
-                  </button>
-                  <button type="button" onClick={() => router.push("/calendar?view=day&date=" + encodeURIComponent(todo.task_date ?? ""))}
-                    className="ml-4 text-xs font-medium text-sage-700 transition hover:text-sage-500">
-                    日历安排 ↗
-                  </button>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs">
+                  <span className="text-ink-faint">{typeText}</span>
+                  {!completed && <>
+                    <span aria-hidden="true" className="text-ink-faint">·</span>
+                    <span className={plan.tone === "todo" ? "font-medium text-amber-700" : plan.tone === "muted" ? "text-ink-faint" : "text-ink-soft"}>{plan.text}</span>
+                  </>}
+                  {!routine && todo.estimated_minutes ? <span className="text-ink-faint">· {zhCard ? `约 ${todo.estimated_minutes} 分钟` : `~${todo.estimated_minutes} min`}</span> : null}
                 </div>
               </div>
 
+              <RowMenu zh={zhCard} items={[
+                { label: expandedSubtasksId === todo.id ? t.collapseSteps : t.splitTask, onClick: () => toggleSubtasks(todo.id) },
+                { label: zhCard ? "日历安排" : "Open in calendar", onClick: () => router.push("/calendar?view=day&date=" + encodeURIComponent(todo.task_date ?? todayISO)) },
+                { label: t.editTask, onClick: () => startEditing(todo) },
+                { label: t.deleteTask, onClick: () => deleteTodo(todo), danger: true },
+              ]} />
 
-              <div className="flex shrink-0 items-center gap-1">
+              {!completed && (
                 <button
                   type="button"
-                  onClick={() =>
-                    startEditing(todo)
-                  }
+                  onClick={() => openFocus(todo.id)}
                   disabled={busy}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-sage-50 hover:text-sage-700"
-                  title={t.editTask}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-700"
+                  title={t.startFocus}
+                  aria-label={t.startFocus}
                 >
-                  <Pencil className="h-4 w-4" />
+                  <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    deleteTodo(todo)
-                  }
-                  disabled={busy}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
-                  title={t.deleteTask}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-
-                {!completed && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openFocus(todo.id)
-                    }
-                    disabled={busy}
-                    className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-sage-500 text-white transition hover:bg-sage-700"
-                    title={t.startFocus}
-                  >
-                    <Play className="ml-0.5 h-4 w-4 fill-current" />
-                  </button>
-                )}
-              </div>
+              )}
             </div>
 
+            {routine && <div className="pb-2 pl-[52px] pr-3"><RoutineCheckIn todoId={todo.id} compact /></div>}
 
             {expandedSubtasksId ===
               todo.id && (
@@ -1106,6 +983,7 @@ export default function TodoList({
           </div>
         );
       })}
+      </section>)}
     </div>
   );
 }

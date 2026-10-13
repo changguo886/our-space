@@ -25,7 +25,7 @@ export type HistoryEntry = {
 export type HistoryTodo = {
   id: string;
   title: string;
-  task_date: string;
+  task_date: string | null;
   status: string;
   estimated_minutes: number | null;
   elapsed_seconds: number;
@@ -73,6 +73,14 @@ function formatFocusTime(
   return `${safe} 秒`;
 }
 
+function historyDay(todo: { task_date: string | null; completed_at?: string | null; created_at?: string | null }): string {
+  if (todo.task_date) return todo.task_date;
+  const stamp = todo.completed_at ?? todo.created_at;
+  if (!stamp) return "";
+  const d = new Date(stamp);
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
+}
+
 export default function HistoryView({
   entries,
   todos,
@@ -111,17 +119,11 @@ export default function HistoryView({
       >();
 
       for (const todo of todos) {
-        const existing =
-          map.get(
-            todo.task_date
-          ) ?? [];
-
+        // Undated tasks (v4_12) are filed under the day they were completed, else created.
+        const day = historyDay(todo);
+        const existing = map.get(day) ?? [];
         existing.push(todo);
-
-        map.set(
-          todo.task_date,
-          existing
-        );
+        map.set(day, existing);
       }
 
       return map;
@@ -149,7 +151,7 @@ export default function HistoryView({
    * 就选最近有记录的一天。
    */
   const latestTodoDate =
-    todos[0]?.task_date;
+    todos[0] ? historyDay(todos[0]) : undefined;
 
   const latestEntryDate =
     entries[0]?.entry_date;

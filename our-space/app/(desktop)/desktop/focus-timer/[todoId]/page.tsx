@@ -25,7 +25,8 @@ export default async function DesktopFocusTimerPage({
       estimated_minutes,
       status,
       started_at,
-      elapsed_seconds
+      elapsed_seconds,
+      task_type
     `)
     .eq("id", todoId)
     .eq("user_id", user.id)

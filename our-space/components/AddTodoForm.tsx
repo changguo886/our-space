@@ -106,7 +106,10 @@ export default function AddTodoForm({
   const [officialDeadline, setOfficialDeadline] = useState("");
 
 
-  const [planAfterCreate,setPlanAfterCreate]=useState(false);
+  const [dayChoice,setDayChoice]=useState<"today"|"pick"|"none">("today");
+  const [pickedDay,setPickedDay]=useState(taskDate);
+  const [dateNotice,setDateNotice]=useState<null|{id:string;planNow:boolean}>(null);
+  const [partial,setPartial]=useState<null|{id:string;planNow:boolean;extras:{color:string|null;journey:Record<string,unknown>|null};message:string}>(null);
   const [busy, setBusy] =
     useState(false);
 
@@ -122,6 +125,9 @@ export default function AddTodoForm({
     e: React.FormEvent
   ) {
     e.preventDefault();
+    if (partial) return;
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+    const planNow = submitter?.dataset.plan === "1";
 
     const cleanTitle =
       title.trim();
@@ -166,7 +172,7 @@ export default function AddTodoForm({
         title: cleanTitle,
         description: description.trim()||null,
         estimated_minutes: parsedMinutes,
-        task_date: taskDate,
+        task_date: taskType==="one_time" ? (dayChoice==="none" ? null : dayChoice==="pick" ? pickedDay : taskDate) : taskDate,
         category,
         custom_tag: category==="other" ? customTag.trim()||null : null,
         group_id: visibility==="space" ? activeSpaceId : null,
@@ -186,56 +192,79 @@ export default function AddTodoForm({
         } : {}),
       },
     });
-    const created = !saveError&&savedId ? {id:savedId as string} : null;
-    const error = saveError;
-
-    if (!error && created) {
-      const {error:colorError}=await supabase.from("todos").update({color_hex:taskColor}).eq("id",created.id);
-      if(colorError){setError((zh?"任务已创建，但颜色未保存。请确认颜色字段迁移已执行：":"Task created, but color was not saved. Check color migration: ")+colorError.message);setBusy(false);router.refresh();return;}
-    }
-    if (!error && created && taskType==="planned") {
-      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:Object.entries(LEGACY_JOURNEY_COLORS).find(([,hex])=>hex.toUpperCase()===taskColor.toUpperCase())?.[0]??"green"});
-      if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
-    }
-    setBusy(false);
-
-    if (error) {
-      setError(
-        t.addFailed +
-          error.message
-      );
+    if (saveError || !savedId) {
+      setBusy(false);
+      setError(t.addFailed + (saveError?.message ?? ""));
       return;
     }
+    const createdId = savedId as string;
+    const wantedNoDate = taskType==="one_time" && dayChoice==="none";
+    const extras: Extras = {
+      color: taskColor,
+      journey: taskType==="planned" ? {todo_id:createdId,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:Object.entries(LEGACY_JOURNEY_COLORS).find(([,hex])=>hex.toUpperCase()===taskColor.toUpperCase())?.[0]??"green"} : null,
+    };
+    // The task row now exists: clear the form at once so a second click cannot create a duplicate (A10).
+    resetForm();
+    const failed = await saveExtras(createdId, extras);
+    setBusy(false);
+    router.refresh();
+    if (failed) { setPartial({id:createdId, planNow, extras:failed.pending, message:failed.message}); return; }
+    if (wantedNoDate) {
+      // Before migration v4_12 the database still fills in today's date; say so instead of pretending.
+      const { data: saved } = await supabase.from("todos").select("task_date").eq("id", createdId).maybeSingle();
+      if (saved?.task_date) { setDateNotice({ id: createdId, planNow }); return; }
+    }
+    onCreated?.(createdId, planNow);
+  }
 
-    /*
-     * 成功后清空任务内容
-     */
+  type Extras = { color: string|null; journey: Record<string, unknown>|null };
+  async function saveExtras(id: string, extras: Extras): Promise<null|{pending:Extras;message:string}> {
+    const supabase = createClient();
+    const pending: Extras = { color: null, journey: null };
+    const problems: string[] = [];
+    if (extras.color) {
+      const { error: colorError } = await supabase.from("todos").update({ color_hex: extras.color }).eq("id", id);
+      if (colorError) { pending.color = extras.color; problems.push(zh ? "颜色" : "color"); }
+    }
+    if (extras.journey) {
+      const { error: journeyError } = await supabase.from("goal_journeys").insert(extras.journey);
+      // 23505: the journey row already exists from an earlier attempt.
+      if (journeyError && journeyError.code !== "23505") { pending.journey = extras.journey; problems.push(zh ? "成长旅程" : "journey"); }
+    }
+    if (!problems.length) return null;
+    return { pending, message: zh ? `任务已创建，但${problems.join("和")}没保存成功。` : `Task created, but the ${problems.join(" and ")} could not be saved.` };
+  }
+
+  async function retryPartial() {
+    if (!partial) return;
+    setBusy(true);
+    const failed = await saveExtras(partial.id, partial.extras);
+    setBusy(false);
+    router.refresh();
+    if (failed) { setPartial({ ...partial, extras: failed.pending, message: failed.message }); return; }
+    const done = partial; setPartial(null); onCreated?.(done.id, done.planNow);
+  }
+
+  function dismissPartial() {
+    if (!partial) return;
+    const done = partial; setPartial(null); onCreated?.(done.id, done.planNow);
+  }
+
+  function resetForm() {
     setTitle("");
     setDescription("");
-
     setCustomTag("");
-
     setTaskColor(DEFAULT_TASK_COLOR);
     setGoalPeriod("week");
     setGoalValue("4");
     setTaskType("one_time");
-
     setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setHabitArrangement("flexible");setMonthDays([]);setIncludeMonthEnd(false);
-
     setStartDate(taskDate);
     setTargetFinish("");
     setOfficialDeadline("");
-
-
-    /*
-     * category 和 visibility
-     * 故意保留。
-     *
-     * 连续创建任务时，
-     * 不需要每次重新选择。
-     */
-    if(created)onCreated?.(created.id,planAfterCreate);
-    router.refresh();
+    setDayChoice("today");
+    setPickedDay(taskDate);
+    // category and visibility are kept on purpose for consecutive creation.
   }
 
 
@@ -264,7 +293,7 @@ export default function AddTodoForm({
       <div>
         <p className="mb-2 text-xs font-medium text-ink-soft">{zh?"任务类型":"Task type"}</p>
         <div className="grid grid-cols-3 gap-2">
-          {([{value:"one_time",label:zh?"单次任务":"One-time",help:zh?"做完即结束":"Finish once"},{value:"planned",label:zh?"定期任务":"Planned",help:zh?"按期限完成":"Target finish"},{value:"habit",label:zh?"习惯养成":"Habit",help:zh?"长期记录":"Build a habit"}] as const).map(item=>
+          {([{value:"one_time",label:zh?"单次任务":"One-time",help:zh?"做完即结束":"Finish once"},{value:"planned",label:zh?"长期项目":"Project",help:zh?"有起止日期":"Start to finish"},{value:"habit",label:zh?"周期任务":"Routine",help:zh?"按周期打卡":"Repeats, check in"}] as const).map(item=>
             <button key={item.value} type="button" disabled={busy} aria-pressed={taskType===item.value} onClick={()=>{setTaskType(item.value);if(item.value==="habit"){setCadence("weekly_quota");setGoalPeriod("week");setGoalValue("3");setTimesPerWeek(3);}}}
               className={`min-w-0 rounded-xl border px-2 py-3 text-center transition ${taskType===item.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line bg-white text-ink-soft hover:bg-paper"}`}>
               <span className="block text-sm font-semibold">{item.label}</span><span className="mt-1 block text-[10px] opacity-70">{item.help}</span>
@@ -285,8 +314,15 @@ export default function AddTodoForm({
           </div>
         </section>
       ):taskType==="one_time" ? (
-        <section className="rounded-xl border border-line bg-paper/30 p-3">
-          <p className="text-xs text-ink-soft">{zh?"单次任务只需要先记录内容。具体执行日期、时间窗口和预计投入，请创建后在「执行安排」设置。":"Create the task first. Choose its execution date, window, and effort later."}</p>
+        <section className="space-y-2 rounded-xl border border-line bg-paper/30 p-3">
+          <p className="text-xs font-medium text-ink-soft">{zh?"哪天做？":"Which day?"}</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([["today",zh?"今天":"Today"],["pick",zh?"选日期":"Pick a date"],["none",zh?"先不定":"No date"]] as const).map(([value,label])=>
+              <button key={value} type="button" disabled={busy} aria-pressed={dayChoice===value} onClick={()=>setDayChoice(value)}
+                className={`rounded-lg border px-2 py-2 text-xs ${dayChoice===value?"border-sage-400 bg-sage-50 text-sage-700":"border-line bg-white text-ink-soft"}`}>{label}</button>)}
+          </div>
+          {dayChoice==="pick"&&<AppDatePicker value={pickedDay} onChange={setPickedDay} disabled={busy}/>}
+          <p className="text-[11px] text-ink-soft">{zh?"只记日期，不占具体时间；需要时再在「时间安排」里加。":"A date only, no time reserved. Add a time plan later if needed."}</p>
         </section>
       ):(
         <section className="space-y-3 rounded-xl bg-paper/40 p-3">
@@ -323,8 +359,19 @@ export default function AddTodoForm({
           <label className="block text-xs text-ink-soft">{zh?"可见范围":"Visibility"}<select className={field+" mt-1"} value={visibility} onChange={e=>setVisibility(e.target.value as typeof visibility)} disabled={busy}><option value="private">{zh?"仅自己":"Private"}</option><option value="space">{activeSpaceName}</option></select></label>
         </div>
       </details>
-      <label className="flex items-center gap-2 rounded-xl border border-line bg-sage-50/30 p-3 text-sm text-ink-soft"><input type="checkbox" checked={planAfterCreate} onChange={e=>setPlanAfterCreate(e.target.checked)} disabled={busy}/>{zh?"创建后立即制定执行计划（可选）":"Plan execution after creating (optional)"}</label>
-      <button className="btn-primary w-full" type="submit" disabled={busy}>{busy?(zh?"保存中…":"Saving..."):(zh?"创建任务":"Create task")}</button>
+      {dateNotice ? <div role="status" className="space-y-3 rounded-xl border border-line bg-paper p-3 text-sm">
+        <p className="text-ink-soft">{zh?"任务已创建。数据库还没更新到 v4_12，所以它暂时记在今天；更新后就能选“先不定”。":"Task created. Until migration v4_12 the database still dates it today."}</p>
+        <button type="button" onClick={()=>{const done=dateNotice;setDateNotice(null);onCreated?.(done.id,done.planNow);}} className="rounded-lg border border-line bg-white px-3 py-2">{zh?"知道了":"OK"}</button>
+      </div> : partial ? <div role="alert" className="space-y-3 rounded-xl border border-blush-100 bg-blush-50 p-3 text-sm">
+        <p className="text-blush-500">{partial.message}</p>
+        <div className="flex gap-2">
+          <button type="button" disabled={busy} onClick={()=>void retryPartial()} className="flex-1 rounded-lg border border-blush-100 bg-white px-3 py-2">{busy?(zh?"重试中…":"Retrying…"):(zh?"重试":"Retry")}</button>
+          <button type="button" disabled={busy} onClick={dismissPartial} className="flex-1 rounded-lg px-3 py-2 text-ink-soft">{zh?"先这样":"Skip for now"}</button>
+        </div>
+      </div> : <div className="flex gap-2">
+        <button className="flex-1 rounded-xl border border-line bg-white px-4 py-3 text-[15px] font-medium text-ink disabled:opacity-50" type="submit" data-plan="0" disabled={busy}>{busy?(zh?"保存中…":"Saving..."):(zh?"创建":"Create")}</button>
+        <button className="btn-primary flex-[1.4]" type="submit" data-plan="1" disabled={busy}>{zh?"创建并安排时间":"Create & plan time"}</button>
+      </div>}
       {error&&<p role="alert" className="text-sm text-blush-500">{error}</p>}
     </form>
   );

@@ -38,6 +38,7 @@ type FocusTimerProps = {
     status: string;
     started_at: string | null;
     elapsed_seconds: number;
+    task_type?: string | null;
   };
   initialPreferences: UserPreferences;
   disableFloatingWindow?: boolean;
@@ -968,6 +969,45 @@ export default function FocusTimer({
     }
   }
 
+  /*
+   * Routine: end this focus and record ONE completion event linked to it.
+   * The routine itself stays active. The idempotency key is kept until the call succeeds,
+   * so a retry after a network error cannot record the completion twice.
+   */
+  const routineCompletionKey = useRef<string | null>(null);
+  async function completeRoutineOccurrence() {
+    if (busy) return;
+    setBusy(true);
+    const key = routineCompletionKey.current ?? (routineCompletionKey.current = crypto.randomUUID());
+    const now = new Date();
+    const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
+    const { data, error } = await createClient().rpc("finish_focus_session_v4", {
+      p_todo_id: todo.id,
+      p_action: "complete",
+      p_expected_started_at: status === "running" ? startedAt : null,
+      p_client_event_id: key,
+      p_occurred_on: today,
+    });
+    setBusy(false);
+    if (error) {
+      const missing = /finish_focus_session_v4|PGRST202|Could not find the function/i.test(error.message);
+      alert(missing ? "完成一次需要先执行数据库更新 v4_10。本次专注时间不会丢失，可以先点「结束本次」。" : "记录失败 / Failed: " + error.message);
+      return;
+    }
+    routineCompletionKey.current = null;
+    const saved = data as { elapsed: number };
+    setSessionSeconds(currentSessionSeconds);
+    setElapsedSeconds(saved.elapsed);
+    setStartedAt(null);
+    setStatus("paused");
+    setTimeUp(false);
+    setCompactFinishConfirm(false);
+    setFinishConfirm(false);
+    closeFloatingTimer();
+    playCompleteSound();
+    alert("已记一次完成。这个周期任务会继续保留。");
+  }
+
   function confirmWholeTask() {
     if (busy || status === "completed") return;
     setFinishConfirm(true);
@@ -986,8 +1026,13 @@ export default function FocusTimer({
   /*
    * 完成任务
    */
+  const isRoutine = todo.task_type === "routine" || todo.task_type === "habit";
   async function completeTimer() {
     if (busy) {
+      return;
+    }
+    if (todo.task_type === "routine" || todo.task_type === "habit") {
+      await completeRoutineOccurrence();
       return;
     }
 
@@ -1173,7 +1218,7 @@ export default function FocusTimer({
           </div>
           {compactFinishConfirm ? (
             <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>结束这次专注，还是完成整个任务？</span>
+              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>{isRoutine ? "结束这次专注，还是记一次完成？" : "结束这次专注，还是完成整个任务？"}</span>
               <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
                 <button type="button" disabled={busy} onClick={() => void endFocusOnly()}
                   style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#E4F0E6",
@@ -1668,7 +1713,7 @@ export default function FocusTimer({
                   600,
               }}
             >
-              {focusText.complete}
+              {isRoutine ? "完成一次" : focusText.complete}
             </button>
           </>
         ) : (
@@ -1762,7 +1807,7 @@ export default function FocusTimer({
             <button
               type="button"
               disabled={busy}
-              onClick={() => { if (window.confirm("确定完成整个 Todo 吗？如果只是结束本次专注，请选择「结束本次」。")) void completeTimer(); }}
+              onClick={() => { if (window.confirm(todo.task_type === "routine" || todo.task_type === "habit" ? "记一次完成并结束本次专注？周期任务本身会继续保留。" : "确定完成整个 Todo 吗？如果只是结束本次专注，请选择「结束本次」。")) void completeTimer(); }}
               title={focusText.completeTask}
               style={{
                 ...buttonBase,
@@ -2159,7 +2204,7 @@ export default function FocusTimer({
               disabled={busy}
               className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
             >
-              {focusText.completeTask}
+              {isRoutine ? "完成一次" : focusText.completeTask}
             </button>
           </div>
         </div>
@@ -2187,7 +2232,7 @@ export default function FocusTimer({
           <div className="flex items-center justify-center gap-4">
             <button type="button" onClick={confirmWholeTask} disabled={busy || status === "completed"}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50 hover:text-sage-700 disabled:opacity-50">
-              <Check className="h-4 w-4" /> 完成整个任务
+              <Check className="h-4 w-4" /> {isRoutine ? "完成一次" : "完成整个任务"}
             </button>
             <button type="button" onClick={() => void restartFocus()}
               disabled={busy || status === "completed"}
@@ -2200,7 +2245,7 @@ export default function FocusTimer({
       )}
       {finishConfirm && <div role="dialog" aria-modal="true" aria-label="确认完成整个任务"
         className="mt-4 w-full max-w-sm rounded-2xl border border-line bg-white p-4 text-center shadow-soft">
-        <p className="text-sm font-semibold text-ink">确定完成整个任务吗？</p>
+        <p className="text-sm font-semibold text-ink">{isRoutine ? "记一次完成？周期任务会继续保留。" : "确定完成整个任务吗？"}</p>
         <p className="mt-1 text-xs text-ink-soft">这会将 Todo 标记为已完成，不只是结束本次专注。</p>
         <div className="mt-3 flex justify-center gap-2">
           <button type="button" disabled={busy} onClick={() => {setFinishConfirm(false);void completeTimer();}}

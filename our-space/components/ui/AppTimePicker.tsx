@@ -4,10 +4,10 @@ import {Clock3} from "lucide-react";
 import {useI18n} from "@/components/I18nProvider";
 export function normalizeClock(raw:string):string|null {
   const s=raw.trim();
-  if(/^([01]\\d|2[0-3]):[0-5]\\d$/.test(s))return s;
-  if(/^\\d{1,2}$/.test(s)){const h=Number(s);return h<24?String(h).padStart(2,"0")+":00":null;}
-  if(/^\\d{3,4}$/.test(s)){const n=s.padStart(4,"0"),h=Number(n.slice(0,2)),m=Number(n.slice(2));return h<24&&m<60?n.slice(0,2)+":"+n.slice(2):null;}
-  const match=s.match(/^(\\d{1,2}):(\\d{1,2})$/);
+  if(/^([01]\d|2[0-3]):[0-5]\d$/.test(s))return s;
+  if(/^\d{1,2}$/.test(s)){const h=Number(s);return h<24?String(h).padStart(2,"0")+":00":null;}
+  if(/^\d{3,4}$/.test(s)){const n=s.padStart(4,"0"),h=Number(n.slice(0,2)),m=Number(n.slice(2));return h<24&&m<60?n.slice(0,2)+":"+n.slice(2):null;}
+  const match=s.match(/^(\d{1,2}):(\d{1,2})$/);
   if(match){const h=Number(match[1]),m=Number(match[2]);return h<24&&m<60?String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"):null;}
   return null;
 }
