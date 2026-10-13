@@ -1,0 +1,48 @@
+-- Our Space V4 DRAFT — REVIEW ONLY, NEVER RUN ON THE LIVE DATABASE AS-IS.
+-- Requires verified full backup, schema inspection, synchronized Web/Tauri release.
+-- To prevent accidental execution, the first statement intentionally fails.
+DO $$ BEGIN RAISE EXCEPTION 'V4 DRAFT BLOCKED: review and build compatible clients first'; END $$;
+
+-- Target rollout specification (deliberately commented SQL, NOT executable).
+-- A. User-approved disposable scope: all 14 Todo test rows and their descendants
+--    (7 todo_sessions, 4 subtasks, 2 quick_notes, 2 goal_journeys, 3 journey_days,
+--     0 focus_entries according to 2026-10-12 COUNT). Recheck immediately before change.
+--    Delete parent Todos only after separately exporting/archiving these rows.
+--    ON DELETE CASCADE also deletes all dependent Focus history; check current count again.
+--    NEVER delete profiles, groups, group_members, daily_entries, comments, reactions,
+--    daily_entry_media, user_preferences or auth data.
+-- B. old schedule_rules must lose its two FKs before DROP:
+--    todo_sessions_todo_rule_fkey, task_occurrences_rule_same_todo_fkey.
+--    Remove/create_scheduled_todo_v2 and create_recurring_todo overloads after
+--    confirming no client or SQL references remain. DROP FUNCTION signatures explicitly.
+-- C. Rename/alter one-time and routine stores, with policy/trigger rewrites in SAME release:
+--    todos.task_type constraint -> ('one_time','project','routine')
+--    habit_patterns_v3 -> task_rules with strict, starts_on, ends_on
+--    habit_logs -> task_completions; preserve note/value/unit until consumers reviewed
+--    todo_sessions adds mode, plan_date, planned_minutes, window_start/end,
+--        subtask_id, source; old scheduled_start/end become nullable for non-fixed modes,
+--        with CHECK that enforces mode-specific row shape.
+--    todo_subtasks adds estimated_minutes.
+-- D. todo_execution_plans -> todo_sessions only when all query writers switched;
+--    todo_execution_templates keep slot_key and replaces_slot_key at first; preserve
+--    revise_execution_template_v3 / stop_execution_template_future_v3 semantics
+--    until replacement RPCs are deployed.
+-- E. Delay removal of todos.task_date, todos.scheduled_start/end, todos.status,
+--    started_at and elapsed_seconds until Today/Calendar/Focus/Mini Focus migrated.
+-- F. Journey policy currently references goal_journeys.start_date/target_date;
+--    rewrite policy before dropping them. quick_notes has content_json in addition to
+--    content: do not delete either without UI audit.
+--
+-- Intended transaction skeleton for finalized migration:
+-- BEGIN;
+--   assert expected schema and row counts;
+--   back up/check data OUTSIDE transaction using managed backups or pg_dump;
+--   retire consumers; remove only expressly listed Todo test records;
+--   add/rename canonical schema, constraints, policies, functions and triggers;
+--   ensure authenticated owner policies for routines/completions;
+--   verify uniqueness, no cross-user access and no broken constraints;
+-- COMMIT;
+--
+-- Completion gates: build, Calendar week/month/day, one-time/edit/project/routine,
+-- one-date and repeating appointments, revision/cancel, monthly 31 vs month_end,
+-- focus timer writes, Quick Notes ownership/SET NULL, Journey, RLS with 2 users.
