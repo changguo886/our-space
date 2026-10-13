@@ -2722,19 +2722,24 @@ export default function CalendarPlanner({
                           </button>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            removeSession(
-                              selectedSessionInfo.todo,
-                              selectedSessionInfo.session
-                            )
-                          }
-                          className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
+                        {!selectedSessionInfo.session.virtual && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeSession(selectedSessionInfo.todo, selectedSessionInfo.session)
+                            }
+                            className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {cal.cancelSession}
+                          </button>
+                        )}
+                        <Link
+                          href={"/todo?todoId="+encodeURIComponent(selectedSessionInfo.todo.id)}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-xs text-ink-soft hover:bg-paper"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          {cal.cancelSession}
-                        </button>
+                          {language==="zh-CN"?"管理重复安排：取消一次／停止后续":"Manage series: cancel once / stop future"}
+                        </Link>
                       </>
                     )}
                   </div>
