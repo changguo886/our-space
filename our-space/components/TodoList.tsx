@@ -16,7 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import {taskCardVisual} from "@/lib/task-colors";
+import {taskCardVisual,categoryBadgeVisual} from "@/lib/task-colors";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -953,7 +953,7 @@ export default function TodoList({
 
                   {category && (
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${category.className}`}
+                      className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={categoryBadgeVisual(todo.category)}
                     >
                       {category.label}
                     </span>
