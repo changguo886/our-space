@@ -13,7 +13,8 @@ export function habitEligible(day:string,p:HabitPatternV3,start:string):boolean{
 }
 export function templateEligible(day:string,t:ExecutionTemplateV3,p?:HabitPatternV3,start?:string):boolean{
  if(day<t.starts_on||(t.ends_on!==null&&day>t.ends_on))return false;
- if(p&&!habitEligible(day,p,start??t.starts_on))return false;
+ // Completion rules suggest days, but explicit execution templates may schedule extra days.
+ if(start&&day<start)return false;
  // Flexible weekly/monthly quotas do not define concrete recurring dates.
  // An "all" exact-time template would incorrectly book every day.
  if(p&&p.arrangement==="flexible"&&p.period!=="day"&&t.selector_kind==="all")return false;
