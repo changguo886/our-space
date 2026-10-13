@@ -2279,6 +2279,23 @@ export default function CalendarPlanner({
               />
             )}
 
+            {groupedWindows.length>0&&<div className="border-b border-line px-5 py-3">
+              <p className="mb-2 text-xs font-medium text-ink-soft">{language==="zh-CN"?"今日可执行时间窗口":"Available execution windows"}</p>
+              <div className="space-y-2">{groupedWindows.map((group,index)=>{
+                const start=group.map(p=>p.window_start!.slice(0,5)).sort()[0],end=group.map(p=>p.window_end!.slice(0,5)).sort().at(-1)!;
+                const effort=group.reduce((sum,p)=>sum+p.planned_minutes,0);
+                const capacity=Number(end.slice(0,2))*60+Number(end.slice(3))-Number(start.slice(0,2))*60-Number(start.slice(3));
+                return <details key={index} className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 px-3 py-2 text-xs">
+                  <summary className="cursor-pointer font-medium">{start}–{end} · {group.length} {language==="zh-CN"?"个任务":"tasks"} · {effort} min
+                    {effort>capacity&&<span className="ml-2 text-amber-700">{language==="zh-CN"?"预计总时长超出窗口":"Estimated effort exceeds window"}</span>}
+                  </summary>
+                  <div className="mt-2 space-y-2">{group.map(p=><div key={p.id} className="flex items-center justify-between gap-2 border-t border-line pt-2">
+                    <span>{p.title} · {p.planned_minutes} min</span>
+                    <Link className="shrink-0 text-sage-700 underline" href={"/todo?todoId="+encodeURIComponent(p.todo_id)}>{language==="zh-CN"?"查看任务":"Open task"}</Link>
+                  </div>)}</div>
+                </details>;
+              })}</div>
+            </div>}
             {/* Timeline viewport */}
             <div
               ref={timelineScrollRef}
