@@ -2343,22 +2343,24 @@ export default function CalendarPlanner({
                     </div>
                   )}
 
-                  {/* Window overlays are planning ranges, not fixed bookings. */}
+                  {/* Planning windows share a positioned layer with timeline slots. */}
+                  <div className="pointer-events-none absolute inset-0 z-10">
                   {groupedWindows.map(group=>{
                     const start=group.map(p=>p.window_start!).sort()[0];const end=group.map(p=>p.window_end!).sort().at(-1)!;
                     const startMinutes=Number(start.slice(0,2))*60+Number(start.slice(3));
                     const endMinutes=Number(end.slice(0,2))*60+Number(end.slice(3));
-                    const top=(startMinutes-visibleStartHour*60)/60*HOUR_HEIGHT;
+                    const top=Math.max(0,(startMinutes-visibleStartHour*60)/60*HOUR_HEIGHT);
                     const height=Math.max(24,(endMinutes-startMinutes)/60*HOUR_HEIGHT);
-                    if(top+height<0||top>visibleTotalHeight)return null;
+                    if(top>=visibleTotalHeight)return null;
                     const category=group.length===1?group[0].category:null;
                     return <div key={start+end} className="pointer-events-none absolute left-3 right-3 z-10 overflow-hidden rounded-xl border-2 border-dashed p-2 text-xs shadow-sm"
-                      style={{top:Math.max(0,top),height:Math.min(height,visibleTotalHeight-Math.max(0,top)),backgroundColor:category?(taskCardVisual(category,group[0].color_hex).backgroundColor):"#F5F7FB",borderColor:group.length===1?taskCardVisual(category,group[0].color_hex).borderLeftColor:"#98A9C6",opacity:0.85}}>
+                      style={{top:Math.max(0,top),height:Math.min(height,visibleTotalHeight-top),backgroundColor:category?(taskCardVisual(category,group[0].color_hex).backgroundColor):"#F5F7FB",borderColor:group.length===1?taskCardVisual(category,group[0].color_hex).borderLeftColor:"#98A9C6",opacity:0.85}}>
                       <strong>{start}–{end} · {group.length} {language==="zh-CN"?"项窗口任务":"window tasks"} · {group.reduce((n,p)=>n+p.planned_minutes,0)} min</strong>
                       {group.slice(0,3).map(p=><div key={p.id} className="mt-1 truncate">{p.title} · {p.planned_minutes} min</div>)}
                       {group.length>3&&<div>+{group.length-3}</div>}
                     </div>;
                   })}
+                  </div>
                   {/* Sessions */}
                   <div className="absolute inset-0 z-20">
                     {scheduledSessions.map(({ todo, session }) => (
