@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import AppDatePicker from "@/components/ui/AppDatePicker";
+import TaskColorPicker from "@/components/ui/TaskColorPicker";
+import { DEFAULT_TASK_COLOR } from "@/lib/task-colors";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
@@ -96,7 +98,7 @@ export default function AddTodoForm({
 
 
 
-  const [journeyColor, setJourneyColor] = useState("blue");
+  const [taskColor, setTaskColor] = useState(DEFAULT_TASK_COLOR);
   const [goalPeriod, setGoalPeriod] = useState<"day" | "week" | "month">("week");
   const [goalValue, setGoalValue] = useState("4");
   const [startDate, setStartDate] = useState(taskDate);
@@ -186,8 +188,12 @@ export default function AddTodoForm({
     const created = !saveError&&savedId ? {id:savedId as string} : null;
     const error = saveError;
 
+    if (!error && created) {
+      const {error:colorError}=await supabase.from("todos").update({color_hex:taskColor}).eq("id",created.id);
+      if(colorError){setError((zh?"任务已创建，但颜色未保存。请确认颜色字段迁移已执行：":"Task created, but color was not saved. Check color migration: ")+colorError.message);setBusy(false);router.refresh();return;}
+    }
     if (!error && created && taskType==="planned") {
-      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:journeyColor});
+      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:taskColor});
       if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
     }
     setBusy(false);
@@ -208,7 +214,7 @@ export default function AddTodoForm({
 
     setCustomTag("");
 
-    setJourneyColor("blue");
+    setTaskColor(DEFAULT_TASK_COLOR);
     setGoalPeriod("week");
     setGoalValue("4");
     setTaskType("one_time");
@@ -272,8 +278,8 @@ export default function AddTodoForm({
             <input type="hidden" value={officialDeadline} readOnly/><AppDatePicker value={officialDeadline} onChange={setOfficialDeadline} disabled={busy}/>
           </details>
           <div className="space-y-1.5">
-            <p className="text-xs text-ink-soft">{zh?"旅程颜色（自动随计划建立）":"Journey color (created automatically)"}</p>
-            <div className="flex flex-wrap gap-2">{([{id:"blue",hex:"#4B83D1"},{id:"green",hex:"#38A179"},{id:"purple",hex:"#9268C5"},{id:"orange",hex:"#DE9144"},{id:"pink",hex:"#D9769B"},{id:"teal",hex:"#329B9C"}] as const).map(c=><button type="button" key={c.id} aria-label={c.id} aria-pressed={journeyColor===c.id} onClick={()=>setJourneyColor(c.id)} disabled={busy} className={`h-8 w-8 rounded-full border-4 ${journeyColor===c.id?"border-ink":"border-white"}`} style={{backgroundColor:c.hex}}/>)}</div>
+            <TaskColorPicker value={taskColor} onChange={setTaskColor} disabled={busy}/>
+
           </div>
         </section>
       ):taskType==="one_time" ? (
@@ -305,6 +311,7 @@ export default function AddTodoForm({
           <p className="text-xs text-ink-faint">{zh?"这里只制定执行频率；每次投入时间可在任务的执行安排中单独设置。":"Set the frequency here; choose execution times later."}</p>
         </section>
       )}
+      {taskType!=="planned"&&<TaskColorPicker value={taskColor} onChange={setTaskColor} disabled={busy}/>}
       <details className="rounded-xl border border-line px-3 py-3">
         <summary className="cursor-pointer text-xs font-medium text-ink-soft">{zh?"更多选项（可选）":"More options (optional)"}</summary>
         <div className="mt-4 space-y-4">
