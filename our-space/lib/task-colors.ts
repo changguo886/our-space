@@ -9,3 +9,12 @@ export function normalizeTaskColor(value: string | null | undefined): string {
   if(legacy) return legacy;
   return /^#[0-9a-f]{6}$/i.test(value)?value.toUpperCase():DEFAULT_TASK_COLOR;
 }
+
+export const CATEGORY_VISUALS: Record<string,{labelZh:string;labelEn:string;background:string;border:string;accent:string}> = {
+  work:{labelZh:"工作",labelEn:"Work",background:"#E8F1E8",border:"#C9DDCC",accent:"#4C9D68"},
+  study:{labelZh:"学习",labelEn:"Study",background:"#FFF4DB",border:"#EBDCB5",accent:"#DDA91B"},
+  life:{labelZh:"生活",labelEn:"Life",background:"#E9F2FE",border:"#CADDF5",accent:"#4B90E4"},
+  rest:{labelZh:"休息",labelEn:"Rest",background:"#F0EBFC",border:"#DCD0F4",accent:"#946BD3"},
+  other:{labelZh:"其他",labelEn:"Other",background:"#FCECEF",border:"#F2D0D8",accent:"#D96B80"},
+  none:{labelZh:"未分类",labelEn:"Uncategorized",background:"#F3F1EB",border:"#DDD9D1",accent:"#8E8981"}
+};
