@@ -18,6 +18,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [open,setOpen]=useState(false);
   const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
   const [selector,setSelector]=useState("all");
+  const [replaceSlotKey,setReplaceSlotKey]=useState("");
   const [pattern,setPattern]=useState<HabitPatternV3|null>(null);
   const [todoStart,setTodoStart]=useState("");
   const [projectEnd,setProjectEnd]=useState<string|null>(null);
@@ -47,7 +48,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setLoading(true);
     const db=createClient();
     const [p,s,h,t,td]=await Promise.all([
-      db.from("todo_execution_plans").select("id,mode,plan_date,planned_minutes,window_start,window_end").eq("todo_id",todoId).order("plan_date",{ascending:false}),
+      db.from("todo_execution_plans").select("id,mode,plan_date,planned_minutes,window_start,window_end,replaces_slot_key").eq("todo_id",todoId).order("plan_date",{ascending:false}),
       db.from("todo_sessions").select("id,scheduled_start,scheduled_end").eq("todo_id",todoId).order("scheduled_start",{ascending:false}),
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end").eq("todo_id",todoId).maybeSingle(),
       db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end").eq("todo_id",todoId),
@@ -72,6 +73,9 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     const selectorKind=scope==="all"?"all":selected[0];
     const selectorValue=scope==="all"?null:selected[1]?Number(selected[1]):null;
     if(repeating&&!validDate(date)){setSaving(false);setError("请选择有效的重复安排生效日期。");return;}
+    if(repeating&&replaceSlotKey&&!templates.some(t=>t.slot_key===replaceSlotKey&&t.selector_kind==="all")){
+      setSaving(false);setError("请选择本任务有效的默认时段。");return;
+    }
     if(repeating&&selectorKind==="all"&&scope==="by_day"){setSaving(false);setError("请先选择需要分别安排的日期。");return;}
     if(repeating&&!pattern&&!projectEnd){setSaving(false);setError("此任务没有重复规则或计划结束日期，请使用单次安排。");return;}
     if(repeating&&pattern?.arrangement==="flexible"&&pattern.period!=="day"&&scope==="all"){
@@ -101,6 +105,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       ? await db.from("todo_execution_templates").insert({
           todo_id:todoId,starts_on:date<todoStart?todoStart:date,ends_on:projectEnd,
           timezone,execution_mode:mode,selector_kind:selectorKind,selector_value:selectorValue,
+          replaces_slot_key:scope==="by_day"?(replaceSlotKey||null):null,
           start_time:mode==="fixed"?fixedStartTime:null,end_time:mode==="fixed"?fixedEndTime:null,
           window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null,
           planned_minutes:mode==="fixed"?null:Number(minutes),
@@ -151,7 +156,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
       <p className="text-xs font-semibold text-ink-soft">1. 应用范围</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
+        {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");setReplaceSlotKey(x.id==="by_day"?[...new Set(templates.filter(t=>t.selector_kind==="all").map(t=>t.slot_key))].length===1?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"":"");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
       </div>
       {scope==="by_day"&&<label className="block text-xs text-ink-soft">选择重复日期
         <select className={field+" mt-1"} value={selector} onChange={e=>setSelector(e.target.value)}>
@@ -160,6 +165,12 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           {pattern?.period==="month"&&(pattern.arrangement==="fixed"?pattern.month_days:Array.from({length:31},(_,i)=>i+1)).map(x=><option key={x} value={"month_day:"+x}>每月 {x} 日</option>)}
           {pattern?.period==="month"&&pattern.include_month_end&&<option value="month_end">每月最后一天</option>}
           {!pattern&&projectEnd&&[1,2,3,4,5,6,7].map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
+        </select>
+      </label>}
+      {scope==="by_day"&&templates.some(t=>t.selector_kind==="all")&&<label className="block text-xs text-ink-soft">该日期的新安排如何处理默认时段？
+        <select className={field+" mt-1"} value={replaceSlotKey} onChange={e=>setReplaceSlotKey(e.target.value)}>
+          <option value="">额外增加一个执行时段</option>
+          {[...new Map(templates.filter(t=>t.selector_kind==="all").map(t=>[t.slot_key,t])).values()].map(t=><option key={t.slot_key} value={t.slot_key}>替换默认 {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"}</option>)}
         </select>
       </label>}
       {scope!=="once"&&<p className="text-xs text-ink-faint">将从所选开始日期起，对未来符合任务规则的日期持续生效；不批量生成日历预约记录。</p>}
