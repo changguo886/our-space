@@ -64,8 +64,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   useEffect(()=>{void refresh();},[todoId]);
   async function save(){
     setError("");
-    if(mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
-    if(mode==="window"&&windowEnd<=windowStart){setError("时间窗口结束时间必须晚于开始时间。");return;}
+    if(scope!=="by_day"&&mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
+    if(scope!=="by_day"&&mode==="window"&&windowEnd<=windowStart){setError("时间窗口结束时间必须晚于开始时间。");return;}
     if(scope==="once"&&mode==="fixed"&&(!validDate(fixedStartDate)||!validDate(fixedEndDate)||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setError("请填写有效日期（YYYY-MM-DD）与24小时制时间（HH:mm）。");return;}
     if(scope==="once"&&mode==="fixed"&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()<=toFixedDateTime(fixedStartDate,fixedStartTime).getTime()){setError("固定结束时间必须晚于开始时间。");return;}
     setSaving(true);
@@ -78,14 +78,14 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(repeating&&replaceSlotKey&&!templates.some(t=>t.slot_key===replaceSlotKey&&t.selector_kind==="all")){
       setSaving(false);setError("请选择本任务有效的默认时段。");return;
     }
-    if(repeating&&selectorKind==="all"&&scope==="by_day"){setSaving(false);setError("请先选择需要分别安排的日期。");return;}
+
     if(repeating&&!pattern&&!projectEnd){setSaving(false);setError("此任务没有重复规则或计划结束日期，请使用单次安排。");return;}
     if(repeating&&pattern?.arrangement==="flexible"&&pattern.period!=="day"&&scope==="all"){
       setSaving(false);setError("每周／每月灵活次数没有固定执行日期，不能自动预约每天。请切换为固定日期，或选择具体星期／月日期，或仅安排一次。");return;
     }
-    if(repeating&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
+    if(repeating&&scope!=="by_day"&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
     const effectiveStart=date<todoStart?todoStart:date;
-    if(repeating&&!editingTemplateId&&templates.some(t=>
+    if(repeating&&scope!=="by_day"&&!editingTemplateId&&templates.some(t=>
       t.selector_kind===selectorKind&&t.selector_value===selectorValue&&
       t.starts_on<=effectiveStart&&(t.ends_on===null||effectiveStart<=t.ends_on)&&
       t.execution_mode===mode&&
@@ -183,7 +183,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   }
   const preview = pattern
     ? upcomingEligible(pattern,todoStart||date,date,800,40).filter(day=>{
-        if(scope!=="by_day"||selector==="all")return true;
+        if(scope!=="by_day")return true;
+        if(dayPresets.length>0)return dayPresets.some(p=>p.key==="weekday:"+weekdayISO(day)||p.key==="month_day:"+Number(day.slice(-2))||(p.key==="month_end"&&Number(day.slice(-2))===lastDayISO(day)));
         const [kind,value]=selector.split(":");
         return kind==="weekday"?weekdayISO(day)===Number(value)
           :kind==="month_day"?Number(day.slice(-2))===Number(value)
@@ -256,10 +257,10 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <p className="text-xs text-ink-faint">{mode==="fixed"?"固定时段会显示在 Calendar；重复设置自动生成未来时段。":mode==="window"?"窗口不是连续预约时长，也不会显示在 Calendar。":"只记录投入计划，不占用 Calendar。"}</p>
       <div className="rounded-xl border border-line bg-paper/40 p-3 text-xs text-ink-soft">
         <p className="mb-1 font-semibold">第三步 · 确认安排</p>
-        <p>{scope==="once"?"只安排一次":scope==="all"?"以后所有符合规则的日期":"选定的星期／月日期"} · {mode==="fixed"?"固定 "+fixedStartTime+"–"+fixedEndTime:mode==="window"?"时间窗口 "+windowStart+"–"+windowEnd:"灵活安排，计划 "+minutes+" 分钟"}</p>
+        <p>{scope==="once"?"只安排一次":scope==="all"?"以后所有符合规则的日期":"选定的星期／月日期"} · {scope==="by_day"?dayPresets.map(row=>(row.key==="month_end"?"月末":row.key.startsWith("weekday:")?"星期"+row.key.split(":")[1]:"每月"+row.key.split(":")[1]+"日")+" "+(row.mode==="fixed"?row.start+"–"+row.end:row.mode==="window"?row.windowStart+"–"+row.windowEnd:"灵活 "+row.minutes+" 分钟")).join("；")||"请先选择日期":mode==="fixed"?"固定 "+fixedStartTime+"–"+fixedEndTime:mode==="window"?"时间窗口 "+windowStart+"–"+windowEnd:"灵活安排，计划 "+minutes+" 分钟"}</p>
         {scope!=="once"&&<p className="mt-1">起始生效：{date}；下一批符合日期：{preview.join("、")||"暂无"}。未来日期不会批量插入真实预约。</p>}
       </div>
-      <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>{saving?"保存中…":editingTemplateId?"从选定日期起更新":"保存执行安排"}</button>
+      <button type="button" disabled={saving||(scope==="by_day"&&dayPresets.length===0)} className="btn-primary w-full" onClick={()=>void save()}>{saving?"保存中…":editingTemplateId?"从选定日期起更新":"保存执行安排"}</button>
     </div>}
     {error&&<p role="alert" className="mt-2 text-xs text-blush-500">{error}</p>}
   </section>;
