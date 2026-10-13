@@ -280,11 +280,43 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     {open&&<div className="mt-4 space-y-3 border-t border-line pt-4">
       <div className="flex justify-end"><button type="button" className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft" onClick={resetDraft}>{zh?"重置当前编辑（不删除已保存安排）":"Reset draft (keep saved plans)"}</button></div>
       {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
-      <p className="text-xs font-semibold text-ink-soft">{zh?"第一步 · 应用范围":"Step 1 · Scope"}</p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {([{id:"once",label:zh?"仅安排一次":"One time"},{id:"all",label:zh?"沿用固定日期":"Use recurring dates"},{id:"by_day",label:zh?"自定义安排":"Custom schedule"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)||(x.id==="all"&&pattern?.arrangement==="flexible"&&pattern.period!=="day")} aria-pressed={scope===x.id} onClick={()=>onScopeChange(x.id)} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
+      <p className="text-xs font-semibold text-ink-soft">{zh?"选择安排方式":"Choose scheduling method"}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope==="once"} onClick={()=>onScopeChange("once")}
+          className={`rounded-xl border p-3 text-left text-xs ${scope==="once"?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>
+          <strong className="block text-sm">{zh?"安排指定日期":"Plan a date"}</strong>
+          <span className="mt-1 block text-ink-faint">{zh?"这次安排，不改变未来规则":"One-off plan; no series changes"}</span>
+        </button>
+        <button type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope!=="once"} onClick={()=>onScopeChange(pattern?.arrangement==="fixed"||pattern?.period==="day"?"all":"by_day")}
+          className={`rounded-xl border p-3 text-left text-xs ${scope!=="once"?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>
+          <strong className="block text-sm">{zh?"规划多个日期":"Plan several dates"}</strong>
+          <span className="mt-1 block text-ink-faint">{zh?"统一时间，也能单独调整":"Reuse a time or customize it"}</span>
+        </button>
       </div>
-      {pattern?.arrangement==="flexible"&&pattern.period!=="day"&&<p className="rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">{zh?"当前是每周／每月灵活次数，没有固定日期；请选择「自定义安排」指定星期或日期，或先修改周期规则。":"Flexible weekly/monthly goals have no fixed dates. Select Custom schedule to choose days, or edit the routine rule."}</p>}
+      {scope!=="once"&&!editingTemplateId&&<div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-ink-faint">{zh?"日期方式":"Dates"}：</span>
+        <button type="button" disabled={pattern?.arrangement==="flexible"&&pattern.period!=="day"} onClick={()=>onScopeChange("all")} className={`rounded-lg border px-3 py-1.5 ${scope==="all"?"bg-sage-50 border-sage-400":"border-line"} disabled:opacity-40`}>{zh?"沿用固定周期":"Use fixed recurrence"}</button>
+        <button type="button" onClick={()=>onScopeChange("by_day")} className={`rounded-lg border px-3 py-1.5 ${scope==="by_day"?"bg-sage-50 border-sage-400":"border-line"}`}>{zh?"自己选日期":"Choose dates"}</button>
+      </div>}
+      <button type="button" className="text-left text-xs text-sage-700 underline underline-offset-2"
+        onClick={()=>{
+          const lastFixed=sessions[0];
+          const lastPlan=plans[0];
+          if(lastFixed){
+            const start=new Date(lastFixed.scheduled_start),end=new Date(lastFixed.scheduled_end);
+            setMode("fixed");setFixedStartTime(localTime(start));setFixedEndTime(localTime(end));
+            setSharedMode("fixed");setSharedStart(localTime(start));setSharedEnd(localTime(end));
+          }else if(lastPlan){
+            setMode(lastPlan.mode);setMinutes(String(lastPlan.planned_minutes));
+            setWindowStart(lastPlan.window_start?.slice(0,5)??"18:00");setWindowEnd(lastPlan.window_end?.slice(0,5)??"22:00");
+            setSharedMode(lastPlan.mode);setSharedMinutes(String(lastPlan.planned_minutes));
+            setSharedStart(lastPlan.window_start?.slice(0,5)??"18:00");setSharedEnd(lastPlan.window_end?.slice(0,5)??"22:00");
+          }else{
+            setError(zh?"还没有可沿用的单次安排。":"No previous one-off plan to reuse.");
+          }
+        }}>
+        {zh?"↺ 沿用最近一次时间设置":"↺ Reuse last timing"}
+      </button>
       {scope==="by_day"&&!editingTemplateId&&<div className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
         <div className="space-y-2 rounded-lg border border-sage-200 bg-sage-50/40 p-3">
           <p className="text-xs font-semibold text-ink">{zh?"统一时间模板（可选）":"Shared time template (optional)"}</p>
