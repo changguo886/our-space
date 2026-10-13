@@ -41,3 +41,7 @@ Retain: auth.users, profiles, groups/group_members, daily_entries, comments, rea
 - `docs/our-space-v4-schema-consolidation.md`: proposed canonical schema ownership.
 
 **No database deletion, table alteration, or backup execution has occurred by committing these files.**
+
+## Stage 1 executable SQL (additive only)
+
+`supabase/v4_02_additive_compatibility.sql` adds optional subtask effort, rule lifecycle/strict and compatibility columns for sessions/templates. It does NOT rename task types, drop tables, loosen old fixed scheduled timestamp constraints, clear records or update client read/write paths. Requires independently verified database backup before production execution. Recheck target fields after running; stage 2 will be prepared separately after code compatibility.
