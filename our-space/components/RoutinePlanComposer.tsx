@@ -46,10 +46,9 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
    if(!chosen.length){setError(zh?"请先选择日期。":"Select dates first.");return;}
    const added=chosen.map(day=>({id:crypto.randomUUID(),key:String(day),...shared}));
    setSlots(previous=>{
-     const kept=previous.filter(s=>!chosen.includes(Number(s.key)));
-     return [...kept,...added].sort((a,b)=>Number(a.key)-Number(b.key));
+     return [...previous,...added].sort((a,b)=>Number(a.key)-Number(b.key));
    });
-   setNotice(zh?"已应用统一配置，可以逐日调整。":"Applied. You can edit each day.");
+   setNotice(zh?"已添加时段。同一天可再添加，已有时段不会被覆盖。":"Slots added; apply again to add another time on the same day.");
  };
  const update=(id:string,changes:Partial<Slot>)=>setSlots(rows=>rows.map(r=>r.id===id?{...r,...changes}:r));
  const save=async()=>{
@@ -61,6 +60,12 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
      const mins=Number(slot.minutes);
      if(slot.mode!=="fixed"&&(!Number.isInteger(mins)||mins<1||mins>1440)){setError(zh?"预计投入必须为 1–1440 分钟。":"Minutes must be between 1 and 1440.");return;}
      if(slot.mode==="window"&&mins>(Number(slot.end.slice(0,2))*60+Number(slot.end.slice(3))-Number(slot.start.slice(0,2))*60-Number(slot.start.slice(3)))){setError(zh?"预计投入不能超过窗口长度。":"Estimated time exceeds window.");return;}
+   }
+   for(let i=0;i<slots.length;i++)for(let j=i+1;j<slots.length;j++){
+     const a=slots[i],b=slots[j];
+     if(a.key===b.key&&a.mode==="fixed"&&b.mode==="fixed"&&a.start<b.end&&b.start<a.end){
+       setError(zh?"同一天的固定时段不能相互重叠。":"Fixed slots on the same date cannot overlap.");return;
+     }
    }
    if(scope==="ongoing"&&pattern.period==="month"&&slots.some(s=>Number(s.key)>28)){
      const confirmation=window.confirm(zh?"29–31 日并非每个月都存在，缺少这些日期的月份会跳过。继续？":"Dates 29–31 are skipped in shorter months. Continue?");
@@ -79,7 +84,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
      }));
      const existing=await db.from("todo_execution_templates").select("id,selector_kind,selector_value,starts_on,ends_on").eq("todo_id",todoId);
      if(existing.error)failure=existing.error.message;
-     else if(rows.some(row=>(existing.data??[]).some(t=>t.selector_kind===row.selector_kind&&t.selector_value===row.selector_value&&(t.ends_on===null||t.ends_on>=row.starts_on))))failure=zh?"已有同一星期／月日的长期安排，请先修改已有规则。":"Existing recurring slot conflicts with your selection.";
+     else if(rows.some(row=>(existing.data??[]).some(t=>t.selector_kind===row.selector_kind&&t.selector_value===row.selector_value&&(t.ends_on===null||t.ends_on>=row.starts_on))))failure=zh?"该日期已有长期安排；如需添加第二个时段，请在已有安排中管理，避免生成重复系列。":"An existing series already uses this date; edit its schedule before adding a second recurring slot.";
      else {const result=await db.from("todo_execution_templates").insert(rows);failure=result.error?.message??"";}
    }else{
      const rows: Array<{todo_id:string;mode:Mode;scheduled_start?:string;scheduled_end?:string;plan_date?:string;planned_minutes?:number;window_start?:string|null;window_end?:string|null}>=slots.map(s=>{
