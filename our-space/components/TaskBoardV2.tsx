@@ -28,6 +28,10 @@ const typeLabel: Record<string,string> = {
 export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activeSpaceName }: Props) {
   const [filter,setFilter] = useState<Filter>("today");
   const [selectedId,setSelectedId] = useState<string | null>(null);
+  useEffect(()=>{
+    const requested=new URLSearchParams(window.location.search).get("todoId");
+    if(requested&&todos.some(t=>t.id===requested))setSelectedId(requested);
+  },[]);
   const [creating,setCreating] = useState(false);
   type HabitPattern=HabitPatternV3;
   const [habitPatterns,setHabitPatterns]=useState<Record<string,HabitPattern>>({});
