@@ -23,3 +23,28 @@ export function templateEligible(day:string,t:ExecutionTemplateV3,p?:HabitPatter
 export function upcomingEligible(p:HabitPatternV3,start:string,from:string,days=120,limit=3):string[]{
  const out:string[]=[];for(let n=0;n<days&&out.length<limit;n++){const day=addDaysISO(from,n);if(habitEligible(day,p,start))out.push(day);}return out;
 }
+
+/** Resolve a repeating wall-clock appointment in its IANA timezone.
+ * Missing DST local times yield null instead of silently shifting an hour.
+ * An ambiguous autumn clock time uses one deterministic valid occurrence.
+ */
+export function wallClockISO(day:string,time:string,zone:string):string|null{
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!/^([01]\d|2[0-3]):[0-5]\d/.test(time))return null;
+ const [y,m,d]=day.split("-").map(Number),[h,min]=time.slice(0,5).split(":").map(Number);
+ const expected=Date.UTC(y,m-1,d,h,min);
+ try{
+   const fmt=new Intl.DateTimeFormat("en-US",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+   let instant=expected;
+   function observed(ms:number){
+     const parts=fmt.formatToParts(new Date(ms));
+     const get=(key:string)=>Number(parts.find(x=>x.type===key)?.value??"0");
+     return Date.UTC(get("year"),get("month")-1,get("day"),get("hour"),get("minute"));
+   }
+   for(let i=0;i<5;i++){
+     const offset=expected-observed(instant);
+     if(offset===0)return new Date(instant).toISOString();
+     instant+=offset;
+   }
+   return observed(instant)===expected?new Date(instant).toISOString():null;
+ }catch{return null;}
+}
