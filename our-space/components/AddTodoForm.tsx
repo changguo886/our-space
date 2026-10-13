@@ -257,7 +257,7 @@ export default function AddTodoForm({
             {CATEGORIES.map(c=><option key={c.value} value={c.value}>{t.categories[c.value]}</option>)}
           </select>
         </label>
-        <div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-full border px-2 py-1" style={categoryBadgeVisual(category)}>{category?t.categories[category]:(zh?"未分类":"Uncategorized")}</span><span className="rounded-lg border px-3 py-2 text-ink" style={taskCardVisual(category,taskColor)}>{zh?"任务卡颜色预览":"Task card preview"}</span></div>
+        <div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-full border px-2 py-1" style={categoryBadgeVisual(category)}>{category ? (t.categories as Record<string,string>)[category] : (zh?"未分类":"Uncategorized")}</span><span className="rounded-lg border px-3 py-2 text-ink" style={taskCardVisual(category,taskColor)}>{zh?"任务卡颜色预览":"Task card preview"}</span></div>
         {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
       </div>
       <div>
