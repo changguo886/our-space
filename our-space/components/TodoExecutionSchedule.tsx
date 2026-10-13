@@ -300,7 +300,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <div className="rounded-xl border border-line bg-paper/40 p-3 text-xs text-ink-soft">
         <p className="mb-1 font-semibold">{zh?"第三步 · 确认安排":"Step 3 · Review"}</p>
         <p>{scope==="once"?"只安排一次":scope==="all"?"以后所有符合规则的日期":"选定的星期／月日期"} · {scope==="by_day"?dayPresets.map(row=>(row.key==="month_end"?"月末":row.key.startsWith("weekday:")?"星期"+row.key.split(":")[1]:"每月"+row.key.split(":")[1]+"日")+" "+(row.mode==="fixed"?row.start+"–"+row.end:row.mode==="window"?row.windowStart+"–"+row.windowEnd:"灵活 "+row.minutes+" 分钟")).join("；")||"请先选择日期":mode==="fixed"?"固定 "+fixedStartTime+"–"+fixedEndTime:mode==="window"?"时间窗口 "+windowStart+"–"+windowEnd:"灵活安排，计划 "+minutes+" 分钟"}</p>
-        {scope!=="once"&&<p className="mt-1">起始生效：{date}；下一批符合日期：{preview.join("、")||"暂无"}。未来日期不会批量插入真实预约。</p>}
+        {scope!=="once"&&<p className="mt-1">起始生效：{date}；下一批符合日期：{preview.join("、")||"暂无"}。Calendar 会根据重复规则显示未来安排；无需提前逐日创建预约。</p>}
       </div>
       <button type="button" disabled={saving||(scope==="by_day"&&dayPresets.length===0)} className="btn-primary w-full" onClick={()=>void save()}>{saving?(zh?"保存中…":"Saving…"):editingTemplateId?(zh?"从选定日期起更新":"Update future schedule"):(zh?"保存执行安排":"Save schedule")}</button>
     </div>}
