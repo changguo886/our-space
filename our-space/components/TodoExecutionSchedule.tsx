@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AppDatePicker from "@/components/ui/AppDatePicker";
+import AppTimePicker from "@/components/ui/AppTimePicker";
 import { useI18n } from "@/components/I18nProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addDaysISO, lastDayISO, weekdayISO, templateEligible, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
@@ -252,7 +253,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         <label className="block text-xs text-ink-soft">重复时段<select className={field+" mt-1"} value={overrideSlot} onChange={e=>setOverrideSlot(e.target.value)}><option value="">请选择</option>{templates.filter(t=>t.execution_mode==="fixed").map(t=><option key={t.id} value={t.id}>{t.start_time?.slice(0,5)}–{t.end_time?.slice(0,5)} · {t.selector_kind==="all"?"所有日期":t.selector_kind+" "+(t.selector_value??"末日")}</option>)}</select></label>
         <label className="block text-xs text-ink-soft">{zh?"只调整这一天":"Occurrence date"}<AppDatePicker value={overrideDate} onChange={setOverrideDate}/></label>
         <div className="grid grid-cols-2 gap-2">{(["reschedule","cancel"] as const).map(x=><button key={x} type="button" className={`rounded-lg border p-2 text-xs ${overrideAction===x?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setOverrideAction(x)}>{x==="cancel"?(zh?"取消这一次":"Cancel once"):(zh?"仅这次改时间":"Reschedule once")}</button>)}</div>
-        {overrideAction==="reschedule"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">开始<input type="time" className={field+" mt-1"} value={overrideStart} onChange={e=>setOverrideStart(e.target.value)}/></label><label className="text-xs text-ink-soft">结束<input type="time" className={field+" mt-1"} value={overrideEnd} onChange={e=>setOverrideEnd(e.target.value)}/></label></div>}
+        {overrideAction==="reschedule"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">开始<AppTimePicker value={overrideStart} onChange={v=>setOverrideStart(v)}/></label><label className="text-xs text-ink-soft">结束<AppTimePicker value={overrideEnd} onChange={v=>setOverrideEnd(v)}/></label></div>}
         <button type="button" disabled={saving||!overrideSlot} className="btn-primary w-full" onClick={()=>void saveOverride()}>{saving?(zh?"保存中…":"Saving…"):(zh?"仅保存这一次":"Save this occurrence")}</button>
       </div>
     </details>}
@@ -295,13 +296,13 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {scope!=="once"&&!editingTemplateId&&autoSeriesDate!==date&&<p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{zh?`今天或之前已有单次安排；新的重复系列建议从 ${autoSeriesDate} 开始，不覆盖已有记录。未来单次计划仍需检查冲突。`:`Earlier standalone plans are protected; the new series begins ${autoSeriesDate}. Review any future bookings for conflicts.`}</p>}
       {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"规则生效起始日期"}<AppDatePicker value={date} onChange={setDate}/></label>}
       {scope!=="by_day"&&mode!=="fixed"&&<label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
-      {scope!=="by_day"&&mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input className={field+" mt-1"} type="time" value={windowStart} onChange={e=>setWindowStart(e.target.value)}/></label><label className="text-xs text-ink-soft">最晚结束<input className={field+" mt-1"} type="time" value={windowEnd} onChange={e=>setWindowEnd(e.target.value)}/></label></div>}
+      {scope!=="by_day"&&mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<AppTimePicker value={windowStart} onChange={v=>setWindowStart(v)}/></label><label className="text-xs text-ink-soft">最晚结束<AppTimePicker value={windowEnd} onChange={v=>setWindowEnd(v)}/></label></div>}
       {scope!=="by_day"&&mode==="fixed"&&<div className="space-y-3">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {scope==="once"&&<label className="block text-xs text-ink-soft">{zh?"开始日期":"Start date"}<AppDatePicker value={fixedStartDate} onChange={setFixedStartDate}/></label>}
-          <label className="block text-xs text-ink-soft">开始时间（24小时制）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="20:00" value={fixedStartTime} onChange={e=>setFixedStartTime(e.target.value)}/></label>
+          <label className="block text-xs text-ink-soft">开始时间（24小时制）<AppTimePicker value={fixedStartTime} onChange={setFixedStartTime}/></label>
           {scope==="once"&&<label className="block text-xs text-ink-soft">{zh?"结束日期":"End date"}<AppDatePicker value={fixedEndDate} onChange={setFixedEndDate}/></label>}
-          <label className="block text-xs text-ink-soft">结束时间（24小时制）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="20:45" value={fixedEndTime} onChange={e=>setFixedEndTime(e.target.value)}/></label>
+          <label className="block text-xs text-ink-soft">结束时间（24小时制）<AppTimePicker value={fixedEndTime} onChange={setFixedEndTime}/></label>
         </div>
         <p className="text-xs text-ink-faint">{scope==="once"?"单次固定预约允许跨日期。":"重复固定预约按当地时钟时间自动应用于未来日期，当前只支持同一天内的时段。"}</p>
       </div>}
