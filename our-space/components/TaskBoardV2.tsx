@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { CalendarDays, CheckCircle2, ChevronRight, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useI18n } from "@/components/I18nProvider";
+import {taskCardVisual} from "@/lib/task-colors";
 import AddTodoForm from "@/components/AddTodoForm";
 import QuickCaptureTodo from "@/components/QuickCaptureTodo";
 import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
@@ -162,7 +163,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
                 <h3 className="text-xs font-semibold text-ink-soft">{group.label}</h3><span className="text-[10px] text-ink-faint">{group.items.length}</span>
               </button>
               {!collapsedCategories.includes(group.key)&&<div className="space-y-1.5">{group.items.map(todo=><button key={todo.id} type="button" onClick={()=>setSelectedId(todo.id)} aria-pressed={selectedId===todo.id}
-                className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${selectedId===todo.id?"border-sage-300 bg-sage-50":"border-line/70 bg-white hover:bg-paper/50"}`}>
+                className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${selectedId===todo.id?"ring-2 ring-sage-300/40":"hover:brightness-[0.98]"}`} style={taskCardVisual(todo.category,todo.color_hex)}>
                 {todo.status==="completed"?<CheckCircle2 className="h-4 w-4 shrink-0 text-sage-600"/>:<span className={`h-2 w-2 shrink-0 rounded-full ${todo.task_type==="routine"?"bg-emerald-400":todo.task_type==="project"?"bg-amber-400":"bg-mist-300"}`}/>}
                 <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-medium ${todo.status==="completed"?"text-ink-faint line-through":"text-ink"}`}>{todo.title}</span><span className="block text-[10px] text-ink-faint">{displayType(todo)} · {ruleSummary(todo)|| (todo.target_finish_date?`目标 ${todo.target_finish_date}`:todo.task_date||"待安排")}{(bookedCounts[todo.id]??0)>0?` · 已预约 ${bookedCounts[todo.id]} 段`:""}{executionTemplates.some(x=>x.todo_id===todo.id)? " · 已设置未来重复安排":""}</span></span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-faint"/>
