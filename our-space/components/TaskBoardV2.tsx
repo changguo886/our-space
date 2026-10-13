@@ -23,6 +23,8 @@ const typeLabel: Record<string,string> = {
   one_time: "单次任务",
   recurring: "旧版重复任务",
   habit: "习惯养成",
+  routine: "周期任务",
+  project: "长期项目",
 };
 
 export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activeSpaceName }: Props) {
@@ -60,12 +62,12 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   },[todos]);
   const ruleSummary=(todo:Todo)=>{
     const p=habitPatterns[todo.id];
-    if(todo.task_type!=="habit"||!p)return "";
+    if(todo.task_type!=="habit"&&todo.task_type!=="routine"||!p)return "";
     if(p.period==="day")return `每天 ${p.target_count} 次`;
     if(p.period==="week")return p.arrangement==="fixed"?`每周 ${(p.weekdays??[]).map(x=>"一二三四五六日"[x-1]).join("、")}`:`每周 ${p.target_count} 次`;
     return p.arrangement==="fixed"?`每月 ${(p.month_days??[]).join("、")}${p.include_month_end?"、最后一天":""} 日`:`每月 ${p.target_count} 次`;
   };
-  const [typeFilter,setTypeFilter] = useState<"all"|"one_time"|"recurring"|"habit">("all");
+  const [typeFilter,setTypeFilter] = useState<"all"|"one_time"|"recurring"|"habit"|"project"|"routine">("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [collapsedCategories,setCollapsedCategories] = useState<string[]>([]);
 
@@ -83,13 +85,13 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
     return Boolean(p&&upcomingEligible(p,t.task_date??today,today,370,5).some(day=>day>today));
   };
   const isToday=(t:Todo)=>{
-    if(t.task_type==="habit")return isHabitToday(t);
+    if((t.task_type==="habit"||t.task_type==="routine"))return isHabitToday(t);
     if(templateForDate(t,today))return true;
     const booked=bookedDays[t.id]??[];
     return booked.length?booked.includes(today):t.task_date===today;
   };
   const isUpcoming=(t:Todo)=>{
-    if(t.task_type==="habit")return hasExecution(t)&&isFutureHabit(t);
+    if((t.task_type==="habit"||t.task_type==="routine"))return hasExecution(t)&&isFutureHabit(t);
     if((bookedDays[t.id]??[]).some(day=>day>today)||hasFutureTemplate(t))return true;
     return Boolean(!hasExecution(t)&&t.task_date&&t.task_date>today);
   };
@@ -104,7 +106,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   const categories: {key:string;label:string}[] = [{key:"work",label:"工作"},{key:"study",label:"学习"},{key:"life",label:"生活"},{key:"rest",label:"休息"},{key:"other",label:"其他"},{key:"none",label:"未分类"}];
   const grouped = categories.filter(c=>categoryFilter==="all"||categoryFilter===c.key).map(c=>({ ...c, items:visible.filter(t=>(t.category??"none")===c.key) })).filter(c=>c.items.length>0);
   const selected = todos.find(t=>t.id===selectedId)??null;
-  const displayType = (todo:Todo) => todo.task_type==="one_time" && todo.target_finish_date ? "定期任务" : typeLabel[todo.task_type??"one_time"];
+  const displayType = (todo:Todo) => (todo.task_type==="one_time" || todo.task_type==="project") && todo.target_finish_date ? "定期任务" : typeLabel[todo.task_type??"one_time"];
   const tabs: {key:Filter;label:string}[] = [
     {key:"today",label:"今天"},
     {key:"backlog",label:"待安排"},
