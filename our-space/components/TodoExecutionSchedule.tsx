@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { addDaysISO, lastDayISO, weekdayISO, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
+import { addDaysISO, lastDayISO, weekdayISO, templateEligible, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
 
 type Mode = "flexible" | "window" | "fixed";
 type Plan = { id:string; mode:"flexible"|"window"; plan_date:string; planned_minutes:number; window_start:string|null; window_end:string|null };
@@ -120,6 +120,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     const t=templates.find(x=>x.id===overrideSlot);
     if(!t){setError("请先选择重复安排。");return;}
     if(!validDate(overrideDate)||overrideDate<t.starts_on||(t.ends_on&&overrideDate>t.ends_on)){setError("请选择模板有效期内的日期。");return;}
+    if(!templateEligible(overrideDate,t,pattern??undefined,todoStart||undefined)){setError("这一天不属于所选重复模板的执行日期。");return;}
     if(overrideAction==="reschedule"&&(!validTime(overrideStart)||!validTime(overrideEnd)||overrideEnd<=overrideStart)){setError("改期时间必须是同一天内有效的开始和结束时间。");return;}
     setSaving(true);const change=overrideAction==="cancel"?{scheduled_start:null,scheduled_end:null}:{
       scheduled_start:toFixedDateTime(overrideDate,overrideStart).toISOString(),
