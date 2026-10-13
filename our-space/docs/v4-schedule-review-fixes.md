@@ -19,7 +19,7 @@ Branch: `fix/v4-schedule-review` (based on `feature/v4-todo-ui` @ 60440db).
 | Create | “创建” and “创建并安排时间” buttons replace the checkbox. |
 | Bug | `AppTimePicker` typed input never parsed (regex was double-escaped); fixed. |
 | E02 / E06 | ESLint 9 flat config (`npm run lint`: 0 errors). Unit tests with `node --test` (`npm test`: 13 passing). |
-| D10 / B03 | `supabase/v4_09_schedule_integrity.sql`: notes `ON DELETE SET NULL`; DB exclusion constraint against overlapping fixed sessions. Not run automatically. |
+| D10 / B03 | Moved to `supabase/v4_13_schedule_integrity.sql` (see `docs/v4-migration-runbook.md`). |
 
 ## Manual test checklist (Staging or Production)
 
@@ -34,4 +34,4 @@ Branch: `fix/v4-schedule-review` (based on `feature/v4-todo-ui` @ 60440db).
 ## Rollback
 
 - Code: revert the merge commit of this branch (`git revert -m 1 <merge-sha>`); no schema change is required by the code.
-- Database: only if `v4_09` was run, use the ROLLBACK block at the bottom of that file.
+- Database: see `docs/v4-migration-runbook.md`; every migration has its own rollback block.

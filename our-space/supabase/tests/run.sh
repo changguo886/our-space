@@ -72,6 +72,10 @@ for f in v4_13_schedule_integrity.sql v4_12_date_only_tasks.sql v4_11_series_ide
   [ -f "$f" ] || continue
   sed -n '/^-- ROLLBACK-BEGIN/,/^-- ROLLBACK-END/p' "$f" | sed -e 's/^-- \{0,1\}//' -e '/^ROLLBACK-/d' -e 's#^\\i save_task_v4_previous.sql#\\i /tmp/os_save_task_prev.sql#' > /tmp/os_rb.sql
   psql_db -f /tmp/os_rb.sql && echo "PASS rollback $f"
+  if [ "$f" = v4_13_schedule_integrity.sql ]; then
+    test "$(psql_db -At -c "SELECT confdeltype FROM pg_constraint WHERE conname='quick_notes_subtask_id_fkey'")" = a
+    echo "PASS rollback restored the original notes FK (no action)"
+  fi
 done
 # v4_10 rollback: restore the saved v1 function, then drop the new objects.
 psql_db -f /tmp/os_finish_v1.sql
