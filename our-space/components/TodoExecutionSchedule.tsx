@@ -82,6 +82,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       setSaving(false);setError("每周／每月灵活次数没有固定执行日期，不能自动预约每天。请切换为固定日期，或选择具体星期／月日期，或仅安排一次。");return;
     }
     if(repeating&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
+    const effectiveStart=date<todoStart?todoStart:date;
     if(repeating&&!editingTemplateId&&templates.some(t=>
       t.selector_kind===selectorKind&&t.selector_value===selectorValue&&
       t.starts_on<=effectiveStart&&(t.ends_on===null||effectiveStart<=t.ends_on)&&
@@ -90,7 +91,6 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       (mode!=="window"||(t.window_start?.slice(0,5)===windowStart&&t.window_end?.slice(0,5)===windowEnd))&&
       (mode==="fixed"||t.planned_minutes===Number(minutes))
     )){setSaving(false);setError("相同的重复安排已经存在，请直接修改原模板。");return;}
-    const effectiveStart=date<todoStart?todoStart:date;
     const result=repeating&&editingTemplateId
       ? await db.rpc("revise_execution_template_v3",{
           p_template_id:editingTemplateId,
