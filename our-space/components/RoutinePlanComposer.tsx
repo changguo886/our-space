@@ -82,6 +82,12 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
        window_start:s.mode==="window"?s.start:null,window_end:s.mode==="window"?s.end:null,
        planned_minutes:s.mode==="fixed"?null:Number(s.minutes)
      }));
+     const duplicateRows=rows.some((a,i)=>rows.slice(i+1).some(b=>a.selector_kind===b.selector_kind&&a.selector_value===b.selector_value&&a.execution_mode===b.execution_mode&&(
+       a.execution_mode==="fixed"&&b.execution_mode==="fixed"&&Boolean(a.start_time&&a.end_time&&b.start_time&&b.end_time&&a.start_time<b.end_time&&b.start_time<a.end_time)
+       ||a.execution_mode==="window"&&a.window_start===b.window_start&&a.window_end===b.window_end&&a.planned_minutes===b.planned_minutes
+       ||a.execution_mode==="flexible"&&a.planned_minutes===b.planned_minutes
+     )));
+     if(duplicateRows){setBusy(false);setError(zh?"本次配置包含重复的周期时段。":"Duplicate recurring slots in the selection.");return;}
      const existing=await db.from("todo_execution_templates").select("id,selector_kind,selector_value,starts_on,ends_on,execution_mode,start_time,end_time,window_start,window_end,planned_minutes").eq("todo_id",todoId);
      if(existing.error)failure=existing.error.message;
      else if(rows.some(row=>(existing.data??[]).some(t=>{
