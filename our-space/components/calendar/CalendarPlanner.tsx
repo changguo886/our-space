@@ -50,6 +50,7 @@ import DurationInput, {
 import TodoSubtasks from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
 import { useI18n } from "@/components/I18nProvider";
+import {normalizeTaskColor} from "@/lib/task-colors";
 
 /* =========================================================
    Types
@@ -68,6 +69,7 @@ type TodoSession = {
 
 type CalendarTodo = {
   id: string;
+  color_hex?: string | null;
   title: string;
   description: string | null;
   estimated_minutes: number | null;
@@ -1010,7 +1012,7 @@ function ScheduledSession({
     <div
       ref={setNodeRef}
       onClick={onSelect}
-      style={{ top, height }}
+      style={{ top, height, borderLeftColor: normalizeTaskColor(todo.color_hex), borderLeftWidth: 4 }}
       className={`
         absolute left-2 right-2 z-20 rounded-2xl border
         shadow-[0_3px_14px_rgba(60,50,40,0.045)]
