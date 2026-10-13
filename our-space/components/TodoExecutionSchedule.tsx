@@ -31,6 +31,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [copyBusy,setCopyBusy]=useState(false);
   const [copyNotice,setCopyNotice]=useState("");
   const [continuationDays,setContinuationDays]=useState<string[]>([]);
+  const [continuationItems,setContinuationItems]=useState<Array<{day:string;mode:Mode;start:string;end:string;minutes:number}>>([]);
   const [continuationSource,setContinuationSource]=useState<typeof copySource>(null);
   const [continuationBusy,setContinuationBusy]=useState(false);
 
@@ -169,7 +170,18 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setCopyBusy(false);
     if(writeError){setError((zh?"复制失败：":"Copy failed: ")+writeError);return;}
     setCopyNotice((zh?"复制完成；跳过已有单次安排 ":"Copied; skipped existing plans ")+skipped);
-    if(pattern&&(pattern.period==="week"||pattern.period==="month")){setContinuationSource(copySource);setContinuationDays([...new Set([sourceDay,...target])].sort());}
+    if(pattern&&(pattern.period==="week"||pattern.period==="month")){
+      const days=[...new Set([sourceDay,...target])].sort();
+      setContinuationSource(copySource);setContinuationDays(days);
+      setContinuationItems(days.map(day=>{
+        const fixed=sessions.find(row=>localDate(new Date(row.scheduled_start))===day);
+        const flexible=plans.find(row=>row.plan_date===day);
+        if(day!==sourceDay&&target.includes(day))return {day,mode:copyMode,start:sourceStart,end:sourceEnd,minutes:copyMinutes};
+        if(fixed){const a=new Date(fixed.scheduled_start),b=new Date(fixed.scheduled_end);return {day,mode:"fixed" as Mode,start:localTime(a),end:localTime(b),minutes:Math.round((b.getTime()-a.getTime())/60000)};}
+        if(flexible)return {day,mode:flexible.mode,start:flexible.window_start?.slice(0,5)??"",end:flexible.window_end?.slice(0,5)??"",minutes:flexible.planned_minutes};
+        return {day,mode:copyMode,start:sourceStart,end:sourceEnd,minutes:copyMinutes};
+      }));
+    }
     setCopyOpen(false);setCopySource(null);setCopyDays([]);await refresh();
   }
   const shiftPeriod=(day:string)=>{
@@ -180,42 +192,42 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(d>max)return null; // A 31st does not silently become the 30th.
     return [next.getUTCFullYear(),String(next.getUTCMonth()+1).padStart(2,"0"),String(d).padStart(2,"0")].join("-");
   };
-  const dismissContinuation=()=>{setContinuationDays([]);setContinuationSource(null);};
+  const dismissContinuation=()=>{setContinuationDays([]);setContinuationItems([]);setContinuationSource(null);};
   async function applyContinuation(forever:boolean){
     if(!pattern||!continuationSource||!continuationDays.length)return;
     setError("");setContinuationBusy(true);
     const db=createClient();
-    const original=continuationSource;
-    const targets=continuationDays.map(shiftPeriod).filter((d):d is string=>Boolean(d))
-      .filter(d=>!projectEnd||d<=projectEnd)
-      .filter(d=>pattern.arrangement==="flexible"||copyEligible(d));
-    const unique=[...new Set(targets)];
+    const items=continuationItems.map(item=>({...item,target:shiftPeriod(item.day)}))
+      .filter((item):item is typeof item & {target:string}=>item.target!==null)
+      .filter(item=>!projectEnd||item.target<=projectEnd)
+      .filter(item=>pattern.arrangement==="flexible"||copyEligible(item.target));
+    const unique=[...new Set(items.map(item=>item.target))];
     const occupied=new Set([...plans.map(p=>p.plan_date),...sessions.map(p=>localDate(new Date(p.scheduled_start)))]);
     let failure="";
     if(forever){
-      const selectors=[...new Set(continuationDays.map(d=>pattern.period==="week"?"weekday:"+weekdayISO(d):"month_day:"+Number(d.slice(-2))))];
       const start=shiftPeriod(continuationDays[0]);
       if(!start){failure=zh?"下周期不存在对应日期。":"No matching date next period.";}
       else {
-        const rows=selectors.map(key=>({
+        const rows=items.map(item=>({
           todo_id:todoId,starts_on:start,ends_on:projectEnd,timezone,replaces_slot_key:null,
-          selector_kind:key.split(":")[0],selector_value:Number(key.split(":")[1]),
-          execution_mode:original.mode,
-          start_time:original.mode==="fixed"?original.start:null,end_time:original.mode==="fixed"?original.end:null,
-          window_start:original.mode==="window"?original.start:null,window_end:original.mode==="window"?original.end:null,
-          planned_minutes:original.mode==="fixed"?null:original.minutes
+          selector_kind:pattern.period==="week"?"weekday":"month_day",
+          selector_value:pattern.period==="week"?weekdayISO(item.day):Number(item.day.slice(-2)),
+          execution_mode:item.mode,
+          start_time:item.mode==="fixed"?item.start:null,end_time:item.mode==="fixed"?item.end:null,
+          window_start:item.mode==="window"?item.start:null,window_end:item.mode==="window"?item.end:null,
+          planned_minutes:item.mode==="fixed"?null:item.minutes
         }));
         const conflicts=rows.some(row=>templates.some(t=>t.selector_kind===row.selector_kind&&t.selector_value===row.selector_value&&(t.ends_on===null||t.ends_on>=start)));
         if(conflicts)failure=zh?"已有覆盖相同日期的重复安排，请先修改已有规则。":"An active recurring rule already covers these dates.";
         else {const result=await db.from("todo_execution_templates").insert(rows);failure=result.error?.message??"";}
       }
     } else {
-      const newDays=unique.filter(d=>!occupied.has(d));
+      const newDays=items.filter(item=>!occupied.has(item.target));
       if(!newDays.length)failure=zh?"下一周期的对应日期都已有安排，或不存在可复制日期。":"There are no free matching dates next period.";
       else {
-        const rows=newDays.map(day=>original.mode==="fixed"
-          ?{todo_id:todoId,mode:"fixed",scheduled_start:toFixedDateTime(day,original.start).toISOString(),scheduled_end:toFixedDateTime(day,original.end).toISOString()}
-          :{todo_id:todoId,mode:original.mode,plan_date:day,planned_minutes:original.minutes,window_start:original.mode==="window"?original.start:null,window_end:original.mode==="window"?original.end:null});
+        const rows=newDays.map(item=>item.mode==="fixed"
+          ?{todo_id:todoId,mode:"fixed",scheduled_start:toFixedDateTime(item.target,item.start).toISOString(),scheduled_end:toFixedDateTime(item.target,item.end).toISOString()}
+          :{todo_id:todoId,mode:item.mode,plan_date:item.target,planned_minutes:item.minutes,window_start:item.mode==="window"?item.start:null,window_end:item.mode==="window"?item.end:null});
         const result=await db.from("todo_sessions").insert(rows);
         failure=result.error?.message??"";
       }
