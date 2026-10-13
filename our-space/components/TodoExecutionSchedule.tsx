@@ -50,13 +50,13 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setLoading(true);
     const db=createClient();
     const [p,s,h,t,td]=await Promise.all([
-      db.from("todo_execution_plans").select("id,mode,plan_date,planned_minutes,window_start,window_end").eq("todo_id",todoId).order("plan_date",{ascending:false}),
-      db.from("todo_sessions").select("id,scheduled_start,scheduled_end").eq("todo_id",todoId).order("scheduled_start",{ascending:false}),
+      db.from("todo_sessions").select("id,mode,plan_date,planned_minutes,window_start,window_end").eq("todo_id",todoId).neq("mode","fixed").order("plan_date",{ascending:false}),
+      db.from("todo_sessions").select("id,scheduled_start,scheduled_end").eq("todo_id",todoId).eq("mode","fixed").order("scheduled_start",{ascending:false}),
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end").eq("todo_id",todoId).maybeSingle(),
       db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end,replaces_slot_key").eq("todo_id",todoId),
       db.from("todos").select("task_date,plan_start_date,target_finish_date").eq("id",todoId).single()
     ]);
-    if(p.error)setError("读取灵活计划失败（请确认已在当前环境执行 V3 M2）："+p.error.message);
+    if(p.error)setError("读取灵活安排失败（请确认已执行 V4 Session schema）："+p.error.message);
     else if(s.error)setError("读取预约时段失败："+s.error.message);
     else {setPlans((p.data??[]) as Plan[]);setSessions((s.data??[]) as Session[]);setError(t.error?t.error.message:"");if(!h.error)setPattern(h.data as HabitPatternV3|null);if(!t.error)setTemplates((t.data??[]) as ExecutionTemplateV3[]);if(!td.error&&td.data){setTodoStart(td.data.plan_start_date??td.data.task_date??"");setProjectEnd(td.data.target_finish_date??null);}}
     setLoading(false);
@@ -159,7 +159,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null,
           planned_minutes:mode==="fixed"?null:Number(minutes),
         })
-      : mode==="fixed" ? await db.from("todo_sessions").insert({todo_id:todoId,scheduled_start:toFixedDateTime(fixedStartDate,fixedStartTime).toISOString(),scheduled_end:toFixedDateTime(fixedEndDate,fixedEndTime).toISOString()}) : await db.from("todo_execution_plans").insert({todo_id:todoId,plan_date:date,mode,planned_minutes:Number(minutes),window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null});
+      : mode==="fixed" ? await db.from("todo_sessions").insert({todo_id:todoId,scheduled_start:toFixedDateTime(fixedStartDate,fixedStartTime).toISOString(),scheduled_end:toFixedDateTime(fixedEndDate,fixedEndTime).toISOString()}) : await db.from("todo_sessions").insert({todo_id:todoId,plan_date:date,mode,planned_minutes:Number(minutes),window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null});
     setSaving(false);
     if(result.error){setError("保存失败："+result.error.message);return;}
     await refresh();setOpen(false);setEditingTemplateId(null);
