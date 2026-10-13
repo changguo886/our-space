@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AppDatePicker from "@/components/ui/AppDatePicker";
+import { useI18n } from "@/components/I18nProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addDaysISO, lastDayISO, weekdayISO, templateEligible, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
 
@@ -16,6 +18,8 @@ function toFixedDateTime(date:string,time:string){return new Date(date+"T"+time+
 const field="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink";
 
 export default function TodoExecutionSchedule({todoId}:{todoId:string}){
+  const {language} = useI18n();
+  const zh = language === "zh-CN";
   const [open,setOpen]=useState(false);
   const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
   const [selector,setSelector]=useState("all");
@@ -195,8 +199,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       : [];
   return <section className="mt-4 rounded-xl border border-line bg-white p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div><h3 className="text-sm font-semibold text-ink">执行安排</h3><p className="text-xs text-ink-faint">只有固定时段会显示在 Calendar。</p></div>
-      <button type="button" className="rounded-lg border border-sage-300 px-3 py-2 text-xs text-sage-700" onClick={()=>setOpen(v=>!v)}>{open?"收起":"＋ 安排执行"}</button>
+      <div><h3 className="text-sm font-semibold text-ink">{zh?"执行安排":"Execution schedule"}</h3><p className="text-xs text-ink-faint">{zh?"只有固定时段占用日历时间格；灵活次数不自动预约。":"Only fixed slots book calendar time; flexible quotas remain unallocated."}</p></div>
+      <button type="button" className="rounded-lg border border-sage-300 px-3 py-2 text-xs text-sage-700" onClick={()=>setOpen(v=>!v)}>{open?(zh?"收起":"Close"):(zh?"＋ 安排执行":"+ Plan execution")}</button>
     </div>
     {loading?<p className="mt-3 text-xs text-ink-faint">读取安排中…</p>:<div className="mt-3 space-y-1.5">
       {plans.map(p=><div key={p.id} className="rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft">{p.plan_date} · {p.mode==="flexible"?"灵活安排":`时间窗口 ${p.window_start?.slice(0,5)}–${p.window_end?.slice(0,5)}`} · {p.planned_minutes} 分钟</div>)}
@@ -208,7 +212,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <summary className="cursor-pointer text-xs font-semibold text-ink-soft">修改／取消某一次固定预约</summary>
       <div className="mt-3 space-y-2">
         <label className="block text-xs text-ink-soft">重复时段<select className={field+" mt-1"} value={overrideSlot} onChange={e=>setOverrideSlot(e.target.value)}><option value="">请选择</option>{templates.filter(t=>t.execution_mode==="fixed").map(t=><option key={t.id} value={t.id}>{t.start_time?.slice(0,5)}–{t.end_time?.slice(0,5)} · {t.selector_kind==="all"?"所有日期":t.selector_kind+" "+(t.selector_value??"末日")}</option>)}</select></label>
-        <label className="block text-xs text-ink-soft">只调整这一天<input type="date" className={field+" mt-1"} value={overrideDate} onChange={e=>setOverrideDate(e.target.value)}/></label>
+        <label className="block text-xs text-ink-soft">只调整这一天<AppDatePicker value={overrideDate} onChange={setOverrideDate}/></label>
         <div className="grid grid-cols-2 gap-2">{(["reschedule","cancel"] as const).map(x=><button key={x} type="button" className={`rounded-lg border p-2 text-xs ${overrideAction===x?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setOverrideAction(x)}>{x==="cancel"?"取消这一次":"仅这次改时间"}</button>)}</div>
         {overrideAction==="reschedule"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">开始<input type="time" className={field+" mt-1"} value={overrideStart} onChange={e=>setOverrideStart(e.target.value)}/></label><label className="text-xs text-ink-soft">结束<input type="time" className={field+" mt-1"} value={overrideEnd} onChange={e=>setOverrideEnd(e.target.value)}/></label></div>}
         <button type="button" disabled={saving||!overrideSlot} className="btn-primary w-full" onClick={()=>void saveOverride()}>{saving?"保存中…":"仅保存这一次"}</button>
@@ -218,7 +222,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
       <p className="text-xs font-semibold text-ink-soft">第一步 · 应用范围</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");setReplaceSlotKey(x.id==="by_day"?[...new Set(templates.filter(t=>t.selector_kind==="all").map(t=>t.slot_key))].length===1?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"":"");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
+        {([{id:"once",label:zh?"仅安排一次":"One time"},{id:"all",label:zh?"统一安排":"Uniform schedule"},{id:"by_day",label:zh?"自定义安排":"Custom schedule"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");setReplaceSlotKey(x.id==="by_day"?[...new Set(templates.filter(t=>t.selector_kind==="all").map(t=>t.slot_key))].length===1?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"":"");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
       </div>
       {scope==="by_day"&&!editingTemplateId&&<div className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
         <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-ink-soft">为不同日期设置时间</p><span className="text-xs text-ink-faint">{dayPresets.length} 个日期</span></div>
@@ -242,7 +246,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {scope!=="once"&&<p className="text-xs text-ink-faint">预计生效日期：{preview.join("、")||"当前选择暂无符合日期"}</p>}
       {scope!=="by_day"&&<p className="text-xs font-semibold text-ink-soft">第二步 · 时间方式</p>}
       {scope!=="by_day"&&<div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:"灵活安排"},{id:"window",label:"时间窗口"},{id:"fixed",label:"固定时段"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>}
-      {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"规则生效起始日期"}<input className={field+" mt-1"} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>}
+      {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"规则生效起始日期"}<AppDatePicker value={date} onChange={setDate}/></label>}
       {scope!=="by_day"&&mode!=="fixed"&&<label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
       {scope!=="by_day"&&mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input className={field+" mt-1"} type="time" value={windowStart} onChange={e=>setWindowStart(e.target.value)}/></label><label className="text-xs text-ink-soft">最晚结束<input className={field+" mt-1"} type="time" value={windowEnd} onChange={e=>setWindowEnd(e.target.value)}/></label></div>}
       {scope!=="by_day"&&mode==="fixed"&&<div className="space-y-3">
