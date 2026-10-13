@@ -20,6 +20,8 @@ quiet -f /tmp/os_mock.sql
 # Existing migrations this work builds on (already applied in production).
 quiet -f task_model_v3_m7_template_revision.sql
 quiet -f finish_focus_session_v1_1.sql
+awk '/^CREATE OR REPLACE FUNCTION public.save_task_v4/,/^\$fn\$;/' v4_04_task_type_cutover.sql > /tmp/os_save_task_prev.sql
+quiet -f /tmp/os_save_task_prev.sql
 psql_db -At -c "SELECT pg_get_functiondef('public.finish_focus_session(uuid,text,timestamptz)'::regprocedure)" > /tmp/os_finish_v1.sql
 
 step() { echo; echo "== $*"; }
@@ -68,7 +70,7 @@ fi
 step "rollbacks (newest first)"
 for f in v4_13_schedule_integrity.sql v4_12_date_only_tasks.sql v4_11_series_identity.sql; do
   [ -f "$f" ] || continue
-  sed -n '/^-- ROLLBACK-BEGIN/,/^-- ROLLBACK-END/p' "$f" | sed -e 's/^-- \{0,1\}//' -e '/^ROLLBACK-/d' > /tmp/os_rb.sql
+  sed -n '/^-- ROLLBACK-BEGIN/,/^-- ROLLBACK-END/p' "$f" | sed -e 's/^-- \{0,1\}//' -e '/^ROLLBACK-/d' -e 's#^\\i save_task_v4_previous.sql#\\i /tmp/os_save_task_prev.sql#' > /tmp/os_rb.sql
   psql_db -f /tmp/os_rb.sql && echo "PASS rollback $f"
 done
 # v4_10 rollback: restore the saved v1 function, then drop the new objects.

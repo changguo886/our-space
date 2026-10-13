@@ -7,6 +7,7 @@ import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import AppTimePicker from "@/components/ui/AppTimePicker";
+import AllDayList from "@/components/calendar/AllDayList";
 import {CATEGORY_VISUALS,taskCardVisual} from "@/lib/task-colors";
 import {useI18n} from "@/components/I18nProvider";
 import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
@@ -213,6 +214,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       {key!=="all"&&<span className="h-2.5 w-2.5 rounded-full" style={{backgroundColor:CATEGORY_VISUALS[key].accent}}/>}{key==="all"?(zh?"全部":"All"):(zh?CATEGORY_VISUALS[key].labelZh:CATEGORY_VISUALS[key].labelEn)}</button>)}
     </div>
     {mode==="day" ? <div className="space-y-3">
+      <AllDayList date={date} zh={zh} patterns={patterns} todos={(initialTodos as unknown as Array<{id:string;title:string;status:string;task_type?:string|null;task_date?:string|null;category?:string|null}>).filter(t=>categoryFilter==="all"||(t.category??"none")===categoryFilter)}/>
       <CalendarPlanner key={categoryFilter+"-"+date} windowPlans={allDailyPlans.filter(p=>categoryFilter==="all"||(p.category??"none")===categoryFilter)} initialTodos={initialTodos.filter(t=>categoryFilter==="all"||(t.category??"none")===categoryFilter)} initialDate={date} onDateChange={setDate}
         virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter).map(e=>({
           todo_id:e.todoId,id:e.virtualId,
