@@ -294,7 +294,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         : (zh?"保存失败：":"Save failed: ")+result.error.message);
       return;
     }
-    await refresh();setEditingTemplateId(null);setScope("once");setCopyOpen(true);setCopyNotice(zh?"本次已保存。需要的话可继续复制到其他日期。":"Saved. You may now copy to other dates.");
+    await refresh();setEditingTemplateId(null);setScope("once");setCopyOpen(false);setCopySource(null);setCopyNotice(zh?"已保存本次安排。可从上方记录点击「复制」。":"Saved. Use Copy on any existing schedule.");
   }
   async function saveOverride(){
     const t=templates.find(x=>x.id===overrideSlot);
@@ -380,25 +380,21 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>
         {saving?(zh?"保存中…":"Saving…"):editingTemplateId?(zh?"保存以后安排":"Save future schedule"):(zh?"保存这一次":"Save this occurrence")}
       </button>
-      {!editingTemplateId&&<div className="rounded-xl border border-line bg-paper/30 p-3 space-y-3">
-        <button type="button" onClick={()=>setCopyOpen(v=>!v)} className="flex w-full items-center justify-between text-left text-sm font-medium">
-          <span>{zh?"复制到其他日期…":"Copy to other dates…"}</span><span>{copyOpen?"−":"＋"}</span>
-        </button>
-        {copyOpen&&<>
-          <p className="text-xs text-ink-faint">{zh?"沿用上方的日期和时间设置；已单独安排的日期会保留。先保存本次，再复制到其他日期。":"Reuse the time above. Save the first occurrence before copying; dated plans are preserved."}</p>
-          <div className="flex flex-wrap gap-2">
-            {!isFlexibleQuota&&<button type="button" onClick={()=>setCopyChoice("all")} aria-pressed={copyChoice==="all"} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="all"?"border-sage-400 bg-sage-50":"border-line"}`}>{pattern?.arrangement==="fixed"?(zh?"所有固定规则日":"Every rule day"):(zh?"剩余每天":"Remaining days")}</button>}
-            {!isFlexibleQuota&&projectEnd&&<button type="button" onClick={()=>setCopyChoice("weekdays")} aria-pressed={copyChoice==="weekdays"} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="weekdays"?"border-sage-400 bg-sage-50":"border-line"}`}>{zh?"剩余工作日":"Remaining weekdays"}</button>}
-            <button type="button" onClick={()=>setCopyChoice("dates")} aria-pressed={copyChoice==="dates"} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="dates"?"border-sage-400 bg-sage-50":"border-line"}`}>{isFlexibleQuota?(zh?"本周期选日期":"Dates this period"):(zh?"自选日期":"Choose dates")}</button>
-          </div>
-          {copyChoice==="dates"&&<div className="grid max-h-48 grid-cols-4 gap-1.5 overflow-y-auto sm:grid-cols-7">
-            {copyAvailable.map(day=><button key={day} type="button" aria-pressed={copyDays.includes(day)} onClick={()=>setCopyDays(xs=>xs.includes(day)?xs.filter(x=>x!==day):[...xs,day])} className={`rounded-lg border p-2 text-xs ${copyDays.includes(day)?"border-sage-400 bg-sage-50":"border-line"}`}>{day.slice(5)}</button>)}
-          </div>}
-          <p className="text-xs text-ink-faint">{zh?"选择":"Selected"} {copySelected.length} {zh?"个日期。已有单次计划不会被覆盖。":"dates; existing individual plans stay intact."}</p>
-          <button type="button" disabled={copyBusy||copySelected.length===0} onClick={()=>void copySchedule()} className="btn-primary w-full">
-            {copyBusy?(zh?"复制中…":"Copying…"):(zh?"应用复制安排":"Apply copy")}
-          </button>
-        </>}
+      {!editingTemplateId&&copySource&&copyOpen&&<div className="rounded-xl border border-line bg-paper/30 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <strong className="text-sm">{zh?"复制这条已保存的安排":"Copy saved schedule"}</strong>
+          <button type="button" className="text-xs text-ink-faint underline" onClick={()=>{setCopyOpen(false);setCopySource(null);}}>{zh?"关闭":"Close"}</button>
+        </div>
+        <p className="text-xs text-ink-soft">{copySource.day} · {copySource.mode==="fixed"?copySource.start+"–"+copySource.end:copySource.mode==="window"?copySource.start+"–"+copySource.end+" · "+copySource.minutes+" min":copySource.minutes+" min"}</p>
+        <div className="flex flex-wrap gap-2">
+          {!isFlexibleQuota&&<button type="button" onClick={()=>setCopyChoice("all")} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="all"?"border-sage-400 bg-sage-50":"border-line"}`}>{pattern?.arrangement==="fixed"?(zh?"全部规则日":"All rule days"):(zh?"剩余每天":"Remaining days")}</button>}
+          {!isFlexibleQuota&&projectEnd&&<button type="button" onClick={()=>setCopyChoice("weekdays")} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="weekdays"?"border-sage-400 bg-sage-50":"border-line"}`}>{zh?"剩余工作日":"Remaining weekdays"}</button>}
+          <button type="button" onClick={()=>setCopyChoice("dates")} className={`rounded-lg border px-3 py-2 text-xs ${copyChoice==="dates"?"border-sage-400 bg-sage-50":"border-line"}`}>{isFlexibleQuota?(zh?"本周期选日期":"Choose this period"):(zh?"自己选日期":"Choose dates")}</button>
+        </div>
+        <CopyDateCalendar start={sourceDay} end={copyLimit} selected={copyChoice==="dates"?copyDays:copySelected} booked={[...bookedDates]} eligible={day=>copyEligible(day)&&(copyChoice==="dates"||copyChoice==="all"||weekdayISO(day)<=5)}
+          onToggle={day=>{setCopyChoice("dates");setCopyDays(old=>old.includes(day)?old.filter(x=>x!==day):[...old,day]);}} zh={zh}/>
+        <p className="text-xs text-ink-soft">{zh?"拟复制":"Proposed"} {copySelected.length} {zh?"天；已有安排":"days; existing"} {copySelected.filter(day=>bookedDates.has(day)).length} {zh?"天将跳过":"days will be skipped"}</p>
+        <button type="button" disabled={copyBusy||copySelected.length===0} onClick={()=>void copySchedule()} className="btn-primary w-full">{copyBusy?(zh?"复制中…":"Copying…"):(zh?"复制到所选日期":"Copy to selected days")}</button>
       </div>}
       {copyNotice&&<p role="status" className="text-xs text-sage-700">{copyNotice}</p>}
     </div>}
