@@ -121,15 +121,26 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   }
   function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d),...movedOverrideEvents(d)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter);}
   async function updatePicked(){
-    if(!pickedEvent||!pickedEvent.sessionId)return;
+    if(!pickedEvent||(!pickedEvent.sessionId&&!pickedEvent.virtualId))return;
     if(!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(pickedStart)||!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(pickedEnd)||pickedEnd<=pickedStart){setLoadError(zh?"请填写有效的同日时间段。":"Enter a valid same-day time range.");return;}
     const day=new Date(pickedEvent.start);
-    const localDay=dateOf(day.getFullYear(),day.getMonth(),day.getDate());
+    const occurrence=pickedEvent.virtualId?.split(":")[3];
+    const localDay=occurrence??dateOf(day.getFullYear(),day.getMonth(),day.getDate());
     const start=new Date(localDay+"T"+pickedStart+":00"),end=new Date(localDay+"T"+pickedEnd+":00");
     if(localDay<dateOf(new Date().getFullYear(),new Date().getMonth(),new Date().getDate())){setLoadError(zh?"不能修改过去的执行安排。":"Past sessions are read-only.");return;}
     const overlap=tasks.some(t=>t.id===pickedEvent.todoId&&(t.todo_sessions??[]).some(existing=>existing.id!==pickedEvent.sessionId&&existing.scheduled_start&&existing.scheduled_end&&start.getTime()<new Date(existing.scheduled_end).getTime()&&end.getTime()>new Date(existing.scheduled_start).getTime()));
     if(overlap){setLoadError(zh?"新时间与同任务的其他固定安排重叠。":"This change overlaps another fixed session for the same task.");return;}
     const db=createClient();
+    if(pickedEvent.virtualId&&!pickedEvent.sessionId){
+      const slot=pickedEvent.virtualId.split(":")[2];
+      if(!templates.some(t=>t.todo_id===pickedEvent.todoId&&t.slot_key===slot)){setLoadError(zh?"未找到此重复计划。":"Recurring slot not found.");return;}
+      setActionBusy(true);setLoadError("");
+      const result=await db.from("todo_execution_overrides").upsert({todo_id:pickedEvent.todoId,slot_key:slot,occurrence_date:localDay,action:"reschedule",scheduled_start:start.toISOString(),scheduled_end:end.toISOString()},{onConflict:"todo_id,slot_key,occurrence_date"});
+      setActionBusy(false);
+      if(result.error){setLoadError(result.error.message);return;}
+      setOverrides(current=>[...current.filter(x=>!(x.todo_id===pickedEvent.todoId&&x.slot_key===slot&&x.occurrence_date===localDay)),{todo_id:pickedEvent.todoId,slot_key:slot,occurrence_date:localDay,action:"reschedule",scheduled_start:start.toISOString(),scheduled_end:end.toISOString()}]);
+      setPickedEvent(null);setEditingPicked(false);router.refresh();return;
+    }
     const fresh=await db.from("todo_sessions").select("id,scheduled_start,scheduled_end").eq("todo_id",pickedEvent.todoId).eq("mode","fixed");
     if(fresh.error){setLoadError(fresh.error.message);return;}
     if((fresh.data??[]).some(other=>other.id!==pickedEvent.sessionId&&other.scheduled_start&&other.scheduled_end&&start.getTime()<new Date(other.scheduled_end).getTime()&&end.getTime()>new Date(other.scheduled_start).getTime())){setLoadError(zh?"该任务已有重叠的预约，请调整时间。":"Another session for this task overlaps.");return;}
@@ -247,7 +258,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     {pickedEvent&&<div role="dialog" aria-modal="true" aria-label={zh?"管理执行安排":"Manage appointment"} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-xl">
         <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-semibold text-ink">{pickedEvent.title}</h3><p className="text-xs text-ink-soft">{new Date(pickedEvent.start).toLocaleString()} – {new Date(pickedEvent.end).toLocaleTimeString()}</p></div><button type="button" onClick={()=>setPickedEvent(null)} aria-label={zh?"关闭":"Close"}>✕</button></div>
-        {pickedEvent.sessionId&&<button type="button" disabled={actionBusy} className="w-full rounded-lg border border-line p-3 text-left text-sm" onClick={()=>{const a=new Date(pickedEvent.start),b=new Date(pickedEvent.end);setPickedStart(String(a.getHours()).padStart(2,"0")+":"+String(a.getMinutes()).padStart(2,"0"));setPickedEnd(String(b.getHours()).padStart(2,"0")+":"+String(b.getMinutes()).padStart(2,"0"));setEditingPicked(v=>!v);}}>{zh?"修改本次时间":"Edit this occurrence"}</button>}
+        {(pickedEvent.sessionId||pickedEvent.virtualId)&&<button type="button" disabled={actionBusy} className="w-full rounded-lg border border-line p-3 text-left text-sm" onClick={()=>{const a=new Date(pickedEvent.start),b=new Date(pickedEvent.end);setPickedStart(String(a.getHours()).padStart(2,"0")+":"+String(a.getMinutes()).padStart(2,"0"));setPickedEnd(String(b.getHours()).padStart(2,"0")+":"+String(b.getMinutes()).padStart(2,"0"));setEditingPicked(v=>!v);}}>{zh?"修改本次时间":"Edit this occurrence"}</button>}
         {editingPicked&&<div className="space-y-2 rounded-lg border border-line p-3"><div className="grid grid-cols-2 gap-2"><label className="text-xs">{zh?"开始":"Start"}<input type="time" value={pickedStart} onChange={e=>setPickedStart(e.target.value)} className="w-full rounded-lg border border-line p-2"/></label><label className="text-xs">{zh?"结束":"End"}<input type="time" value={pickedEnd} onChange={e=>setPickedEnd(e.target.value)} className="w-full rounded-lg border border-line p-2"/></label></div><button type="button" disabled={actionBusy} className="btn-primary w-full" onClick={()=>void updatePicked()}>{zh?"保存本次修改":"Save occurrence"}</button></div>}
         <Link href={"/todo?todoId="+encodeURIComponent(pickedEvent.todoId)} className="block rounded-lg border border-line p-3 text-sm">{zh?"进入任务工作区 · 修改时间":"Open Todo workspace · change time"}</Link>
         {(pickedEvent.sessionId||pickedEvent.virtualId)&&<button disabled={actionBusy} type="button" onClick={()=>void cancelPicked(false)} className="w-full rounded-lg border border-blush-200 p-3 text-left text-sm text-blush-500">{zh?"取消这一次安排（需确认）":"Cancel this occurrence (confirm)"}</button>}
