@@ -159,7 +159,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       const x=await db.from("todo_sessions").insert(rows);writeError=x.error?.message??"";
     }
     setCopyBusy(false);
-    if(writeError){setError(zh?"复制失败：":"Copy failed: "+writeError);return;}
+    if(writeError){setError((zh?"复制失败：":"Copy failed: ")+writeError);return;}
     setCopyNotice((zh?"复制完成；跳过已有单次安排 ":"Copied; skipped existing plans ")+skipped);
     setCopyOpen(false);setCopyDays([]);await refresh();
   }
