@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { addDaysISO, lastDayISO, weekdayISO, templateEligible, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
 
 type Mode = "flexible" | "window" | "fixed";
+type DayPreset = { key:string; mode:Mode; start:string; end:string; minutes:string; windowStart:string; windowEnd:string; replaces:string };
 type Plan = { id:string; mode:"flexible"|"window"; plan_date:string; planned_minutes:number; window_start:string|null; window_end:string|null };
 type Session = { id:string; scheduled_start:string; scheduled_end:string };
 function localDate(d:Date){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");}
@@ -18,6 +19,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [open,setOpen]=useState(false);
   const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
   const [selector,setSelector]=useState("all");
+  const [dayPresets,setDayPresets]=useState<DayPreset[]>([]);
   const [replaceSlotKey,setReplaceSlotKey]=useState("");
   const [pattern,setPattern]=useState<HabitPatternV3|null>(null);
   const [todoStart,setTodoStart]=useState("");
@@ -91,6 +93,52 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       (mode!=="window"||(t.window_start?.slice(0,5)===windowStart&&t.window_end?.slice(0,5)===windowEnd))&&
       (mode==="fixed"||t.planned_minutes===Number(minutes))
     )){setSaving(false);setError("相同的重复安排已经存在，请直接修改原模板。");return;}
+    if(scope==="by_day"&&!editingTemplateId){
+      if(dayPresets.length===0){setSaving(false);setError("请至少选择一个具体星期或月日期。");return;}
+      const validKeys=new Set<string>();
+      if(pattern?.period==="week"){
+        for(const day of pattern.arrangement==="fixed"?pattern.weekdays:[1,2,3,4,5,6,7])validKeys.add("weekday:"+day);
+      }else if(pattern?.period==="month"){
+        for(const day of pattern.arrangement==="fixed"?pattern.month_days:Array.from({length:31},(_,i)=>i+1))validKeys.add("month_day:"+day);
+        if(pattern.include_month_end)validKeys.add("month_end");
+      }else if(!pattern&&projectEnd){
+        for(let day=1;day<=7;day++)validKeys.add("weekday:"+day);
+      }
+      const keys=dayPresets.map(row=>row.key);
+      if(keys.some(key=>!validKeys.has(key))||new Set(keys).size!==keys.length){
+        setSaving(false);setError("请选择不重复且符合当前任务规则的日期。");return;
+      }
+      for(const row of dayPresets){
+        if(row.mode==="fixed"&&(!validTime(row.start)||!validTime(row.end)||row.end<=row.start)){
+          setSaving(false);setError("请检查每个固定时段的开始与结束时间。");return;
+        }
+        if(row.mode==="window"&&(!validTime(row.windowStart)||!validTime(row.windowEnd)||row.windowEnd<=row.windowStart)){
+          setSaving(false);setError("请检查时间窗口。");return;
+        }
+        if(row.mode!=="fixed"&&(!Number.isInteger(Number(row.minutes))||Number(row.minutes)<1||Number(row.minutes)>1440)){
+          setSaving(false);setError("灵活安排和时间窗口的投入必须为 1–1440 分钟。");return;
+        }
+        if(row.replaces&&!templates.some(t=>t.slot_key===row.replaces&&t.selector_kind==="all")){
+          setSaving(false);setError("替换的默认时段不存在。");return;
+        }
+        if(templates.some(t=>t.selector_kind===row.key.split(":")[0]&&t.selector_value===(row.key.includes(":")?Number(row.key.split(":")[1]):null)
+          &&t.starts_on<=effectiveStart&&(t.ends_on===null||effectiveStart<=t.ends_on))){
+          setSaving(false);setError("选中的日期已有重复模板，请先修改或停止原模板，避免重复。");return;
+        }
+      }
+      const records=dayPresets.map(row=>({
+        todo_id:todoId,starts_on:effectiveStart,ends_on:projectEnd,timezone,
+        selector_kind:row.key.split(":")[0],selector_value:row.key.includes(":")?Number(row.key.split(":")[1]):null,
+        execution_mode:row.mode,replaces_slot_key:row.replaces||null,
+        start_time:row.mode==="fixed"?row.start:null,end_time:row.mode==="fixed"?row.end:null,
+        window_start:row.mode==="window"?row.windowStart:null,window_end:row.mode==="window"?row.windowEnd:null,
+        planned_minutes:row.mode==="fixed"?null:Number(row.minutes),
+      }));
+      const {error:batchError}=await db.from("todo_execution_templates").insert(records);
+      setSaving(false);
+      if(batchError){setError("批量保存失败："+batchError.message);return;}
+      await refresh();setOpen(false);setDayPresets([]);return;
+    }
     const result=repeating&&editingTemplateId
       ? await db.rpc("revise_execution_template_v3",{
           p_template_id:editingTemplateId,
@@ -171,29 +219,32 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");setReplaceSlotKey(x.id==="by_day"?[...new Set(templates.filter(t=>t.selector_kind==="all").map(t=>t.slot_key))].length===1?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"":"");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
       </div>
-      {scope==="by_day"&&<label className="block text-xs text-ink-soft">选择重复日期
-        <select className={field+" mt-1"} value={selector} onChange={e=>setSelector(e.target.value)}>
-          <option value="all">请选择日期</option>
-          {pattern?.period==="week"&&(pattern.arrangement==="fixed"?pattern.weekdays:[1,2,3,4,5,6,7]).map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
-          {pattern?.period==="month"&&(pattern.arrangement==="fixed"?pattern.month_days:Array.from({length:31},(_,i)=>i+1)).map(x=><option key={x} value={"month_day:"+x}>每月 {x} 日</option>)}
-          {pattern?.period==="month"&&pattern.include_month_end&&<option value="month_end">每月最后一天</option>}
-          {!pattern&&projectEnd&&[1,2,3,4,5,6,7].map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
-        </select>
-      </label>}
-      {scope==="by_day"&&templates.some(t=>t.selector_kind==="all")&&<label className="block text-xs text-ink-soft">该日期的新安排如何处理默认时段？
-        <select className={field+" mt-1"} value={replaceSlotKey} onChange={e=>setReplaceSlotKey(e.target.value)}>
-          <option value="">额外增加一个执行时段</option>
-          {[...new Map(templates.filter(t=>t.selector_kind==="all").map(t=>[t.slot_key,t])).values()].map(t=><option key={t.slot_key} value={t.slot_key}>替换默认 {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"}</option>)}
-        </select>
-      </label>}
+      {scope==="by_day"&&!editingTemplateId&&<div className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
+        <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-ink-soft">为不同日期设置时间</p><span className="text-xs text-ink-faint">{dayPresets.length} 个日期</span></div>
+        <div className="flex flex-wrap gap-1.5">
+          {(pattern?.period==="week"?(pattern.arrangement==="fixed"?pattern.weekdays:[1,2,3,4,5,6,7]).map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]}))
+          :pattern?.period==="month"?[...(pattern.arrangement==="fixed"?pattern.month_days:Array.from({length:31},(_,i)=>i+1)).map(n=>({key:"month_day:"+n,label:n+"日"})),...(pattern.include_month_end?[{key:"month_end",label:"月末"}]:[])]
+          :!pattern&&projectEnd?[1,2,3,4,5,6,7].map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]})):[]).map(item=><button key={item.key} type="button" aria-pressed={dayPresets.some(x=>x.key===item.key)} disabled={saving} onClick={()=>setDayPresets(rows=>rows.some(x=>x.key===item.key)?rows.filter(x=>x.key!==item.key):[...rows,{key:item.key,mode:"fixed",start:"09:00",end:"10:00",minutes:"45",windowStart:"08:00",windowEnd:"12:00",replaces:""}])} className={`rounded-lg border px-2.5 py-2 text-xs ${dayPresets.some(x=>x.key===item.key)?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>{item.label}</button>)}
+        </div>
+        {dayPresets.map((row,index)=><div key={row.key} className="space-y-2 rounded-xl border border-line bg-white p-3">
+          <div className="flex items-center justify-between"><strong className="text-xs text-ink">{row.key==="month_end"?"每月最后一天":row.key.startsWith("weekday:")?"每周星期"+"一二三四五六日"[Number(row.key.split(":")[1])-1]:"每月 "+row.key.split(":")[1]+" 日"}</strong><button type="button" className="text-xs text-ink-faint underline" onClick={()=>setDayPresets(rows=>rows.filter(x=>x.key!==row.key))}>移除</button></div>
+          <div className="grid grid-cols-3 gap-1">{(["flexible","window","fixed"] as const).map(next=><button key={next} type="button" aria-pressed={row.mode===next} className={`rounded-lg border p-1.5 text-xs ${row.mode===next?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,mode:next}:x))}>{next==="flexible"?"灵活":next==="window"?"时间窗口":"固定时段"}</button>)}</div>
+          {row.mode==="fixed"?<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">开始<input type="time" className={field+" mt-1"} value={row.start} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,start:e.target.value}:x))}/></label><label className="text-xs text-ink-soft">结束<input type="time" className={field+" mt-1"} value={row.end} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,end:e.target.value}:x))}/></label></div>:<>
+            <label className="block text-xs text-ink-soft">每次预计投入（分钟）<input type="number" min="1" max="1440" className={field+" mt-1"} value={row.minutes} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,minutes:e.target.value}:x))}/></label>
+            {row.mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input type="time" className={field+" mt-1"} value={row.windowStart} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,windowStart:e.target.value}:x))}/></label><label className="text-xs text-ink-soft">最晚结束<input type="time" className={field+" mt-1"} value={row.windowEnd} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,windowEnd:e.target.value}:x))}/></label></div>}
+          </>}
+          {templates.some(t=>t.selector_kind==="all")&&<label className="block text-xs text-ink-soft">和默认安排的关系<select className={field+" mt-1"} value={row.replaces} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,replaces:e.target.value}:x))}><option value="">额外增加一段</option>{[...new Map(templates.filter(t=>t.selector_kind==="all").map(t=>[t.slot_key,t])).values()].map(t=><option key={t.slot_key} value={t.slot_key}>替换默认 {t.start_time?.slice(0,5)??t.execution_mode}</option>)}</select></label>}
+        </div>)}
+        <p className="text-xs text-ink-faint">本组日期一次保存；固定时段进入 Calendar，灵活与时间窗口不占用小时网格。</p>
+      </div>}
       {scope!=="once"&&<p className="text-xs text-ink-faint">生效日期不等于执行日期。只对符合任务规则的未来日期生效，不会把不匹配的今天安排进去。</p>}
       {scope!=="once"&&<p className="text-xs text-ink-faint">预计生效日期：{preview.join("、")||"当前选择暂无符合日期"}</p>}
-      <p className="text-xs font-semibold text-ink-soft">第二步 · 时间方式</p>
-      <div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:"灵活安排"},{id:"window",label:"时间窗口"},{id:"fixed",label:"固定时段"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>
+      {scope!=="by_day"&&<p className="text-xs font-semibold text-ink-soft">第二步 · 时间方式</p>}
+      {scope!=="by_day"&&<div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:"灵活安排"},{id:"window",label:"时间窗口"},{id:"fixed",label:"固定时段"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>}
       {(scope!=="once"||mode!=="fixed")&&<label className="block text-xs text-ink-soft">{scope==="once"?"执行日期":"规则生效起始日期"}<input className={field+" mt-1"} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>}
-      {mode!=="fixed"&&<label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
-      {mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input className={field+" mt-1"} type="time" value={windowStart} onChange={e=>setWindowStart(e.target.value)}/></label><label className="text-xs text-ink-soft">最晚结束<input className={field+" mt-1"} type="time" value={windowEnd} onChange={e=>setWindowEnd(e.target.value)}/></label></div>}
-      {mode==="fixed"&&<div className="space-y-3">
+      {scope!=="by_day"&&mode!=="fixed"&&<label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label>}
+      {scope!=="by_day"&&mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input className={field+" mt-1"} type="time" value={windowStart} onChange={e=>setWindowStart(e.target.value)}/></label><label className="text-xs text-ink-soft">最晚结束<input className={field+" mt-1"} type="time" value={windowEnd} onChange={e=>setWindowEnd(e.target.value)}/></label></div>}
+      {scope!=="by_day"&&mode==="fixed"&&<div className="space-y-3">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {scope==="once"&&<label className="block text-xs text-ink-soft">开始日期（YYYY-MM-DD）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="2026-10-15" value={fixedStartDate} onChange={e=>setFixedStartDate(e.target.value)}/></label>}
           <label className="block text-xs text-ink-soft">开始时间（24小时制）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="20:00" value={fixedStartTime} onChange={e=>setFixedStartTime(e.target.value)}/></label>
