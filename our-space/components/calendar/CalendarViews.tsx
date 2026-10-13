@@ -139,7 +139,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     setActionBusy(false);
     if(error){setLoadError(error);return;}
     setPickedEvent(null);router.refresh();
-    if(template&&occurrence){
+    if(template&&slot&&occurrence){
       if(allFuture)setTemplates(current=>current.map(t=>t.id===template.id?{...t,ends_on:addDay(occurrence,-1)}:t));
       else setOverrides(current=>[...current.filter(o=>!(o.todo_id===chosen.todoId&&o.slot_key===slot&&o.occurrence_date===occurrence)),{todo_id:chosen.todoId,slot_key:slot,occurrence_date:occurrence,action:"cancel",scheduled_start:null,scheduled_end:null}]);
     }
