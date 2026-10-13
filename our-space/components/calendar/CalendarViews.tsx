@@ -127,6 +127,8 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     const localDay=dateOf(day.getFullYear(),day.getMonth(),day.getDate());
     const start=new Date(localDay+"T"+pickedStart+":00"),end=new Date(localDay+"T"+pickedEnd+":00");
     if(localDay<dateOf(new Date().getFullYear(),new Date().getMonth(),new Date().getDate())){setLoadError(zh?"不能修改过去的执行安排。":"Past sessions are read-only.");return;}
+    const overlap=tasks.some(t=>t.id===pickedEvent.todoId&&(t.todo_sessions??[]).some(existing=>existing.id!==pickedEvent.sessionId&&existing.scheduled_start&&existing.scheduled_end&&start.getTime()<new Date(existing.scheduled_end).getTime()&&end.getTime()>new Date(existing.scheduled_start).getTime()));
+    if(overlap){setLoadError(zh?"新时间与同任务的其他固定安排重叠。":"This change overlaps another fixed session for the same task.");return;}
     setActionBusy(true);setLoadError("");
     const result=await createClient().from("todo_sessions").update({scheduled_start:start.toISOString(),scheduled_end:end.toISOString()}).eq("id",pickedEvent.sessionId).eq("todo_id",pickedEvent.todoId);
     setActionBusy(false);
@@ -231,7 +233,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
-                <span key={e.todoId+j} role="button" tabIndex={0} onClick={event=>{event.stopPropagation();setPickedEvent(e);}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setPickedEvent(e);}}} className="block cursor-pointer truncate rounded-md border border-l-4 px-1.5 py-1 text-[10px] font-medium text-ink hover:ring-2 hover:ring-sage-300" style={eventVisual(e.todoId)}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</span>)}</div>
+                <span key={e.todoId+j} role="button" tabIndex={0} onClick={event=>{event.stopPropagation();setPickedEvent(e);setEditingPicked(false);}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setPickedEvent(e);}}} className="block cursor-pointer truncate rounded-md border border-l-4 px-1.5 py-1 text-[10px] font-medium text-ink hover:ring-2 hover:ring-sage-300" style={eventVisual(e.todoId)}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</span>)}</div>
                 {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
 </>}
             </button>)}
