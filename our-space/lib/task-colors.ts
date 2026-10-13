@@ -18,3 +18,14 @@ export const CATEGORY_VISUALS: Record<string,{labelZh:string;labelEn:string;back
   other:{labelZh:"其他",labelEn:"Other",background:"#FCECEF",border:"#F2D0D8",accent:"#D96B80"},
   none:{labelZh:"未分类",labelEn:"Uncategorized",background:"#F3F1EB",border:"#DDD9D1",accent:"#8E8981"}
 };
+
+/** The single task-card visual contract, shared by Todo and Calendar surfaces. */
+export function taskCardVisual(category:string|null|undefined,color:string|null|undefined) {
+  const theme=CATEGORY_VISUALS[category??"none"]??CATEGORY_VISUALS.none;
+  return {
+    backgroundColor:theme.background,
+    borderColor:theme.border,
+    borderLeftColor:normalizeTaskColor(color),
+    borderLeftWidth:4
+  };
+}
