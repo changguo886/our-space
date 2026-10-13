@@ -25,6 +25,10 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
   const [selector,setSelector]=useState("all");
   const [dayPresets,setDayPresets]=useState<DayPreset[]>([]);
+  const [sharedStart,setSharedStart]=useState("18:00");
+  const [sharedEnd,setSharedEnd]=useState("19:00");
+  const [sharedMode,setSharedMode]=useState<Mode>("fixed");
+  const [sharedMinutes,setSharedMinutes]=useState("45");
   const [copyFrom,setCopyFrom]=useState("");
   const [copyTo,setCopyTo]=useState<string[]>([]);
   const [showCopyConfirm,setShowCopyConfirm]=useState(false);
@@ -94,6 +98,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
 
 
 
+  const applyShared=()=>setDayPresets(rows=>rows.map(row=>({...row,mode:sharedMode,start:sharedStart,end:sharedEnd,windowStart:sharedStart,windowEnd:sharedEnd,minutes:sharedMinutes})));
   async function save(){
     setError("");
     if(scope!=="by_day"&&mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
@@ -277,9 +282,17 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
       <p className="text-xs font-semibold text-ink-soft">{zh?"第一步 · 应用范围":"Step 1 · Scope"}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {([{id:"once",label:zh?"仅安排一次":"One time"},{id:"all",label:zh?"统一安排":"Uniform schedule"},{id:"by_day",label:zh?"自定义安排":"Custom schedule"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>onScopeChange(x.id)} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
+        {([{id:"once",label:zh?"仅安排一次":"One time"},{id:"all",label:zh?"沿用固定日期":"Use recurring dates"},{id:"by_day",label:zh?"自定义安排":"Custom schedule"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>onScopeChange(x.id)} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
       </div>
       {scope==="by_day"&&!editingTemplateId&&<div className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
+        <div className="space-y-2 rounded-lg border border-sage-200 bg-sage-50/40 p-3">
+          <p className="text-xs font-semibold text-ink">{zh?"统一时间模板（可选）":"Shared time template (optional)"}</p>
+          <p className="text-xs text-ink-faint">{zh?"先选择执行日期，再把同一时间应用给所有已选日期；需要不同时间的日期仍可单独修改。":"Choose dates, then apply a shared time to all selected dates. Individual slots remain editable."}</p>
+          <div className="grid grid-cols-3 gap-1">{(["fixed","window","flexible"] as const).map(m=><button key={m} type="button" aria-pressed={sharedMode===m} className={`rounded-lg border px-2 py-1.5 text-xs ${sharedMode===m?"border-sage-400 bg-white":"border-line"}`} onClick={()=>setSharedMode(m)}>{m==="fixed"?(zh?"固定时段":"Fixed"):m==="window"?(zh?"时间窗口":"Window"):(zh?"灵活投入":"Flexible")}</button>)}</div>
+          {sharedMode!=="flexible"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">{zh?"开始":"Start"}<AppTimePicker value={sharedStart} onChange={setSharedStart}/></label><label className="text-xs text-ink-soft">{zh?"结束":"End"}<AppTimePicker value={sharedEnd} onChange={setSharedEnd}/></label></div>}
+          {sharedMode!=="fixed"&&<label className="text-xs text-ink-soft">{zh?"预计分钟":"Planned minutes"}<input className={field+" mt-1"} type="number" min={1} max={1440} value={sharedMinutes} onChange={e=>setSharedMinutes(e.target.value)}/></label>}
+          <button type="button" disabled={!dayPresets.length} onClick={applyShared} className="rounded-lg border border-sage-300 bg-white px-3 py-2 text-xs text-sage-700 disabled:opacity-50">{zh?"应用到所有已选日期":"Apply to selected dates"}</button>
+        </div>
         <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-ink-soft">{zh?"为不同日期设置时间":"Configure different dates"}</p><span className="text-xs text-ink-faint">{dayPresets.length} {zh?"个时段":"slots"}</span></div>
         <div className="flex flex-wrap gap-1.5">
           {(pattern?.period==="week"?(pattern.arrangement==="fixed"?pattern.weekdays:[1,2,3,4,5,6,7]).map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]}))
