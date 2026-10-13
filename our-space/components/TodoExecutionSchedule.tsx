@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
 
 type Mode = "flexible" | "window" | "fixed";
 type Plan = { id:string; mode:"flexible"|"window"; plan_date:string; planned_minutes:number; window_start:string|null; window_end:string|null };
@@ -15,6 +16,13 @@ const field="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm tex
 
 export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [open,setOpen]=useState(false);
+  const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
+  const [selector,setSelector]=useState("all");
+  const [pattern,setPattern]=useState<HabitPatternV3|null>(null);
+  const [todoStart,setTodoStart]=useState("");
+  const [projectEnd,setProjectEnd]=useState<string|null>(null);
+  const [templates,setTemplates]=useState<ExecutionTemplateV3[]>([]);
+  const [timezone]=useState(()=>Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC");
   const [mode,setMode]=useState<Mode>("flexible");
   const [date,setDate]=useState(()=>localDate(new Date()));
   const [minutes,setMinutes]=useState("45");
@@ -32,13 +40,16 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   async function refresh(){
     setLoading(true);
     const db=createClient();
-    const [p,s]=await Promise.all([
+    const [p,s,h,t,td]=await Promise.all([
       db.from("todo_execution_plans").select("id,mode,plan_date,planned_minutes,window_start,window_end").eq("todo_id",todoId).order("plan_date",{ascending:false}),
-      db.from("todo_sessions").select("id,scheduled_start,scheduled_end").eq("todo_id",todoId).order("scheduled_start",{ascending:false})
+      db.from("todo_sessions").select("id,scheduled_start,scheduled_end").eq("todo_id",todoId).order("scheduled_start",{ascending:false}),
+      db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end").eq("todo_id",todoId).maybeSingle(),
+      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end").eq("todo_id",todoId),
+      db.from("todos").select("task_date,plan_start_date,target_finish_date").eq("id",todoId).single()
     ]);
     if(p.error)setError("读取灵活计划失败（请确认已在当前环境执行 V3 M2）："+p.error.message);
     else if(s.error)setError("读取预约时段失败："+s.error.message);
-    else {setPlans((p.data??[]) as Plan[]);setSessions((s.data??[]) as Session[]);setError("");}
+    else {setPlans((p.data??[]) as Plan[]);setSessions((s.data??[]) as Session[]);setError(t.error?t.error.message:"");if(!h.error)setPattern(h.data as HabitPatternV3|null);if(!t.error)setTemplates((t.data??[]) as ExecutionTemplateV3[]);if(!td.error&&td.data){setTodoStart(td.data.plan_start_date??td.data.task_date);setProjectEnd(td.data.target_finish_date??null);}}
     setLoading(false);
   }
   useEffect(()=>{void refresh();},[todoId]);
@@ -46,11 +57,26 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setError("");
     if(mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
     if(mode==="window"&&windowEnd<=windowStart){setError("时间窗口结束时间必须晚于开始时间。");return;}
-    if(mode==="fixed"&&(!validDate(fixedStartDate)||!validDate(fixedEndDate)||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setError("请填写有效日期（YYYY-MM-DD）与24小时制时间（HH:mm）。");return;}
-    if(mode==="fixed"&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()<=toFixedDateTime(fixedStartDate,fixedStartTime).getTime()){setError("固定结束时间必须晚于开始时间。");return;}
+    if(scope==="once"&&mode==="fixed"&&(!validDate(fixedStartDate)||!validDate(fixedEndDate)||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setError("请填写有效日期（YYYY-MM-DD）与24小时制时间（HH:mm）。");return;}
+    if(scope==="once"&&mode==="fixed"&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()<=toFixedDateTime(fixedStartDate,fixedStartTime).getTime()){setError("固定结束时间必须晚于开始时间。");return;}
     setSaving(true);
     const db=createClient();
-    const result=mode==="fixed" ? await db.from("todo_sessions").insert({todo_id:todoId,scheduled_start:toFixedDateTime(fixedStartDate,fixedStartTime).toISOString(),scheduled_end:toFixedDateTime(fixedEndDate,fixedEndTime).toISOString()}) : await db.from("todo_execution_plans").insert({todo_id:todoId,plan_date:date,mode,planned_minutes:Number(minutes),window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null});
+    const repeating=scope!=="once";
+    const selected=selector.split(":");
+    const selectorKind=scope==="all"?"all":selected[0];
+    const selectorValue=scope==="all"?null:selected[1]?Number(selected[1]):null;
+    if(repeating&&selectorKind==="all"&&scope==="by_day"){setSaving(false);setError("请先选择需要分别安排的日期。");return;}
+    if(repeating&&!pattern&&!projectEnd){setSaving(false);setError("此任务没有重复规则或计划结束日期，请使用单次安排。");return;}
+    if(repeating&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
+    const result=repeating
+      ? await db.from("todo_execution_templates").insert({
+          todo_id:todoId,starts_on:date<todoStart?todoStart:date,ends_on:projectEnd,
+          timezone,execution_mode:mode,selector_kind:selectorKind,selector_value:selectorValue,
+          start_time:mode==="fixed"?fixedStartTime:null,end_time:mode==="fixed"?fixedEndTime:null,
+          window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null,
+          planned_minutes:mode==="fixed"?null:Number(minutes),
+        })
+      : mode==="fixed" ? await db.from("todo_sessions").insert({todo_id:todoId,scheduled_start:toFixedDateTime(fixedStartDate,fixedStartTime).toISOString(),scheduled_end:toFixedDateTime(fixedEndDate,fixedEndTime).toISOString()}) : await db.from("todo_execution_plans").insert({todo_id:todoId,plan_date:date,mode,planned_minutes:Number(minutes),window_start:mode==="window"?windowStart:null,window_end:mode==="window"?windowEnd:null});
     setSaving(false);
     if(result.error){setError("保存失败："+result.error.message);return;}
     await refresh();setOpen(false);
@@ -63,17 +89,34 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     {loading?<p className="mt-3 text-xs text-ink-faint">读取安排中…</p>:<div className="mt-3 space-y-1.5">
       {plans.map(p=><div key={p.id} className="rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft">{p.plan_date} · {p.mode==="flexible"?"灵活安排":`时间窗口 ${p.window_start?.slice(0,5)}–${p.window_end?.slice(0,5)}`} · {p.planned_minutes} 分钟</div>)}
       {sessions.map(s=><div key={s.id} className="rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">固定时段 · {new Date(s.scheduled_start).toLocaleString()} – {new Date(s.scheduled_end).toLocaleTimeString()}</div>)}
-      {!plans.length&&!sessions.length&&<p className="text-xs text-ink-faint">尚无执行安排。可以先不安排。</p>}
+      {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><button type="button" className="shrink-0 underline" onClick={async()=>{if(!window.confirm("删除这条未来重复安排？"))return;const x=await createClient().from("todo_execution_templates").delete().eq("id",t.id);if(x.error)setError(x.error.message);else await refresh();}}>删除</button></div>)}
+      {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">尚无执行安排。可以先不安排。</p>}
     </div>}
     {open&&<div className="mt-4 space-y-3 border-t border-line pt-4">
+      <p className="text-xs font-semibold text-ink-soft">1. 应用范围</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {([{id:"once",label:"仅某一次"},{id:"all",label:"以后每一次"},{id:"by_day",label:"不同日期分别设置"}] as const).map(x=><button key={x.id} type="button" aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
+      </div>
+      {scope==="by_day"&&<label className="block text-xs text-ink-soft">选择重复日期
+        <select className={field+" mt-1"} value={selector} onChange={e=>setSelector(e.target.value)}>
+          <option value="all">请选择日期</option>
+          {pattern?.period==="week"&&pattern.arrangement==="fixed"&&(pattern.weekdays??[]).map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
+          {pattern?.period==="month"&&pattern.arrangement==="fixed"&&(pattern.month_days??[]).map(x=><option key={x} value={"month_day:"+x}>每月 {x} 日</option>)}
+          {pattern?.period==="month"&&pattern.include_month_end&&<option value="month_end">每月最后一天</option>}
+          {!pattern&&projectEnd&&[1,2,3,4,5,6,7].map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
+        </select>
+      </label>}
+      {scope!=="once"&&<p className="text-xs text-ink-faint">将从所选开始日期起，对未来符合任务规则的日期持续生效；不批量生成日历预约记录。</p>}
+      {pattern&&<p className="text-xs text-ink-faint">接下来：{upcomingEligible(pattern,todoStart||date,date,370,3).join("、")||"暂无符合日期"}</p>}
+      <p className="text-xs font-semibold text-ink-soft">2. 时间方式</p>
       <div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:"灵活安排"},{id:"window",label:"时间窗口"},{id:"fixed",label:"固定时段"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>
-      {mode!=="fixed"&&<><label className="block text-xs text-ink-soft">执行日期<input className={field+" mt-1"} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label></>}
+      {(scope!=="once"||mode!=="fixed")&&<><label className="block text-xs text-ink-soft">执行日期<input className={field+" mt-1"} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label className="block text-xs text-ink-soft">计划投入（分钟）<input className={field+" mt-1"} type="number" min="1" max="1440" value={minutes} onChange={e=>setMinutes(e.target.value)}/></label></>}
       {mode==="window"&&<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">最早开始<input className={field+" mt-1"} type="time" value={windowStart} onChange={e=>setWindowStart(e.target.value)}/></label><label className="text-xs text-ink-soft">最晚结束<input className={field+" mt-1"} type="time" value={windowEnd} onChange={e=>setWindowEnd(e.target.value)}/></label></div>}
       {mode==="fixed"&&<div className="space-y-3">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="block text-xs text-ink-soft">开始日期（YYYY-MM-DD）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="2026-10-15" value={fixedStartDate} onChange={e=>setFixedStartDate(e.target.value)}/></label>
+          {scope==="once"&&<label className="block text-xs text-ink-soft">开始日期（YYYY-MM-DD）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="2026-10-15" value={fixedStartDate} onChange={e=>setFixedStartDate(e.target.value)}/></label>}
           <label className="block text-xs text-ink-soft">开始时间（24小时制）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="20:00" value={fixedStartTime} onChange={e=>setFixedStartTime(e.target.value)}/></label>
-          <label className="block text-xs text-ink-soft">结束日期（YYYY-MM-DD）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="2026-10-15" value={fixedEndDate} onChange={e=>setFixedEndDate(e.target.value)}/></label>
+          {scope==="once"&&<label className="block text-xs text-ink-soft">结束日期（YYYY-MM-DD）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="2026-10-15" value={fixedEndDate} onChange={e=>setFixedEndDate(e.target.value)}/></label>}
           <label className="block text-xs text-ink-soft">结束时间（24小时制）<input className={field+" mt-1"} type="text" inputMode="numeric" placeholder="20:45" value={fixedEndTime} onChange={e=>setFixedEndTime(e.target.value)}/></label>
         </div>
         <p className="text-xs text-ink-faint">支持直接输入日期与时间，例如 2026-10-15、20:45；可以跨日期预约。</p>
