@@ -87,6 +87,7 @@ type Props = {
   initialTodos: CalendarTodo[];
   initialDate: string;
   virtualSessions?: Array<{todo_id:string;id:string;scheduled_start:string;scheduled_end:string}>;
+  onDateChange?: (date:string)=>void;
 };
 
 type SessionWithTodo = {
@@ -1205,6 +1206,7 @@ export default function CalendarPlanner({
   initialTodos,
   initialDate,
   virtualSessions = [],
+  onDateChange,
 }: Props) {
   const router = useRouter();
   const { dictionary, language } = useI18n();
@@ -1224,6 +1226,7 @@ export default function CalendarPlanner({
 
   const [todos, setTodos] = useState<CalendarTodo[]>(initialTodos);
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  useEffect(()=>{onDateChange?.(selectedDate);},[selectedDate,onDateChange]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
