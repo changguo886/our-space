@@ -18,13 +18,15 @@ DECLARE
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Login required'; END IF;
   IF task_title IS NULL THEN RAISE EXCEPTION 'Title required'; END IF;
-  IF kind NOT IN ('one_time','project','routine') THEN RAISE EXCEPTION 'Unsupported kind'; END IF;
+  IF kind IS NULL OR kind NOT IN ('one_time','project','routine') THEN RAISE EXCEPTION 'Unsupported kind'; END IF;
   stored_kind := CASE WHEN kind='routine' THEN 'habit' ELSE 'one_time' END;
   IF kind='project' AND (start_on IS NULL OR finish_on IS NULL OR finish_on<start_on) THEN RAISE EXCEPTION 'Invalid project range'; END IF;
   IF due_on IS NOT NULL AND finish_on IS NOT NULL AND due_on<finish_on THEN RAISE EXCEPTION 'Invalid deadline'; END IF;
-  IF kind='routine' AND ((payload->>'period') NOT IN ('day','week','month') OR
-    (payload->>'arrangement') NOT IN ('fixed','flexible') OR frequency_count NOT BETWEEN 1 AND 10000)
+  IF kind='routine' AND (coalesce((payload->>'period') NOT IN ('day','week','month'),true) OR
+    coalesce((payload->>'arrangement') NOT IN ('fixed','flexible'),true) OR coalesce(frequency_count NOT BETWEEN 1 AND 10000,true))
   THEN RAISE EXCEPTION 'Invalid routine rule'; END IF;
+  IF kind='routine' AND (payload->>'period')='week' AND (payload->>'arrangement')='fixed' AND frequency_count<>cardinality(weekday_list) THEN RAISE EXCEPTION 'Weekday count mismatch'; END IF;
+  IF kind='routine' AND (payload->>'period')='month' AND (payload->>'arrangement')='fixed' AND cardinality(monthday_list)=0 AND NOT coalesce((payload->>'include_month_end')::boolean,false) THEN RAISE EXCEPTION 'Choose a monthly date'; END IF;
   IF edit_id IS NULL THEN
     INSERT INTO public.todos(user_id,title,description,group_id,category,custom_tag,task_type,task_date,
       plan_start_date,target_finish_date,deadline_date)
