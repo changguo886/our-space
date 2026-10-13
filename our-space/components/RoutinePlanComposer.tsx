@@ -68,7 +68,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
    }
    setBusy(true);const db=createClient();let failure="";
    if(scope==="ongoing"){
-     const startsOn=nextCycle(addDaysISO(periodStart,-1),pattern.period); // First day of selected period
+     const startsOn=periodStart; // Start of the selected week/month, never the following week
      const rows=slots.map(s=>({
        todo_id:todoId,starts_on:startsOn,ends_on:null,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",
        selector_kind:weekly?"weekday":"month_day",selector_value:Number(s.key),
@@ -97,7 +97,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
  const input="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm";
  return <div className="space-y-4 rounded-xl border border-sage-200 bg-sage-50/30 p-4">
    <div><h4 className="font-semibold text-ink">{zh?"制定执行计划":"Plan execution"}</h4><p className="text-xs text-ink-faint">{zh?"先选择日期、统一设置时间，再逐日微调并一次保存。完成目标不会被自动修改。":"Choose dates, apply timing, then adjust and save. Completion goals remain separate."}</p></div>
-   <div className="flex items-center justify-between gap-2"><button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={()=>setAnchor(dayAt(year,month,1).slice(0,7)+"-01"===anchor?addDaysISO(periodStart,weekly?-7:-1):weekly?addDaysISO(anchor,-7):dayAt(month===1?year-1:year,month===1?12:month-1,1))}>‹</button><strong className="text-sm">{weekly?periodStart+" – "+periodEnd:year+"-"+pad(month)}</strong><button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={()=>setAnchor(weekly?addDaysISO(anchor,7):nextCycle(anchor,"month"))}>›</button></div>
+   <div className="flex items-center justify-between gap-2"><button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={()=>setAnchor(weekly?addDaysISO(anchor,-7):dayAt(month===1?year-1:year,month===1?12:month-1,1))}>‹</button><strong className="text-sm">{weekly?periodStart+" – "+periodEnd:year+"-"+pad(month)}</strong><button type="button" className="rounded-lg border px-3 py-1 text-sm" onClick={()=>setAnchor(weekly?addDaysISO(anchor,7):nextCycle(anchor,"month"))}>›</button></div>
    {weekly&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>addSelection([1,2,3,4,5])} className="rounded-lg border px-3 py-1.5 text-xs">{zh?"工作日":"Weekdays"}</button><button type="button" onClick={()=>addSelection([6,7])} className="rounded-lg border px-3 py-1.5 text-xs">{zh?"周末":"Weekend"}</button><button type="button" onClick={()=>addSelection([])} className="rounded-lg border px-3 py-1.5 text-xs">{zh?"清空":"Clear"}</button></div>}
    <div className={weekly?"grid grid-cols-7 gap-1":"grid grid-cols-7 gap-1"}>
      {values.map(v=><button key={v} type="button" disabled={!eligible(v)} onClick={()=>addSelection(selected.includes(v)?selected.filter(x=>x!==v):[...selected,v])} className={`min-h-9 rounded-lg border text-xs disabled:opacity-30 ${selected.includes(v)?"border-sage-500 bg-sage-100 text-sage-700":"border-line bg-white"}`} title={dayFor(v)}>{weekly?["一","二","三","四","五","六","日"][v-1]:v}{fixed&&defaultKeys().includes(v)?" •":""}</button>)}
