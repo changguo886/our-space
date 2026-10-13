@@ -8,7 +8,7 @@ import AddTodoForm from "@/components/AddTodoForm";
 import QuickCaptureTodo from "@/components/QuickCaptureTodo";
 import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
 import type { Todo } from "@/components/TodoList";
-import { habitEligible, upcomingEligible, type ExecutionTemplateV3, type HabitPatternV3 } from "@/lib/recurring-execution";
+import { addDaysISO, habitEligible, templateEligible, upcomingEligible, type ExecutionTemplateV3, type HabitPatternV3 } from "@/lib/recurring-execution";
 
 type Filter = "today" | "upcoming" | "backlog" | "completed" | "all";
 type Props = {
@@ -33,18 +33,24 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   const [habitPatterns,setHabitPatterns]=useState<Record<string,HabitPattern>>({});
   const [bookedCounts,setBookedCounts]=useState<Record<string,number>>({});
   const [executionTemplates,setExecutionTemplates]=useState<ExecutionTemplateV3[]>([]);
+  const [bookedDays,setBookedDays]=useState<Record<string,string[]>>({});
   useEffect(()=>{
     let active=true;
     const db=createClient();
     void Promise.all([
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end"),
-      db.from("todo_sessions").select("todo_id,id"),
+      db.from("todo_sessions").select("todo_id,id,scheduled_start"),
       db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end")
     ]).then(([p,slots,templateRows])=>{
       if(!active)return;
       if(!p.error)setHabitPatterns(Object.fromEntries(((p.data??[]) as HabitPattern[]).map(pattern=>[pattern.todo_id,pattern])));
       if(!templateRows.error)setExecutionTemplates((templateRows.data??[]) as ExecutionTemplateV3[]);
-      if(!slots.error){const counts:Record<string,number>={};for(const slot of slots.data??[])counts[slot.todo_id]=(counts[slot.todo_id]??0)+1;setBookedCounts(counts);}
+      if(!slots.error){const counts:Record<string,number>={},days:Record<string,string[]>={};for(const slot of slots.data??[]){
+        counts[slot.todo_id]=(counts[slot.todo_id]??0)+1;
+        const time=new Date(slot.scheduled_start);
+        const day=[time.getFullYear(),String(time.getMonth()+1).padStart(2,"0"),String(time.getDate()).padStart(2,"0")].join("-");
+        (days[slot.todo_id]??=[]).push(day);
+      }setBookedCounts(counts);setBookedDays(days);}
     });
     return()=>{active=false};
   },[todos]);
@@ -63,19 +69,30 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
     const p=habitPatterns[t.id];
     return Boolean(p&&habitEligible(today,p,t.task_date??today));
   };
+  const templateForDate=(t:Todo,day:string)=>executionTemplates.some(x=>x.todo_id===t.id&&
+    templateEligible(day,x,habitPatterns[t.id],t.task_date));
   const hasExecution=(t:Todo)=>Boolean(bookedCounts[t.id]||executionTemplates.some(x=>x.todo_id===t.id));
+  const hasFutureTemplate=(t:Todo)=>Array.from({length:120},(_,i)=>addDaysISO(today,i+1))
+    .some(day=>templateForDate(t,day));
   const isFutureHabit=(t:Todo)=>{
     const p=habitPatterns[t.id];
     return Boolean(p&&upcomingEligible(p,t.task_date??today,today,370,5).some(day=>day>today));
   };
+  const isToday=(t:Todo)=>{
+    if(t.task_type==="habit")return isHabitToday(t);
+    if(templateForDate(t,today))return true;
+    const booked=bookedDays[t.id]??[];
+    return booked.length?booked.includes(today):t.task_date===today;
+  };
+  const isUpcoming=(t:Todo)=>{
+    if(t.task_type==="habit")return hasExecution(t)&&isFutureHabit(t);
+    if((bookedDays[t.id]??[]).some(day=>day>today)||hasFutureTemplate(t))return true;
+    return Boolean(!hasExecution(t)&&t.task_date&&t.task_date>today);
+  };
   const buckets:Record<Filter,Todo[]> = {
-    today:todos.filter(t=>t.status!=="completed"&&(t.task_type==="habit"?isHabitToday(t):t.task_date===today)),
-    upcoming:todos.filter(t=>t.status!=="completed"&&(
-      t.task_type==="habit"?hasExecution(t)&&isFutureHabit(t):!!t.task_date&&t.task_date>today&&hasExecution(t)
-    )),
-    backlog:todos.filter(t=>t.status!=="completed"&&(
-      t.task_type==="habit"?!hasExecution(t):!hasExecution(t)&&t.task_date!==today
-    )),
+    today:todos.filter(t=>t.status!=="completed"&&isToday(t)),
+    upcoming:todos.filter(t=>t.status!=="completed"&&isUpcoming(t)),
+    backlog:todos.filter(t=>t.status!=="completed"&&!hasExecution(t)&&!isToday(t)),
     completed:todos.filter(t=>t.status==="completed"),
     all:todos.filter(t=>t.status!=="completed"),
   };
@@ -86,7 +103,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   const displayType = (todo:Todo) => todo.task_type==="one_time" && todo.target_finish_date ? "定期任务" : typeLabel[todo.task_type??"one_time"];
   const tabs: {key:Filter;label:string}[] = [
     {key:"today",label:"今天"},
-    {key:"backlog",label:"待安排 / 过期"},
+    {key:"backlog",label:"待安排"},
     {key:"upcoming",label:"即将到来"},
     {key:"completed",label:"已完成"},
     {key:"all",label:"全部"},
