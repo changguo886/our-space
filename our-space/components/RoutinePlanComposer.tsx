@@ -7,7 +7,7 @@ import { addDaysISO, lastDayISO, weekdayISO, type HabitPatternV3 } from "@/lib/r
 import { fixedOverlap, sameNonFixed, formatDay, isDuplicateKeyError, remainingQuota, timesOverlap, type DatedItem, type ScheduleMode as Mode } from "@/lib/schedule-utils";
 
 type Slot = { id: string; key: string; mode: Mode; start: string; end: string; minutes: string };
-type Props = { todoId: string; pattern: HabitPatternV3; today: string; startDate: string; existing: DatedItem[]; onSaved: () => Promise<void>; zh: boolean };
+type Props = { batchColumn?: boolean; todoId: string; pattern: HabitPatternV3; today: string; startDate: string; existing: DatedItem[]; onSaved: () => Promise<void>; zh: boolean };
 const pad = (n: number) => String(n).padStart(2, "0");
 const dayAt = (year: number, month: number, day: number) => year + "-" + pad(month) + "-" + pad(day);
 const validTime = (x: string) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(x);
@@ -15,7 +15,7 @@ const toIso = (d: string, t: string) => new Date(d + "T" + t + ":00").toISOStrin
 const span = (a: string, b: string) => Number(b.slice(0, 2)) * 60 + Number(b.slice(3)) - Number(a.slice(0, 2)) * 60 - Number(a.slice(3));
 const WEEK = ["一", "二", "三", "四", "五", "六", "日"];
 
-export default function RoutinePlanComposer({ todoId, pattern, today, startDate, existing, onSaved, zh }: Props) {
+export default function RoutinePlanComposer({ batchColumn = false, todoId, pattern, today, startDate, existing, onSaved, zh }: Props) {
   const [anchor, setAnchor] = useState(today);
   const [selected, setSelected] = useState<number[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -23,7 +23,7 @@ export default function RoutinePlanComposer({ todoId, pattern, today, startDate,
   const [scope, setScope] = useState<"period" | "ongoing">("period");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const pending = useRef<{ sig: string; ids: string[] } | null>(null);
+  const pending = useRef<{ sig: string; ids: string[]; batchId: string } | null>(null);
 
   const weekly = pattern.period !== "month";
   const fixed = pattern.arrangement === "fixed";
@@ -60,8 +60,10 @@ export default function RoutinePlanComposer({ todoId, pattern, today, startDate,
 
   async function insertOnce(table: string, records: Array<Record<string, unknown>>) {
     const sig = table + JSON.stringify(records);
-    if (pending.current?.sig !== sig) pending.current = { sig, ids: records.map(() => crypto.randomUUID()) };
-    const result = await createClient().from(table).insert(records.map((r, i) => ({ ...r, id: pending.current!.ids[i] })));
+    if (pending.current?.sig !== sig) pending.current = { sig, ids: records.map(() => crypto.randomUUID()), batchId: crypto.randomUUID() };
+    const { ids, batchId } = pending.current;
+    const withBatch = table === "todo_execution_templates" && batchColumn;
+    const result = await createClient().from(table).insert(records.map((r, i) => ({ ...r, id: ids[i], ...(withBatch ? { batch_id: batchId } : {}) })));
     if (result.error && !isDuplicateKeyError(result.error)) return result.error.message;
     pending.current = null;
     return "";

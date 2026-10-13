@@ -122,20 +122,28 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   const [bulkEnd, setBulkEnd] = useState("20:00");
 
   /** Client-generated ids keep a retried insert from creating a second copy (B10). */
-  const pendingInsert = useRef<{ sig: string; ids: string[] } | null>(null);
+  const pendingInsert = useRef<{ sig: string; ids: string[]; batchId: string } | null>(null);
+  /** True once v4_11 is applied: every template save then carries one explicit batch_id. */
+  const [batchColumn, setBatchColumn] = useState(false);
 
   async function refresh() {
     const db = createClient();
     const [s, h, t, td] = await Promise.all([
       db.from("todo_sessions").select("id,mode,plan_date,scheduled_start,scheduled_end,planned_minutes,window_start,window_end").eq("todo_id", todoId),
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end").eq("todo_id", todoId).maybeSingle(),
-      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end,replaces_slot_key").eq("todo_id", todoId),
+      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end,replaces_slot_key,batch_id").eq("todo_id", todoId),
       db.from("todos").select("task_date,plan_start_date,target_finish_date").eq("id", todoId).single(),
     ]);
     if (s.error) setError((zh ? "读取安排失败：" : "Could not load plans: ") + s.error.message);
     else setRows(((s.data ?? []) as SessionRow[]).map(toItem).filter((x): x is DatedItem => x !== null));
     if (!h.error) setPattern(h.data as HabitPatternV3 | null);
-    if (!t.error) setTemplates((t.data ?? []) as ExecutionTemplateV3[]);
+    if (!t.error) { setTemplates((t.data ?? []) as ExecutionTemplateV3[]); setBatchColumn(true); }
+    else if (t.error.code === "42703") {
+      // batch_id column not there yet (v4_11 not applied): read without it, group by slot_key.
+      const legacy = await db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end,replaces_slot_key").eq("todo_id", todoId);
+      if (!legacy.error) setTemplates((legacy.data ?? []) as ExecutionTemplateV3[]);
+      setBatchColumn(false);
+    }
     if (!td.error && td.data) { setTodoStart(td.data.plan_start_date ?? td.data.task_date ?? ""); setProjectEnd(td.data.target_finish_date ?? null); }
     setLoading(false);
   }
@@ -154,10 +162,12 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   }
 
   async function insertOnce(table: "todo_sessions" | "todo_execution_templates", records: Array<Record<string, unknown>>): Promise<string> {
+    // Same request (same content) retried => same row ids and same batch id => no duplicates.
     const sig = table + JSON.stringify(records);
-    if (pendingInsert.current?.sig !== sig) pendingInsert.current = { sig, ids: records.map(() => crypto.randomUUID()) };
-    const ids = pendingInsert.current.ids;
-    const result = await createClient().from(table).insert(records.map((r, i) => ({ ...r, id: ids[i] })));
+    if (pendingInsert.current?.sig !== sig) pendingInsert.current = { sig, ids: records.map(() => crypto.randomUUID()), batchId: crypto.randomUUID() };
+    const { ids, batchId } = pendingInsert.current;
+    const withBatch = table === "todo_execution_templates" && batchColumn;
+    const result = await createClient().from(table).insert(records.map((r, i) => ({ ...r, id: ids[i], ...(withBatch ? { batch_id: batchId } : {}) })));
     if (result.error && !isDuplicateKeyError(result.error)) return result.error.message;
     pendingInsert.current = null;
     return "";
@@ -332,7 +342,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   // ---------- series actions ----------
   // Identity rules: a group is a batch_id (or a single slot_key before v4_11); a slot is a slot_key;
   // a version is a template id. Actions name their slots explicitly, never infer them from timing.
-  const hasBatchIds = templates.some((t) => Boolean((t as ExecutionTemplateV3 & { batch_id?: string | null }).batch_id));
+  const hasBatchIds = batchColumn; // v4_11 applied: group.key is a real batch_id
   const versionsOf = (slotKey: string) => templates.filter((t) => t.slot_key === slotKey).sort((a, b) => a.starts_on.localeCompare(b.starts_on));
   const coveringVersion = (slotKey: string, day: string) => {
     const versions = versionsOf(slotKey);
@@ -512,7 +522,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     </div>}
 
     {panel?.kind === "compose" && pattern && <div className="mt-4 border-t border-line pt-4">
-      <RoutinePlanComposer todoId={todoId} pattern={pattern} today={todayISO} startDate={todoStart || todayISO} existing={rows} zh={zh}
+      <RoutinePlanComposer batchColumn={batchColumn} todoId={todoId} pattern={pattern} today={todayISO} startDate={todoStart || todayISO} existing={rows} zh={zh}
         onSaved={async () => { await refresh(); router.refresh(); setPanel(null); }} />
     </div>}
 
