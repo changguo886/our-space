@@ -40,6 +40,7 @@ BEGIN
     IF existing_kind IS NULL THEN RAISE EXCEPTION 'Task not found'; END IF;
     IF existing_kind<>stored_kind THEN RAISE EXCEPTION 'Cross-family conversions need V4 cutover'; END IF;
     UPDATE public.todos SET title=task_title,description=nullif(payload->>'description',''),
+      estimated_minutes=nullif(payload->>'estimated_minutes','')::integer,
       category=nullif(payload->>'category',''),custom_tag=nullif(payload->>'custom_tag',''),
       group_id=nullif(payload->>'group_id','')::uuid,
       plan_start_date=CASE WHEN kind='project' THEN start_on END,
@@ -52,8 +53,9 @@ BEGIN
       include_month_end,starts_on,ends_on,strict)
     VALUES(saved,payload->>'period',payload->>'arrangement',frequency_count,weekday_list,monthday_list,
       coalesce((payload->>'include_month_end')::boolean,false),
-      nullif(payload->>'starts_on','')::date,nullif(payload->>'ends_on','')::date,
-      coalesce((payload->>'strict')::boolean,false))
+      coalesce(nullif(payload->>'starts_on','')::date,(SELECT h.starts_on FROM public.habit_patterns_v3 h WHERE h.todo_id=saved)),
+      coalesce(nullif(payload->>'ends_on','')::date,(SELECT h.ends_on FROM public.habit_patterns_v3 h WHERE h.todo_id=saved)),
+      coalesce((payload->>'strict')::boolean,(SELECT h.strict FROM public.habit_patterns_v3 h WHERE h.todo_id=saved),false))
     ON CONFLICT(todo_id) DO UPDATE SET period=excluded.period,arrangement=excluded.arrangement,
       target_count=excluded.target_count,weekdays=excluded.weekdays,month_days=excluded.month_days,
       include_month_end=excluded.include_month_end,starts_on=excluded.starts_on,
