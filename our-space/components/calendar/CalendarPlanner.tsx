@@ -2352,7 +2352,7 @@ export default function CalendarPlanner({
                     const height=Math.max(24,(endMinutes-startMinutes)/60*HOUR_HEIGHT);
                     if(top+height<0||top>visibleTotalHeight)return null;
                     const category=group.length===1?group[0].category:null;
-                    return <div key={start+end} className="pointer-events-none absolute left-3 right-3 z-[5] overflow-hidden rounded-xl border-2 border-dashed p-2 text-xs"
+                    return <div key={start+end} className="pointer-events-none absolute left-3 right-3 z-10 overflow-hidden rounded-xl border-2 border-dashed p-2 text-xs shadow-sm"
                       style={{top:Math.max(0,top),height:Math.min(height,visibleTotalHeight-Math.max(0,top)),backgroundColor:category?(taskCardVisual(category,group[0].color_hex).backgroundColor):"#F5F7FB",borderColor:group.length===1?taskCardVisual(category,group[0].color_hex).borderLeftColor:"#98A9C6",opacity:0.85}}>
                       <strong>{start}–{end} · {group.length} {language==="zh-CN"?"项窗口任务":"window tasks"} · {group.reduce((n,p)=>n+p.planned_minutes,0)} min</strong>
                       {group.slice(0,3).map(p=><div key={p.id} className="mt-1 truncate">{p.title} · {p.planned_minutes} min</div>)}
@@ -2360,7 +2360,7 @@ export default function CalendarPlanner({
                     </div>;
                   })}
                   {/* Sessions */}
-                  <div className="absolute inset-0">
+                  <div className="pointer-events-none absolute inset-0 z-20">
                     {scheduledSessions.map(({ todo, session }) => (
                       <ScheduledSession
                         key={session.id}
