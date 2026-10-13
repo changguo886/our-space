@@ -50,6 +50,7 @@ export default async function CalendarPage() {
   scheduled_start,
   scheduled_end,
   category,
+  color_hex,
   custom_tag,
   started_at,
   elapsed_seconds,
