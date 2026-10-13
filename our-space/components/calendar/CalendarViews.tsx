@@ -88,7 +88,11 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       </div>
     </div>
     {mode==="day" ? <div className="space-y-3">
-      <CalendarPlanner initialTodos={initialTodos} initialDate={date}/>
+      <CalendarPlanner initialTodos={initialTodos} initialDate={date} onDateChange={setDate}
+        virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=>({
+          todo_id:e.todoId,id:"virtual:"+e.todoId+":"+date+":"+i,
+          scheduled_start:e.start,scheduled_end:e.end,
+        }))}/>
       {(recurringEvents(date).length+movedOverrideEvents(date).length)>0&&<section className="rounded-xl border border-line bg-white p-3">
         <p className="mb-2 text-xs font-semibold text-ink-soft">重复固定时段（预览，不创建独立预约）</p>
         {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
