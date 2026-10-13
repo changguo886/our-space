@@ -59,7 +59,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
   const tasks=initialTodos as CalendarTask[];
   const eventVisual=(todoId:string)=>{const task=tasks.find(t=>t.id===todoId);return taskCardVisual(task?.category,task?.color_hex);};
-  const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
+  const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start!,end:s.scheduled_end!})),
     ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
     const active=templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&
