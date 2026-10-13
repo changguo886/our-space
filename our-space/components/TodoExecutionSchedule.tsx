@@ -70,6 +70,10 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [sessions,setSessions]=useState<Session[]>([]);
   const [loading,setLoading]=useState(false);
   const [saving,setSaving]=useState(false);
+  const [bulkEdit,setBulkEdit]=useState(false);
+  const [bulkIds,setBulkIds]=useState<string[]>([]);
+  const [bulkStart,setBulkStart]=useState("19:00");
+  const [bulkEnd,setBulkEnd]=useState("20:00");
   const [error,setError]=useState("");
   async function refresh(){
     setLoading(true);
@@ -127,7 +131,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const copyEligible=(day:string)=>!pattern||pattern.arrangement==="flexible"||pattern.period==="day"||
     pattern.period==="week"&&pattern.weekdays.includes(weekdayISO(day))||
     pattern.period==="month"&&(pattern.month_days.includes(Number(day.slice(-2)))||(pattern.include_month_end&&Number(day.slice(-2))===lastDayISO(day)));
-  const copyAvailable=candidateDays.filter(copyEligible);
+  const copyAvailable=candidateDays.filter(day=>day>=todayISO&&copyEligible(day));
   const copySelected=copyChoice==="dates"?copyDays:copyAvailable.filter(day=>copyChoice==="all"||weekdayISO(day)<=5);
   async function copySchedule(){
     setCopyNotice("");setError("");
@@ -137,7 +141,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(copyMode==="window"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart||copyMinutes>((Number(sourceEnd.slice(0,2))-Number(sourceStart.slice(0,2)))*60+Number(sourceEnd.slice(3))-Number(sourceStart.slice(3))))){setError("请检查时间窗口和预计分钟。");return;}
     setCopyBusy(true);
     const occupied=new Set([...plans.map(p=>p.plan_date),...sessions.map(p=>localDate(new Date(p.scheduled_start)))]);
-    const target=copySelected.filter(day=>!occupied.has(day));
+    const target=copySelected.filter(day=>day>=todayISO&&day>sourceDay&&day<=copyLimit&&copyEligible(day)&&!occupied.has(day));
     const skipped=copySelected.length-target.length;
     if(!target.length){setCopyBusy(false);setCopyNotice(zh?"所选日期均已有单次安排，没有新增。":"All dates already have individual plans.");return;}
     // A repeating template represents many future virtual occurrences; do not bulk-create them.
@@ -238,6 +242,27 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     dismissContinuation();setCopyNotice(forever?(zh?"已启用后续周期的虚拟重复安排。":"Future recurring plan saved."):(zh?"已复制到下一周期。":"Copied to next period."));
     await refresh();
   }
+  async function cancelSession(id:string,day:string){
+    if(day<todayISO){setError(zh?"历史日期的安排不能从这里删除。":"Past sessions cannot be removed here.");return;}
+    if(!window.confirm(zh?"取消这一天的安排？不会删除任务，也不会改变完成记录。":"Cancel this dated plan? The task and completion history remain."))return;
+    setSaving(true);
+    const result=await createClient().from("todo_sessions").delete().eq("id",id).eq("todo_id",todoId);
+    setSaving(false);
+    if(result.error){setError(result.error.message);return;}
+    setBulkIds(ids=>ids.filter(x=>x!==id));await refresh();
+  }
+  async function saveBulkTime(){
+    if(!bulkIds.length||!validTime(bulkStart)||!validTime(bulkEnd)||bulkEnd<=bulkStart){setError(zh?"请选择未来的固定时段并填写有效时间。":"Select future fixed sessions and valid times.");return;}
+    const entries=sessions.filter(x=>bulkIds.includes(x.id)&&localDate(new Date(x.scheduled_start))>=todayISO);
+    if(entries.length!==bulkIds.length){setError(zh?"只能调整未过期的固定预约。":"Only future fixed sessions can be adjusted.");return;}
+    setSaving(true);const db=createClient();
+    for(const entry of entries){
+      const day=localDate(new Date(entry.scheduled_start));
+      const result=await db.from("todo_sessions").update({scheduled_start:toFixedDateTime(day,bulkStart).toISOString(),scheduled_end:toFixedDateTime(day,bulkEnd).toISOString()}).eq("id",entry.id).eq("todo_id",todoId);
+      if(result.error){setSaving(false);setError(result.error.message);await refresh();return;}
+    }
+    setSaving(false);setBulkIds([]);setBulkEdit(false);await refresh();
+  }
   async function save(){
     setError("");
     if(scope!=="by_day"&&mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
@@ -250,6 +275,9 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       }
     }
     if(scope==="once"&&mode==="fixed"&&(!validDate(fixedStartDate)||!validDate(fixedEndDate)||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setError("请填写有效日期（YYYY-MM-DD）与24小时制时间（HH:mm）。");return;}
+    if(scope==="once"&&mode==="fixed"&&fixedStartDate<todayISO){setError(zh?"不能在过去日期创建新预约。":"Cannot create a new plan in the past.");return;}
+    if(scope==="once"&&mode!=="fixed"&&date<todayISO){setError(zh?"不能在过去日期创建新计划。":"Cannot create a new plan in the past.");return;}
+    if(scope==="once"&&bookedDates.has(mode==="fixed"?fixedStartDate:date)){setError(zh?"当天已有该任务的执行安排。请修改或取消现有记录，而不是再次创建。":"This task already has a dated plan. Edit or cancel it instead.");return;}
     if(scope==="once"&&mode==="fixed"&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()<=toFixedDateTime(fixedStartDate,fixedStartTime).getTime()){setError("固定结束时间必须晚于开始时间。");return;}
     setSaving(true);
     const db=createClient();
@@ -401,8 +429,14 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <button type="button" className="rounded-lg border border-sage-300 px-3 py-2 text-xs text-sage-700" onClick={()=>setOpen(v=>!v)}>{open?(zh?"收起":"Close"):(zh?"＋ 安排执行":"+ Plan execution")}</button>
     </div>
     {loading?<p className="mt-3 text-xs text-ink-faint">读取安排中…</p>:<div className="mt-3 space-y-1.5">
-      {plans.map(p=><div key={p.id} className="flex items-center justify-between gap-3 rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft"><span>{p.plan_date} · {p.mode==="flexible"?(zh?"灵活安排":"Flexible"):(zh?"时间窗口":"Window")+" "+p.window_start?.slice(0,5)+"–"+p.window_end?.slice(0,5)} · {p.planned_minutes} min</span><button type="button" className="shrink-0 rounded-lg border border-line bg-white px-3 py-1.5 text-sage-700" onClick={()=>{setCopySource({id:p.id,day:p.plan_date,mode:p.mode,start:p.window_start?.slice(0,5)??"",end:p.window_end?.slice(0,5)??"",minutes:p.planned_minutes});setCopyChoice("dates");setCopyDays([]);setCopyOpen(true);setOpen(true);}}>{zh?"复制":"Copy"}</button></div>)}
-      {sessions.map(session=><div key={session.id} className="flex items-center justify-between gap-3 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>{zh?"固定时段":"Fixed"} · {new Date(session.scheduled_start).toLocaleString(zh?"zh-CN":"en-US")} – {new Date(session.scheduled_end).toLocaleTimeString(zh?"zh-CN":"en-US")}</span><button type="button" className="shrink-0 rounded-lg border border-line bg-white px-3 py-1.5" onClick={()=>{const first=new Date(session.scheduled_start),last=new Date(session.scheduled_end);setCopySource({id:session.id,day:localDate(first),mode:"fixed",start:localTime(first),end:localTime(last),minutes:Math.round((last.getTime()-first.getTime())/60000)});setCopyChoice("dates");setCopyDays([]);setCopyOpen(true);setOpen(true);}}>{zh?"复制":"Copy"}</button></div>)}
+      <button type="button" className="text-xs text-sage-700 underline" onClick={()=>setBulkEdit(x=>!x)}>{zh?"批量调整未来固定时段":"Batch edit future fixed slots"}</button>
+      {bulkEdit&&<div className="space-y-2 rounded-xl border border-line p-3">
+        <p className="text-xs text-ink-soft">{zh?"勾选要一起修改的预约，历史安排不会改变。":"Select dated appointments to update; history stays unchanged."}</p>
+        <div className="grid grid-cols-2 gap-2"><label className="text-xs">{zh?"开始":"Start"}<AppTimePicker value={bulkStart} onChange={setBulkStart}/></label><label className="text-xs">{zh?"结束":"End"}<AppTimePicker value={bulkEnd} onChange={setBulkEnd}/></label></div>
+        <button type="button" disabled={saving||bulkIds.length===0} className="btn-primary w-full" onClick={()=>void saveBulkTime()}>{zh?`修改选中的 ${bulkIds.length} 条安排`:`Update ${bulkIds.length} sessions`}</button>
+      </div>}
+      {plans.map(p=><div key={p.id} className="flex items-center justify-between gap-3 rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft"><span>{p.plan_date} · {p.mode==="flexible"?(zh?"灵活安排":"Flexible"):(zh?"时间窗口":"Window")+" "+p.window_start?.slice(0,5)+"–"+p.window_end?.slice(0,5)} · {p.planned_minutes} min</span><button type="button" className="shrink-0 rounded-lg border border-line bg-white px-3 py-1.5 text-sage-700" onClick={()=>{setCopySource({id:p.id,day:p.plan_date,mode:p.mode,start:p.window_start?.slice(0,5)??"",end:p.window_end?.slice(0,5)??"",minutes:p.planned_minutes});setCopyChoice("dates");setCopyDays([]);setCopyOpen(true);setOpen(true);}}>{zh?"复制":"Copy"}</button><button type="button" className="shrink-0 text-xs text-ink-faint underline" onClick={()=>void cancelSession(p.id,p.plan_date)}>{zh?"取消当天":"Cancel"}</button></div>)}
+      {sessions.map(session=><div key={session.id} className="flex items-center justify-between gap-3 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>{bulkEdit&&localDate(new Date(session.scheduled_start))>=todayISO&&<input type="checkbox" aria-label={zh?"选择此预约":"Select session"} checked={bulkIds.includes(session.id)} onChange={e=>setBulkIds(ids=>e.target.checked?[...ids,session.id]:ids.filter(id=>id!==session.id))} className="mr-2"/>}{zh?"固定时段":"Fixed"} · {new Date(session.scheduled_start).toLocaleString(zh?"zh-CN":"en-US")} – {new Date(session.scheduled_end).toLocaleTimeString(zh?"zh-CN":"en-US")}</span><button type="button" className="shrink-0 rounded-lg border border-line bg-white px-3 py-1.5" onClick={()=>{const first=new Date(session.scheduled_start),last=new Date(session.scheduled_end);setCopySource({id:session.id,day:localDate(first),mode:"fixed",start:localTime(first),end:localTime(last),minutes:Math.round((last.getTime()-first.getTime())/60000)});setCopyChoice("dates");setCopyDays([]);setCopyOpen(true);setOpen(true);}}>{zh?"复制":"Copy"}</button><button type="button" className="shrink-0 text-xs text-ink-faint underline" onClick={()=>void cancelSession(session.id,localDate(new Date(session.scheduled_start)))}>{zh?"取消当天":"Cancel"}</button></div>)}
       {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><span className="flex shrink-0 gap-2"><button type="button" className="underline" onClick={()=>{setEditingTemplateId(t.id);setScope("all");setOpen(true);setDate(t.starts_on>date?t.starts_on:date);setMode(t.execution_mode);setFixedStartTime(t.start_time?.slice(0,5)??"09:00");setFixedEndTime(t.end_time?.slice(0,5)??"10:00");setWindowStart(t.window_start?.slice(0,5)??"08:00");setWindowEnd(t.window_end?.slice(0,5)??"12:00");setMinutes(String(t.planned_minutes??45));}}>从这天起修改</button><button type="button" className="underline" onClick={async()=>{const effective=date<t.starts_on?t.starts_on:date;if(!window.confirm("停止从 "+effective+" 起的重复安排？之前的时间计划保留。"))return;const x=await createClient().rpc("stop_execution_template_future_v3",{p_template_id:t.id,p_effective_on:effective});if(x.error)setError(x.error.message);else await refresh();}}>停止后续</button></span></div>)}
       {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">{zh?"尚无执行安排。可以先不安排。":"No execution plans yet. You can schedule later."}</p>}
     </div>}
