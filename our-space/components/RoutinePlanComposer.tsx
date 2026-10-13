@@ -8,7 +8,7 @@ type Props={todoId:string;pattern:HabitPatternV3;today:string;startDate:string;o
 const defaults=():Omit<Slot,"id"|"key">=>({mode:"fixed",start:"09:00",end:"10:00",minutes:"45"});
 const pad=(n:number)=>String(n).padStart(2,"0");
 const dayAt=(year:number,month:number,day:number)=>year+"-"+pad(month)+"-"+pad(day);
-const validTime=(x:string)=>/^([01]\\d|2[0-3]):[0-5]\\d$/.test(x);
+const validTime=(x:string)=>/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(x);
 const toDate=(d:string,t:string)=>new Date(d+"T"+t+":00").toISOString();
 function nextCycle(day:string,period:"day"|"week"|"month"){
  if(period==="week")return addDaysISO(day,7);
