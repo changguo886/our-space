@@ -192,7 +192,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <p className="mb-4 rounded-xl bg-sage-50 p-3 text-xs text-sage-700"><CalendarDays className="mr-1 inline h-3.5 w-3.5"/> {zh?"先创建任务；需要的话，保存后直接进入执行计划。":"Set up the task here; schedule execution times after creating it."}</p>
-            <AddTodoForm userId={userId} activeSpaceId={activeSpaceId} activeSpaceName={activeSpaceName} taskDate={today} onCreated={(id,planNow)=>{setCreating(false);setSelectedId(id);if(planNow){window.location.assign("/todo?todoId="+encodeURIComponent(id));}}}/>
+            <AddTodoForm userId={userId} activeSpaceId={activeSpaceId} activeSpaceName={activeSpaceName} taskDate={today} onCreated={(id,planNow)=>{setCreating(false);setSelectedId(id);if(planNow){window.location.assign("/todo?todoId="+encodeURIComponent(id)+"&plan=1");}}}/>
           </div>
         </div>
       </div>}
