@@ -50,7 +50,7 @@ import DurationInput, {
 import TodoSubtasks from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
 import { useI18n } from "@/components/I18nProvider";
-import {normalizeTaskColor} from "@/lib/task-colors";
+import {normalizeTaskColor,CATEGORY_VISUALS} from "@/lib/task-colors";
 
 /* =========================================================
    Types
@@ -1012,7 +1012,7 @@ function ScheduledSession({
     <div
       ref={setNodeRef}
       onClick={onSelect}
-      style={{ top, height, borderLeftColor: normalizeTaskColor(todo.color_hex), borderLeftWidth: 4 }}
+      style={{ top, height, backgroundColor: (CATEGORY_VISUALS[todo.category??"none"]??CATEGORY_VISUALS.none).background, borderColor: (CATEGORY_VISUALS[todo.category??"none"]??CATEGORY_VISUALS.none).border, borderLeftColor: normalizeTaskColor(todo.color_hex), borderLeftWidth: 4 }}
       className={`
         absolute left-2 right-2 z-20 rounded-2xl border
         shadow-[0_3px_14px_rgba(60,50,40,0.045)]
@@ -1227,6 +1227,7 @@ export default function CalendarPlanner({
   ];
 
   const [todos, setTodos] = useState<CalendarTodo[]>(initialTodos);
+  useEffect(()=>{setTodos(initialTodos);},[initialTodos]);
   const [selectedDate, setSelectedDate] = useState(initialDate);
   useEffect(()=>{onDateChange?.(selectedDate);},[selectedDate,onDateChange]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
