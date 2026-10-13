@@ -125,3 +125,18 @@ test("period targets: count goals, fixed weekdays, fixed month dates that exist"
   assert.equal(periodTarget(monthly, "2026-11-14"), 2, "no 31st in November");
   assert.equal(periodTarget({ ...monthly, month_days: [1, 30], include_month_end: true }, "2026-11-02"), 2, "30th is month end: counted once");
 });
+
+import { planStatus, relativeDay } from "../lib/schedule-utils.ts";
+
+test("task card status replaces 未排期 with what is actually known", () => {
+  const today = "2026-10-13";
+  const fixed = { day: "2026-10-14", mode: "fixed", start: "19:00", end: "20:00" };
+  assert.equal(relativeDay("2026-10-16", today, true), "周五");
+  assert.equal(relativeDay("2026-10-30", today, true), "10月30日");
+  assert.deepEqual(planStatus({ type: "one_time", taskDate: null, today, next: null, zh: true }), { text: "待规划", tone: "todo" });
+  assert.deepEqual(planStatus({ type: "one_time", taskDate: today, today, next: null, zh: true }), { text: "今天", tone: "plain" });
+  assert.equal(planStatus({ type: "one_time", taskDate: null, today, next: fixed, zh: true }).text, "已安排 · 明天 19:00");
+  assert.deepEqual(planStatus({ type: "routine", taskDate: today, today, next: null, zh: true }), { text: "按周期打卡", tone: "muted" });
+  assert.equal(planStatus({ type: "routine", taskDate: today, today, next: { ...fixed, mode: "window", start: "18:00", end: "22:00" }, zh: true }).text, "下次 · 明天 18:00–22:00");
+  assert.deepEqual(planStatus({ type: "project", taskDate: today, today, next: null, zh: true }), { text: "尚无执行计划", tone: "muted" });
+});

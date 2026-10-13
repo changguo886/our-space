@@ -22,7 +22,7 @@ function missingMigration(message: string, zh: boolean) {
  * The parent task stays active, no focus time is invented, and the last tap can be undone.
  * Idempotency: one client_event_id per tap, reused if that tap is retried.
  */
-export default function RoutineCheckIn({ todoId, day, onChange }: { todoId: string; day?: string; onChange?: () => void }) {
+export default function RoutineCheckIn({ todoId, day, onChange, compact = false }: { todoId: string; day?: string; onChange?: () => void; compact?: boolean }) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const target = day ?? localDate(new Date());
@@ -79,10 +79,10 @@ export default function RoutineCheckIn({ todoId, day, onChange }: { todoId: stri
   const done = logs.length;
   const reached = goal > 0 && done >= goal;
 
-  return <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+  return <div className={`${compact ? "" : "mt-2 "}flex flex-wrap items-center gap-2 text-xs`}>
     <button type="button" disabled={busy} onClick={() => void checkIn()}
-      className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 font-medium transition disabled:opacity-50 ${reached ? "border-sage-200 bg-white text-sage-700" : "border-sage-500 bg-sage-50 text-sage-700 hover:bg-sage-100"}`}>
-      <Check className="h-3.5 w-3.5" />{zh ? "打卡一次" : "Check in"}
+      className={`inline-flex ${compact ? "min-h-7 px-2.5 py-1" : "min-h-9 px-3 py-1.5"} items-center gap-1.5 rounded-full border font-medium transition disabled:opacity-50 ${reached ? "border-sage-200 bg-white text-sage-700" : "border-sage-500 bg-sage-50 text-sage-700 hover:bg-sage-100"}`}>
+      <Check className="h-3.5 w-3.5" />{zh ? (compact ? "打卡" : "打卡一次") : "Check in"}
     </button>
     <span className="text-ink-soft">{periodLabel(rule.period, zh)} <strong className="text-ink">{done}</strong>/{goal}{reached ? (zh ? " · 已达成" : " · done") : ""}</span>
     {goal > 0 && goal <= 12 && <span aria-hidden="true" className="flex gap-0.5">

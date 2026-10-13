@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, Repeat } from "lucide-react";
+import { Repeat } from "lucide-react";
 import AppDatePicker from "@/components/ui/AppDatePicker";
 import AppTimePicker from "@/components/ui/AppTimePicker";
 import CopyDateCalendar from "@/components/ui/CopyDateCalendar";
 import { ModeIcon, ModePicker } from "@/components/ui/ScheduleMode";
+import RowMenu from "@/components/ui/RowMenu";
 import RoutinePlanComposer from "@/components/RoutinePlanComposer";
 import { useI18n } from "@/components/I18nProvider";
 import { createClient } from "@/lib/supabase/client";
@@ -73,19 +74,6 @@ function DraftFields({ draft, setDraft, zh, showDate = true }: { draft: Draft; s
     {draft.mode !== "fixed" && <label className="block text-xs text-ink-soft">{zh ? "大概多久（分钟）" : "About how long (min)"}
       <input className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink" type="number" min={1} max={1440} value={draft.minutes} onChange={(e) => setDraft({ ...draft, minutes: e.target.value })} /></label>}
   </div>;
-}
-
-function RowMenu({ zh, items }: { zh: boolean; items: Array<{ label: string; onClick: () => void; danger?: boolean }> }) {
-  return <details className="relative shrink-0">
-    <summary aria-label={zh ? "更多操作" : "More actions"} className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg text-ink-soft hover:bg-paper [&::-webkit-details-marker]:hidden">
-      <MoreHorizontal className="h-4 w-4" />
-    </summary>
-    <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-line bg-white p-1 shadow-lg">
-      {items.map((it) => <button key={it.label} type="button"
-        onClick={(e) => { (e.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open"); it.onClick(); }}
-        className={`block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-paper ${it.danger ? "text-blush-500" : "text-ink"}`}>{it.label}</button>)}
-    </div>
-  </details>;
 }
 
 export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {

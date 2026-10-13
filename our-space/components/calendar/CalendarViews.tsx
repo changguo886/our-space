@@ -236,7 +236,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             onClick={()=>setDate(d=>mode==="week"?addDay(d,7):addMonth(d,1))}>›</button>
         </div>
       </div>
-      {mode==="journey"?<div className="rounded-2xl border border-line bg-white p-4">
+      {mode==="journey"?<div className="relative min-h-[420px] overflow-hidden rounded-2xl border border-line bg-white p-4"><div aria-hidden="true" inert className="pointer-events-none select-none opacity-40 blur-[2px]">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-ink-faint">成长旅程 · 选择任务，查看日期中的点滴进展</p><Link className="rounded-lg border border-line bg-paper px-3 py-2 text-xs font-medium text-sage-700 hover:bg-sage-50" href={activeJourney?"/todo?todoId="+encodeURIComponent(activeJourney.todo_id):"/todo"}>← 返回任务</Link></div>
         <label className="mb-3 block text-sm text-ink-soft">选择长期旅程
           <select className="input mt-1 w-full" value={activeJourney?.todo_id??""} onChange={e=>setSelectedTodo(e.target.value)}>
@@ -248,6 +248,15 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
           <JourneyCalendar key={activeJourney.id} journeyId={activeJourney.id} startDate={activeJourney.start_date}
             targetDate={activeJourney.target_date} animal={activeJourney.animal_type} route={activeJourney.journey_type} initialDate={date}/>:
           <p className="text-sm text-ink-faint">还没有成长旅程。请先从 Todo 创建一条长期旅程。</p>}
+      </div>
+        <div className="absolute inset-0 flex items-center justify-center bg-white/55 p-6 backdrop-blur-[1px]">
+          <div role="status" className="max-w-sm rounded-2xl border border-line bg-white px-6 py-5 text-center shadow-soft">
+            <p className="text-xs font-medium tracking-wide text-sage-700">{zh?"即将上线":"Coming soon"}</p>
+            <h3 className="mt-1 text-lg font-semibold text-ink">{zh?"成长旅程":"Growth journey"}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">{zh?"小伙伴会陪你沿着长期项目的路线一步步前进。我们正在准备，敬请期待。":"A companion will walk your long-term projects with you. We are preparing it."}</p>
+            <p className="mt-2 text-xs text-ink-faint">{zh?"项目的日期、步骤和打卡记录都会保留。":"Your project dates, steps and check-ins are kept."}</p>
+          </div>
+        </div>
       </div>:<div className="rounded-2xl border border-line bg-white p-4">
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-ink-faint">{["一","二","三","四","五","六","日"].map(x=><div key={x}>{x}</div>)}</div>
         <div className="mt-3 grid grid-cols-7 gap-1">

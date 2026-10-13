@@ -258,3 +258,35 @@ export function periodTarget(rule: RoutineRule, day: string): number {
 export function periodLabel(period: RoutineRule["period"], zh: boolean): string {
   return period === "day" ? (zh ? "今天" : "Today") : period === "week" ? (zh ? "本周" : "This week") : (zh ? "本月" : "This month");
 }
+
+// ---------- Task card plan status (display only; no stored status field) ----------
+
+export type NextPlan = { day: string; mode: ScheduleMode; start: string; end: string };
+
+/** "今天" / "明天" / "周三" (within a week) / "10月20日". */
+export function relativeDay(day: string, today: string, zh: boolean): string {
+  if (day === today) return zh ? "今天" : "Today";
+  if (day === addDays(today, 1)) return zh ? "明天" : "Tomorrow";
+  if (day > today && day <= addDays(today, 6)) return zh ? "周" + WEEKDAYS_ZH[isoWeekday(day) - 1] : WEEKDAYS_EN[isoWeekday(day) - 1];
+  const [, m, d] = day.split("-").map(Number);
+  return zh ? `${m}月${d}日` : `${MONTHS_EN[m - 1]} ${d}`;
+}
+
+export type PlanStatus = { text: string; tone: "plain" | "muted" | "todo" };
+
+/**
+ * One line that tells where a task stands, derived from what already exists:
+ *   one-time: 已安排 · 周三 19:00 | 今天 / 10月20日 (date only) | 待规划 (no date, no plan)
+ *   routine:  下次 · 周三 19:00 | 按周期打卡 (rule active, no plan needed)
+ *   project:  已安排 · … | 尚无执行计划 (secondary)
+ */
+export function planStatus(input: { type: string | null | undefined; taskDate: string | null | undefined; today: string; next: NextPlan | null; zh: boolean }): PlanStatus {
+  const { type, taskDate, today, next, zh } = input;
+  const when = next ? `${relativeDay(next.day, today, zh)}${next.mode === "fixed" ? " " + next.start : next.mode === "window" ? ` ${next.start}–${next.end}` : zh ? " 不定时" : " anytime"}` : "";
+  const routine = type === "routine" || type === "habit";
+  if (routine) return next ? { text: (zh ? "下次 · " : "Next · ") + when, tone: "plain" } : { text: zh ? "按周期打卡" : "Check in each period", tone: "muted" };
+  if (next) return { text: (zh ? "已安排 · " : "Planned · ") + when, tone: "plain" };
+  if (type === "project") return { text: zh ? "尚无执行计划" : "No plan yet", tone: "muted" };
+  if (taskDate) return { text: relativeDay(taskDate, today, zh), tone: "plain" };
+  return { text: zh ? "待规划" : "To plan", tone: "todo" };
+}

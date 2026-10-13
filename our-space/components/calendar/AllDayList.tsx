@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, Repeat } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import RoutineCheckIn from "@/components/RoutineCheckIn";
 import { habitEligible, type HabitPatternV3 } from "@/lib/recurring-execution";
@@ -60,11 +60,12 @@ export default function AllDayList({ date, todos, patterns, zh }: { date: string
           <span className={`min-w-0 flex-1 truncate text-sm ${done ? "text-ink-faint line-through" : "text-ink"}`}>{t.title}</span>
         </li>;
       })}
-      {routines.map((t) => <li key={t.id} className="rounded-xl px-2 py-1.5">
-        <p className="text-sm text-ink">{t.title}</p>
+      {routines.map((t) => <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-2 py-1.5 hover:bg-paper/60">
+        <span className="flex w-8 justify-center"><Repeat aria-label={zh ? "周期任务" : "Routine"} className="h-4 w-4 text-sage-600" /></span>
+        <span className="min-w-0 flex-1 truncate text-sm text-ink">{t.title}</span>
         {date <= today
-          ? <RoutineCheckIn todoId={t.id} day={date} onChange={() => router.refresh()} />
-          : <p className="mt-1 text-xs text-ink-soft">{zh ? "当天可以打卡" : "Check in on the day"}</p>}
+          ? <RoutineCheckIn compact todoId={t.id} day={date} onChange={() => router.refresh()} />
+          : <span className="text-xs text-ink-faint">{zh ? "当天可以打卡" : "Check in on the day"}</span>}
       </li>)}
     </ul>
     {error && <p role="alert" className="mt-2 text-xs text-blush-500">{error}</p>}
