@@ -6,11 +6,12 @@ import CalendarPlanner from "@/components/calendar/CalendarPlanner";
 import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import {normalizeTaskColor} from "@/lib/task-colors";
+import {normalizeTaskColor,CATEGORY_VISUALS} from "@/lib/task-colors";
+import {useI18n} from "@/components/I18nProvider";
 import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
-type CalendarTask = { id:string; color_hex?:string|null; title:string; task_date?:string; task_type?:"one_time"|"project"|"routine"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
+type CalendarTask = { id:string; category?:string|null; color_hex?:string|null; title:string; task_date?:string; task_type?:"one_time"|"project"|"routine"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
 type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
 const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
@@ -22,6 +23,8 @@ function addMonth(s:string,n:number){const [y,m]=s.split("-").map(Number);const 
 function inDay(s:string,day:string) { const d=new Date(s);return !Number.isNaN(d.getTime())&&dateOf(d.getFullYear(),d.getMonth(),d.getDate())===day; }
 export default function CalendarViews({initialTodos,initialDate}:Props) {
   const params=useSearchParams();const router=useRouter();
+  const {language}=useI18n(); const zh=language==="zh-CN";
+  const [categoryFilter,setCategoryFilter]=useState("all");
   const queryMode=params.get("view");const requested=queryMode==="journey"||queryMode==="month"||queryMode==="week"?"journey"===queryMode?"journey":queryMode:"day";
   const [mode,setMode]=useState<Mode>(requested);
   const [date,setDate]=useState(params.get("date")?.match(/^\d{4}-\d{2}-\d{2}$/)?.[0]??initialDate);
@@ -56,6 +59,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
   const tasks=initialTodos as CalendarTask[];
   const eventColor=(todoId:string)=>normalizeTaskColor(tasks.find(t=>t.id===todoId)?.color_hex);
+  const eventCategory=(todoId:string)=>CATEGORY_VISUALS[tasks.find(t=>t.id===todoId)?.category??"none"]??CATEGORY_VISUALS.none;
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
     ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
@@ -92,7 +96,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       start:o.scheduled_start!,end:o.scheduled_end!
     }));
   }
-  function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d),...movedOverrideEvents(d)];}
+  function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d),...movedOverrideEvents(d)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter);}
   const taskTitle = new Map(tasks.map(t=>[t.id,t.title]));
   const activeJourney=journeys.find(j=>j.todo_id===selectedTodo)??journeys[0];
   return <div className="mt-6">
@@ -104,15 +108,19 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
           className={`rounded-lg px-3 py-2 text-sm ${mode===x.key?"bg-sage-100 font-medium text-sage-700":"text-ink-soft hover:bg-paper"}`}>{x.title}</button>)}
       </div>
     </div>
+    <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={zh?"类别筛选":"Category filter"}>
+      {["all","work","study","life","rest","other","none"].map(key=><button key={key} type="button" aria-pressed={categoryFilter===key} onClick={()=>setCategoryFilter(key)} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${categoryFilter===key?"border-sage-300 bg-sage-50 font-semibold":"border-line bg-white hover:bg-paper"}`}>
+      {key!=="all"&&<span className="h-2.5 w-2.5 rounded-full" style={{backgroundColor:CATEGORY_VISUALS[key].accent}}/>}{key==="all"?(zh?"全部":"All"):(zh?CATEGORY_VISUALS[key].labelZh:CATEGORY_VISUALS[key].labelEn)}</button>)}
+    </div>
     {mode==="day" ? <div className="space-y-3">
-      <CalendarPlanner initialTodos={initialTodos} initialDate={date} onDateChange={setDate}
-        virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].map(e=>({
+      <CalendarPlanner initialTodos={initialTodos.filter(t=>categoryFilter==="all"||(t.category??"none")===categoryFilter)} initialDate={date} onDateChange={setDate}
+        virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter).map(e=>({
           todo_id:e.todoId,id:e.virtualId,
           scheduled_start:e.start,scheduled_end:e.end,
         }))}/>
       {(recurringEvents(date).length+movedOverrideEvents(date).length)>0&&<section className="rounded-xl border border-line bg-white p-3">
         <p className="mb-2 text-xs font-semibold text-ink-soft">重复固定时段（预览，不创建独立预约）</p>
-        {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg border-l-4 bg-paper/40 px-3 py-2 text-xs text-ink-soft" style={{borderLeftColor:eventColor(e.todoId)}}>{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
+        {[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg border border-l-4 px-3 py-2 text-xs text-ink" style={{borderLeftColor:eventColor(e.todoId),backgroundColor:eventCategory(e.todoId).background,borderTopColor:eventCategory(e.todoId).border,borderRightColor:eventCategory(e.todoId).border,borderBottomColor:eventCategory(e.todoId).border}}>{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
       </section>}
     </div> :
     <div className="space-y-4">
@@ -145,7 +153,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
-                <div key={e.todoId+j} className="truncate rounded border-l-[3px] bg-paper/40 px-1 py-0.5 text-[10px] text-ink-soft" style={{borderLeftColor:eventColor(e.todoId)}}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
+                <div key={e.todoId+j} className="truncate rounded-md border border-l-4 px-1.5 py-1 text-[10px] font-medium text-ink" style={{borderLeftColor:eventColor(e.todoId),backgroundColor:eventCategory(e.todoId).background,borderTopColor:eventCategory(e.todoId).border,borderRightColor:eventCategory(e.todoId).border,borderBottomColor:eventCategory(e.todoId).border}}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
                 {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
 </>}
             </button>)}
