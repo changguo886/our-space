@@ -21,7 +21,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
  const [selected,setSelected]=useState<number[]>([]);
  const [slots,setSlots]=useState<Slot[]>([]);
  const [shared,setShared]=useState(defaults());
- const [scope,setScope]=useState<"period"|"ongoing">("ongoing");
+ const [scope,setScope]=useState<"period"|"ongoing">("period");
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
@@ -82,7 +82,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
      else if(rows.some(row=>(existing.data??[]).some(t=>t.selector_kind===row.selector_kind&&t.selector_value===row.selector_value&&(t.ends_on===null||t.ends_on>=row.starts_on))))failure=zh?"已有同一星期／月日的长期安排，请先修改已有规则。":"Existing recurring slot conflicts with your selection.";
      else {const result=await db.from("todo_execution_templates").insert(rows);failure=result.error?.message??"";}
    }else{
-     const rows=slots.map(s=>{
+     const rows: Array<{todo_id:string;mode:Mode;scheduled_start?:string;scheduled_end?:string;plan_date?:string;planned_minutes?:number;window_start?:string|null;window_end?:string|null}>=slots.map(s=>{
        const day=dayFor(Number(s.key));
        return s.mode==="fixed"
        ?{todo_id:todoId,mode:"fixed",scheduled_start:toDate(day,s.start),scheduled_end:toDate(day,s.end)}
@@ -92,7 +92,7 @@ export default function RoutinePlanComposer({todoId,pattern,today,startDate,onSa
      if(existing.error)failure=existing.error.message;
      else {
        const overlap=rows.some(row=>(existing.data??[]).some(old=>{
-         if(row.mode==="fixed"&&old.mode==="fixed"&&old.scheduled_start&&old.scheduled_end){return Date.parse(row.scheduled_start!)<Date.parse(old.scheduled_end)&&Date.parse(row.scheduled_end!)>Date.parse(old.scheduled_start);}
+         if(row.mode==="fixed"&&old.mode==="fixed"&&row.scheduled_start&&row.scheduled_end&&old.scheduled_start&&old.scheduled_end){return Date.parse(row.scheduled_start)<Date.parse(old.scheduled_end)&&Date.parse(row.scheduled_end)>Date.parse(old.scheduled_start);}
          return row.mode!=="fixed"&&old.mode===row.mode&&old.plan_date===row.plan_date&&old.planned_minutes===row.planned_minutes&&(row.mode==="flexible"||(old.window_start?.slice(0,5)===row.window_start?.slice(0,5)&&old.window_end?.slice(0,5)===row.window_end?.slice(0,5)));
        }));
        if(overlap)failure=zh?"已有相同或重叠的执行安排，请先编辑现有记录。":"An identical or overlapping plan exists; edit it instead.";
