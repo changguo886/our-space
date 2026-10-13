@@ -129,8 +129,12 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     if(localDay<dateOf(new Date().getFullYear(),new Date().getMonth(),new Date().getDate())){setLoadError(zh?"不能修改过去的执行安排。":"Past sessions are read-only.");return;}
     const overlap=tasks.some(t=>t.id===pickedEvent.todoId&&(t.todo_sessions??[]).some(existing=>existing.id!==pickedEvent.sessionId&&existing.scheduled_start&&existing.scheduled_end&&start.getTime()<new Date(existing.scheduled_end).getTime()&&end.getTime()>new Date(existing.scheduled_start).getTime()));
     if(overlap){setLoadError(zh?"新时间与同任务的其他固定安排重叠。":"This change overlaps another fixed session for the same task.");return;}
+    const db=createClient();
+    const fresh=await db.from("todo_sessions").select("id,scheduled_start,scheduled_end").eq("todo_id",pickedEvent.todoId).eq("mode","fixed");
+    if(fresh.error){setLoadError(fresh.error.message);return;}
+    if((fresh.data??[]).some(other=>other.id!==pickedEvent.sessionId&&other.scheduled_start&&other.scheduled_end&&start.getTime()<new Date(other.scheduled_end).getTime()&&end.getTime()>new Date(other.scheduled_start).getTime())){setLoadError(zh?"该任务已有重叠的预约，请调整时间。":"Another session for this task overlaps.");return;}
     setActionBusy(true);setLoadError("");
-    const result=await createClient().from("todo_sessions").update({scheduled_start:start.toISOString(),scheduled_end:end.toISOString()}).eq("id",pickedEvent.sessionId).eq("todo_id",pickedEvent.todoId);
+    const result=await db.from("todo_sessions").update({scheduled_start:start.toISOString(),scheduled_end:end.toISOString()}).eq("id",pickedEvent.sessionId).eq("todo_id",pickedEvent.todoId);
     setActionBusy(false);
     if(result.error){setLoadError(result.error.message);return;}
     setPickedEvent(null);setEditingPicked(false);router.refresh();
