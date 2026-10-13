@@ -34,6 +34,8 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const [patterns,setPatterns]=useState<Record<string,HabitPatternV3>>({});
   const [templates,setTemplates]=useState<ExecutionTemplateV3[]>([]);
   const [overrides,setOverrides]=useState<ExecutionOverrideV3[]>([]);
+  const [pickedEvent,setPickedEvent]=useState<{todoId:string;title:string;start:string;end:string;sessionId?:string;virtualId?:string}|null>(null);
+  const [actionBusy,setActionBusy]=useState(false);
   useEffect(()=>{
     let live=true;const db=createClient();
     void Promise.all([
@@ -78,7 +80,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
           session.window_end?.slice(0,5)===template.window_end?.slice(0,5)));
     });
   };
-  const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start!,end:s.scheduled_end!})),
+  const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start!,end:s.scheduled_end!,sessionId:s.id})),
     ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
     const active=templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&
@@ -115,6 +117,33 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     }));
   }
   function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d),...movedOverrideEvents(d)].filter(e=>categoryFilter==="all"||(tasks.find(t=>t.id===e.todoId)?.category??"none")===categoryFilter);}
+  async function cancelPicked(allFuture:boolean){
+    if(!pickedEvent)return;
+    const chosen=pickedEvent;
+    const segments=chosen.virtualId?.split(":");
+    const slot=segments?.[2],occurrence=segments?.[3];
+    const template=slot?templates.find(t=>t.todo_id===chosen.todoId&&t.slot_key===slot):undefined;
+    const message=allFuture
+      ?(zh?"从所选日期起停止这条重复安排？历史记录不会删除。":"Stop this recurring schedule from this date? History remains.")
+      :(zh?"仅取消这一次时间安排？任务和完成记录仍然保留。":"Cancel this occurrence only? The task and completion records remain.");
+    if(!window.confirm(message))return;
+    setActionBusy(true);setLoadError("");
+    const db=createClient();
+    let error:string|undefined;
+    if(template&&occurrence){
+      if(allFuture){const result=await db.rpc("stop_execution_template_future_v3",{p_template_id:template.id,p_effective_on:occurrence});error=result.error?.message;}
+      else {const result=await db.from("todo_execution_overrides").upsert({todo_id:chosen.todoId,slot_key:slot,occurrence_date:occurrence,action:"cancel",scheduled_start:null,scheduled_end:null},{onConflict:"todo_id,slot_key,occurrence_date"});error=result.error?.message;}
+    }else if(chosen.sessionId&&!allFuture){
+      const result=await db.from("todo_sessions").delete().eq("id",chosen.sessionId).eq("todo_id",chosen.todoId);error=result.error?.message;
+    }else error=zh?"此安排不支持该操作，请进入任务工作区管理。":"Manage this plan from its Todo workspace.";
+    setActionBusy(false);
+    if(error){setLoadError(error);return;}
+    setPickedEvent(null);router.refresh();
+    if(template&&occurrence){
+      if(allFuture)setTemplates(current=>current.map(t=>t.id===template.id?{...t,ends_on:addDay(occurrence,-1)}:t));
+      else setOverrides(current=>[...current.filter(o=>!(o.todo_id===chosen.todoId&&o.slot_key===slot&&o.occurrence_date===occurrence)),{todo_id:chosen.todoId,slot_key:slot,occurrence_date:occurrence,action:"cancel",scheduled_start:null,scheduled_end:null}]);
+    }
+  }
   const dailyPlans=tasks.flatMap(todo=>(todo.todo_sessions??[]).filter(s=>s.plan_date===date&&s.mode!=="fixed").map(s=>({
     id:s.id,todo_id:todo.id,title:todo.title,category:todo.category??null,color_hex:todo.color_hex??null,
     mode:s.mode??"flexible",planned_minutes:s.planned_minutes??0,
@@ -186,12 +215,22 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
             <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>
-                <div key={e.todoId+j} className="truncate rounded-md border border-l-4 px-1.5 py-1 text-[10px] font-medium text-ink" style={eventVisual(e.todoId)}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</div>)}</div>
+                <span key={e.todoId+j} role="button" tabIndex={0} onClick={event=>{event.stopPropagation();setPickedEvent(e);}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setPickedEvent(e);}}} className="block cursor-pointer truncate rounded-md border border-l-4 px-1.5 py-1 text-[10px] font-medium text-ink hover:ring-2 hover:ring-sage-300" style={eventVisual(e.todoId)}>{new Date(e.start).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {e.title}</span>)}</div>
                 {eventsOn(d).length>3&&<span className="text-[10px] text-ink-faint">+{eventsOn(d).length-3}</span>}
 </>}
             </button>)}
         </div>
       </div>}
+    </div>}
+    {pickedEvent&&<div role="dialog" aria-modal="true" aria-label={zh?"管理执行安排":"Manage appointment"} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-semibold text-ink">{pickedEvent.title}</h3><p className="text-xs text-ink-soft">{new Date(pickedEvent.start).toLocaleString()} – {new Date(pickedEvent.end).toLocaleTimeString()}</p></div><button type="button" onClick={()=>setPickedEvent(null)} aria-label={zh?"关闭":"Close"}>✕</button></div>
+        <Link href={"/todo?todoId="+encodeURIComponent(pickedEvent.todoId)} className="block rounded-lg border border-line p-3 text-sm">{zh?"进入任务工作区 · 修改时间":"Open Todo workspace · change time"}</Link>
+        {(pickedEvent.sessionId||pickedEvent.virtualId)&&<button disabled={actionBusy} type="button" onClick={()=>void cancelPicked(false)} className="w-full rounded-lg border border-blush-200 p-3 text-left text-sm text-blush-500">{zh?"取消这一次安排（需确认）":"Cancel this occurrence (confirm)"}</button>}
+        {pickedEvent.virtualId&&<button disabled={actionBusy} type="button" onClick={()=>void cancelPicked(true)} className="w-full rounded-lg border border-blush-200 p-3 text-left text-sm text-blush-500">{zh?"停止从这次起的重复安排（需确认）":"Stop future recurrence (confirm)"}</button>}
+        <p className="text-xs text-ink-faint">{zh?"永久删除任务及其所有数据请前往 Todo 工作区，勿与取消日程混淆。":"Permanently deleting a task is managed separately in Todo."}</p>
+        {loadError&&<p role="alert" className="text-xs text-blush-500">{loadError}</p>}
+      </div>
     </div>}
   </div>;
 }
