@@ -474,6 +474,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         <button type="button" disabled={copyBusy||copySelected.length===0} onClick={()=>void copySchedule()} className="btn-primary w-full">{copyBusy?(zh?"复制中…":"Copying…"):(zh?"复制到所选日期":"Copy to selected days")}</button>
       </div>}
 
+      {!(copySource&&copyOpen)&&<>
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-ink">{editingTemplateId?(zh?"修改之后的重复安排":"Edit future recurrence"):(zh?"安排一次":"Schedule once")}</h4>
         <button type="button" onClick={resetDraft} className="text-xs text-ink-faint underline">{zh?"清空当前输入":"Reset draft"}</button>
@@ -507,6 +508,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <button type="button" disabled={saving} className="btn-primary w-full" onClick={()=>void save()}>
         {saving?(zh?"保存中…":"Saving…"):editingTemplateId?(zh?"保存以后安排":"Save future schedule"):(zh?"保存这一次":"Save this occurrence")}
       </button>
+      </>}
       {copyNotice&&<p role="status" className="text-xs text-sage-700">{copyNotice}</p>}
     </div>}
     {continuationSource&&pattern&&<div role="dialog" aria-modal="true" aria-label={zh?"延续周期安排":"Continue recurring plan"} className="fixed inset-0 z-[90] flex items-center justify-center bg-ink/40 p-4">
