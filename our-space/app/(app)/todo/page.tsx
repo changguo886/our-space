@@ -94,6 +94,7 @@ export default async function TodoPage() {
         scheduled_start,
         scheduled_end,
         category,
+        color_hex,
         custom_tag,
         task_type,
         plan_start_date,
