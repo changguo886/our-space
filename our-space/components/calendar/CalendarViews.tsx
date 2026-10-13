@@ -61,18 +61,28 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const eventVisual=(todoId:string)=>{const task=tasks.find(t=>t.id===todoId);return taskCardVisual(task?.category,task?.color_hex);};
   // A dated one-off schedule takes precedence over virtual recurring defaults
   // for that todo and day. It is not a completion and no override rows are fabricated.
-  const hasOneOffPlan=(todoId:string,day:string)=>{
-    const todo=tasks.find(t=>t.id===todoId);
-    return (todo?.todo_sessions??[]).some(session=>
-      session.mode==="window"||session.mode==="flexible"
-        ? session.plan_date===day
-        : Boolean(session.scheduled_start&&inDay(session.scheduled_start,day)));
+  // An individual plan only replaces the matching virtual slot. A whole-day
+  // suppression would hide independent morning/evening recurring executions.
+  const hasOneOffPlan=(template:ExecutionTemplateV3,day:string)=>{
+    const todo=tasks.find(t=>t.id===template.todo_id);
+    return (todo?.todo_sessions??[]).some(session=>{
+      if(template.execution_mode==="fixed"){
+        if(!session.scheduled_start||!inDay(session.scheduled_start,day))return false;
+        const local=new Date(session.scheduled_start);
+        const start=String(local.getHours()).padStart(2,"0")+":"+String(local.getMinutes()).padStart(2,"0");
+        return start===template.start_time?.slice(0,5);
+      }
+      return session.mode===template.execution_mode&&session.plan_date===day&&
+        (template.execution_mode==="flexible"||(
+          session.window_start?.slice(0,5)===template.window_start?.slice(0,5)&&
+          session.window_end?.slice(0,5)===template.window_end?.slice(0,5)));
+    });
   };
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start!,end:s.scheduled_end!})),
     ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
     const active=templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&
-      templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)&&!hasOneOffPlan(t.todo_id,d));
+      templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)&&!hasOneOffPlan(t,d));
     const effective=active.filter(t=>{
       if(t.selector_kind==="all"&&active.some(other=>other.todo_id===t.todo_id&&other.replaces_slot_key===t.slot_key)){
         // A specific weekday/month-day preset replaces this generic slot.
@@ -111,7 +121,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     window_start:s.window_start??null,window_end:s.window_end??null
   })));
   const matchingPlanTemplates=templates.filter(t=>t.execution_mode!=="fixed"&&tasks.some(todo=>todo.id===t.todo_id)
-      &&templateEligible(date,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)&&!hasOneOffPlan(t.todo_id,date)
+      &&templateEligible(date,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)&&!hasOneOffPlan(t,date)
       &&!overrides.some(o=>o.todo_id===t.todo_id&&o.slot_key===t.slot_key&&o.occurrence_date===date&&o.action==="cancel"));
   const recurringPlans=matchingPlanTemplates.filter(t=>!(t.selector_kind==="all"&&matchingPlanTemplates.some(other=>
       other.todo_id===t.todo_id&&other.replaces_slot_key===t.slot_key)))
