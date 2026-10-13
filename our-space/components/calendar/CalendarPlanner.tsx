@@ -2346,7 +2346,7 @@ export default function CalendarPlanner({
                   {/* Planning windows share a positioned layer with timeline slots. */}
                   <div className="pointer-events-none absolute inset-0 z-10">
                   {groupedWindows.map(group=>{
-                    const start=group.map(p=>p.window_start!).sort()[0];const end=group.map(p=>p.window_end!).sort().at(-1)!;
+                    const start=group.map(p=>p.window_start!.slice(0,5)).sort()[0];const end=group.map(p=>p.window_end!.slice(0,5)).sort().at(-1)!;
                     const startMinutes=Number(start.slice(0,2))*60+Number(start.slice(3));
                     const endMinutes=Number(end.slice(0,2))*60+Number(end.slice(3));
                     const top=Math.max(0,(startMinutes-visibleStartHour*60)/60*HOUR_HEIGHT);
