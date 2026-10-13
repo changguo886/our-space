@@ -3,7 +3,7 @@
 import { useState } from "react";
 import AppDatePicker from "@/components/ui/AppDatePicker";
 import TaskColorPicker from "@/components/ui/TaskColorPicker";
-import { DEFAULT_TASK_COLOR } from "@/lib/task-colors";
+import { DEFAULT_TASK_COLOR, LEGACY_JOURNEY_COLORS } from "@/lib/task-colors";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
@@ -193,7 +193,7 @@ export default function AddTodoForm({
       if(colorError){setError((zh?"任务已创建，但颜色未保存。请确认颜色字段迁移已执行：":"Task created, but color was not saved. Check color migration: ")+colorError.message);setBusy(false);router.refresh();return;}
     }
     if (!error && created && taskType==="planned") {
-      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:taskColor});
+      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:Object.entries(LEGACY_JOURNEY_COLORS).find(([,hex])=>hex.toUpperCase()===taskColor.toUpperCase())?.[0]??"green"});
       if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
     }
     setBusy(false);
