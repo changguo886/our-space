@@ -212,3 +212,49 @@ export function remainingQuota(target: number, alreadyPlanned: number): number {
 export function isDuplicateKeyError(error: { code?: string } | null | undefined): boolean {
   return error?.code === "23505";
 }
+
+// ---------- Routine completion periods (Phase 1) ----------
+
+export type RoutineRule = {
+  period: "day" | "week" | "month";
+  arrangement: "fixed" | "flexible";
+  target_count: number;
+  weekdays: number[];
+  month_days: number[];
+  include_month_end: boolean;
+};
+
+function addDays(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+function daysInMonth(day: string): number {
+  const [y, m] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/** First and last day (inclusive) of the period that contains `day`. Weeks run Monday–Sunday. */
+export function periodRange(day: string, period: RoutineRule["period"]): { start: string; end: string } {
+  if (period === "day") return { start: day, end: day };
+  if (period === "week") { const start = addDays(day, 1 - isoWeekday(day)); return { start, end: addDays(start, 6) }; }
+  return { start: day.slice(0, 8) + "01", end: day.slice(0, 8) + String(daysInMonth(day)).padStart(2, "0") };
+}
+
+/**
+ * How many completions the rule asks for in the period containing `day`.
+ * Fixed monthly rules count the dates that really exist that month (31st skipped in short months,
+ * month end deduplicated against an explicit last day); flexible rules use target_count.
+ */
+export function periodTarget(rule: RoutineRule, day: string): number {
+  if (rule.arrangement === "flexible" || rule.period === "day") return rule.target_count;
+  if (rule.period === "week") return new Set(rule.weekdays).size;
+  const last = daysInMonth(day);
+  const dates = new Set(rule.month_days.filter((d) => d <= last));
+  if (rule.include_month_end) dates.add(last);
+  return dates.size;
+}
+
+export function periodLabel(period: RoutineRule["period"], zh: boolean): string {
+  return period === "day" ? (zh ? "今天" : "Today") : period === "week" ? (zh ? "本周" : "This week") : (zh ? "本月" : "This month");
+}

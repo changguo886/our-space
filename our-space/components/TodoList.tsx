@@ -10,11 +10,11 @@ import {
   Trash2,
   X,
   Save,
-  Clock3,
-} from "lucide-react";
+  Clock3, Repeat } from "lucide-react";
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import RoutineCheckIn from "@/components/RoutineCheckIn";
 import { useI18n } from "@/components/I18nProvider";
 import {taskCardVisual,categoryBadgeVisual} from "@/lib/task-colors";
 import DurationInput, {
@@ -935,7 +935,7 @@ export default function TodoList({
                     : t.markComplete
                 }
               >
-                {isRoutineTask(todo) ? <span className="h-6 w-6"/> : completed ? (
+                {isRoutineTask(todo) ? <Repeat aria-label={language==="zh-CN"?"周期任务":"Routine"} className="h-5 w-5 text-sage-600" /> : completed ? (
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-white">
                     <Check className="h-4 w-4" />
                   </span>
@@ -985,6 +985,8 @@ export default function TodoList({
                     {todo.description}
                   </p>
                 )}
+
+                {isRoutineTask(todo) && <RoutineCheckIn todoId={todo.id} />}
 
 
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">

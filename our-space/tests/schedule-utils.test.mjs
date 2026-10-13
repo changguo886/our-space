@@ -107,3 +107,21 @@ test("idempotent retry (B10): unique violation counts as already saved", () => {
   assert.equal(isDuplicateKeyError({ code: "42501" }), false);
   assert.equal(isDuplicateKeyError(null), false);
 });
+
+import { periodRange, periodTarget } from "../lib/schedule-utils.ts";
+
+test("completion periods: day, Monday-start week, calendar month", () => {
+  assert.deepEqual(periodRange("2026-10-14", "day"), { start: "2026-10-14", end: "2026-10-14" });
+  assert.deepEqual(periodRange("2026-10-18", "week"), { start: "2026-10-12", end: "2026-10-18" }, "Sunday belongs to the week that began Monday");
+  assert.deepEqual(periodRange("2028-02-10", "month"), { start: "2028-02-01", end: "2028-02-29" });
+});
+
+test("period targets: count goals, fixed weekdays, fixed month dates that exist", () => {
+  const base = { weekdays: [], month_days: [], include_month_end: false };
+  assert.equal(periodTarget({ ...base, period: "day", arrangement: "flexible", target_count: 8 }, "2026-10-14"), 8, "drink water 8 times a day");
+  assert.equal(periodTarget({ ...base, period: "week", arrangement: "fixed", target_count: 3, weekdays: [1, 3, 5] }, "2026-10-14"), 3);
+  const monthly = { ...base, period: "month", arrangement: "fixed", target_count: 3, month_days: [1, 15, 31] };
+  assert.equal(periodTarget(monthly, "2026-10-14"), 3);
+  assert.equal(periodTarget(monthly, "2026-11-14"), 2, "no 31st in November");
+  assert.equal(periodTarget({ ...monthly, month_days: [1, 30], include_month_end: true }, "2026-11-02"), 2, "30th is month end: counted once");
+});
