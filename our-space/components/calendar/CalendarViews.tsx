@@ -6,9 +6,10 @@ import CalendarPlanner from "@/components/calendar/CalendarPlanner";
 import JourneyCalendar from "@/components/JourneyCalendar";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { templateEligible, type ExecutionTemplateV3, type HabitPatternV3, type ExecutionOverrideV3 } from "@/lib/recurring-execution";
 
 type EventSession = { id:string; scheduled_start:string; scheduled_end:string; reminder_minutes_before:number|null };
-type CalendarTask = { id:string; title:string; task_type?:"one_time"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
+type CalendarTask = { id:string; title:string; task_date?:string; task_type?:"one_time"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
 type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
 const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
@@ -26,6 +27,22 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const [journeys,setJourneys]=useState<JourneyRow[]>([]);
   const [selectedTodo,setSelectedTodo]=useState(params.get("todoId")??"");
   const [loadError,setLoadError]=useState("");
+  const [patterns,setPatterns]=useState<Record<string,HabitPatternV3>>({});
+  const [templates,setTemplates]=useState<ExecutionTemplateV3[]>([]);
+  const [overrides,setOverrides]=useState<ExecutionOverrideV3[]>([]);
+  useEffect(()=>{
+    let live=true;const db=createClient();
+    void Promise.all([
+      db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end"),
+      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end"),
+      db.from("todo_execution_overrides").select("todo_id,slot_key,occurrence_date,action,scheduled_start,scheduled_end")
+    ]).then(([p,t,o])=>{if(!live)return;
+      if(!p.error)setPatterns(Object.fromEntries(((p.data??[]) as HabitPatternV3[]).map(x=>[x.todo_id,x])));
+      if(!t.error)setTemplates((t.data??[]) as ExecutionTemplateV3[]);
+      if(!o.error)setOverrides((o.data??[]) as ExecutionOverrideV3[]);
+      if(t.error)setLoadError("重复安排载入失败："+t.error.message);
+    });return()=>{live=false};
+  },[]);
   useEffect(()=>{setMode(requested);if(params.get("todoId"))setSelectedTodo(params.get("todoId")??"");},[requested,params]);
   useEffect(()=>{if(mode!=="journey"&&mode!=="month"&&mode!=="week")return;let alive=true;
     void createClient().from("goal_journeys").select("id,todo_id,start_date,target_date,animal_type,journey_type,status,color_key")
@@ -39,7 +56,19 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const tasks=initialTodos as CalendarTask[];
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
     ...(todo.todo_sessions?.length?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
-  function eventsOn(d:string){return sessions.filter(s=>inDay(s.start,d));}
+  function recurringEvents(d:string){
+    return templates.filter(t=>t.execution_mode==="fixed"&&t.start_time&&t.end_time&&
+      templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)).flatMap(t=>{
+      const change=overrides.find(x=>x.todo_id===t.todo_id&&x.slot_key===t.slot_key&&x.occurrence_date===d);
+      if(change?.action==="cancel")return [];
+      const title=tasks.find(x=>x.id===t.todo_id)?.title??"任务";
+      if(change?.action==="reschedule"&&change.scheduled_start&&change.scheduled_end){
+        return inDay(change.scheduled_start,d)?[{todoId:t.todo_id,title:title+"（已调整）",start:change.scheduled_start,end:change.scheduled_end}]:[];
+      }
+      return [{todoId:t.todo_id,title:title+"（重复）",start:d+"T"+t.start_time!.slice(0,5)+":00",end:d+"T"+t.end_time!.slice(0,5)+":00"}];
+    });
+  }
+  function eventsOn(d:string){return [...sessions.filter(s=>inDay(s.start,d)),...recurringEvents(d)];}
   const taskTitle = new Map(tasks.map(t=>[t.id,t.title]));
   const activeJourney=journeys.find(j=>j.todo_id===selectedTodo)??journeys[0];
   return <div className="mt-6">
@@ -53,6 +82,10 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     </div>
     {mode==="day" ? <div className="space-y-3">
       <CalendarPlanner initialTodos={initialTodos} initialDate={date}/>
+      {recurringEvents(date).length>0&&<section className="rounded-xl border border-line bg-white p-3">
+        <p className="mb-2 text-xs font-semibold text-ink-soft">重复固定时段（预览，不创建独立预约）</p>
+        {recurringEvents(date).map((e,i)=><div key={e.todoId+i} className="mb-1 rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">{e.start.slice(11,16)}–{e.end.slice(11,16)} · {e.title} <Link href={"/todo?todoId="+encodeURIComponent(e.todoId)} className="underline">调整安排</Link></div>)}
+      </section>}
     </div> :
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
