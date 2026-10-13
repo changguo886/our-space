@@ -64,4 +64,28 @@ BEGIN
 END $body$;
 REVOKE ALL ON FUNCTION public.revise_execution_template_v3(uuid,date,text,time,time,time,time,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.revise_execution_template_v3(uuid,date,text,time,time,time,time,integer) TO authenticated;
+-- Stop a recurring template from a chosen date without removing its past.
+CREATE OR REPLACE FUNCTION public.stop_execution_template_future_v3(
+ p_template_id uuid,p_effective_on date
+) RETURNS void LANGUAGE plpgsql SECURITY INVOKER SET search_path=''
+AS $body$
+DECLARE previous public.todo_execution_templates%ROWTYPE;
+BEGIN
+ SELECT * INTO previous FROM public.todo_execution_templates
+ WHERE id=p_template_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Template not found'; END IF;
+ IF NOT EXISTS (SELECT 1 FROM public.todos WHERE id=previous.todo_id
+   AND user_id=(SELECT auth.uid())) THEN RAISE EXCEPTION 'Not permitted'; END IF;
+ IF p_effective_on<previous.starts_on
+   OR (previous.ends_on IS NOT NULL AND p_effective_on>previous.ends_on)
+ THEN RAISE EXCEPTION 'Date outside template range'; END IF;
+ IF p_effective_on=previous.starts_on THEN
+   DELETE FROM public.todo_execution_templates WHERE id=previous.id;
+ ELSE
+   UPDATE public.todo_execution_templates
+     SET ends_on=p_effective_on-1,updated_at=now() WHERE id=previous.id;
+ END IF;
+END $body$;
+REVOKE ALL ON FUNCTION public.stop_execution_template_future_v3(uuid,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.stop_execution_template_future_v3(uuid,date) TO authenticated;
 COMMIT;
