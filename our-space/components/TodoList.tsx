@@ -16,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
+import {taskCardVisual} from "@/lib/task-colors";
 import DurationInput, {
   durationValueToMinutes,
   type DurationUnit,
@@ -910,7 +911,8 @@ export default function TodoList({
         return (
           <div
             key={todo.id}
-            className="group rounded-2xl border border-line bg-white/50 transition hover:bg-white"
+            className="group rounded-2xl border transition hover:brightness-[0.98]"
+            style={taskCardVisual(todo.category,todo.color_hex)}
           >
             <div className="flex items-center gap-3 px-4 py-3">
               <button
