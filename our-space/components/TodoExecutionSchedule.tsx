@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { addDaysISO, lastDayISO, weekdayISO, templateEligible, upcomingEligible, type HabitPatternV3, type ExecutionTemplateV3 } from "@/lib/recurring-execution";
 
 type Mode = "flexible" | "window" | "fixed";
-type DayPreset = { key:string; mode:Mode; start:string; end:string; minutes:string; windowStart:string; windowEnd:string; replaces:string };
+type DayPreset = { id:string; key:string; mode:Mode; start:string; end:string; minutes:string; windowStart:string; windowEnd:string; replaces:string };
 type Plan = { id:string; mode:"flexible"|"window"; plan_date:string; planned_minutes:number; window_start:string|null; window_end:string|null };
 type Session = { id:string; scheduled_start:string; scheduled_end:string };
 function localDate(d:Date){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");}
@@ -24,6 +24,10 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
   const [selector,setSelector]=useState("all");
   const [dayPresets,setDayPresets]=useState<DayPreset[]>([]);
+  const [copyFrom,setCopyFrom]=useState("");
+  const [copyTo,setCopyTo]=useState<string[]>([]);
+  const [showCopyConfirm,setShowCopyConfirm]=useState(false);
+  const makePreset=(key:string):DayPreset=>({id:crypto.randomUUID(),key,mode:"fixed",start:"09:00",end:"10:00",minutes:"45",windowStart:"08:00",windowEnd:"12:00",replaces:""});
   const [replaceSlotKey,setReplaceSlotKey]=useState("");
   const [pattern,setPattern]=useState<HabitPatternV3|null>(null);
   const [todoStart,setTodoStart]=useState("");
@@ -109,10 +113,14 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         for(let day=1;day<=7;day++)validKeys.add("weekday:"+day);
       }
       const keys=dayPresets.map(row=>row.key);
-      if(keys.some(key=>!validKeys.has(key))||new Set(keys).size!==keys.length){
+      if(keys.some(key=>!validKeys.has(key))){
         setSaving(false);setError("请选择不重复且符合当前任务规则的日期。");return;
       }
+      const slotKeys=new Set<string>();
       for(const row of dayPresets){
+        const signature=[row.key,row.mode,row.mode==="fixed"?row.start+"-"+row.end:row.mode==="window"?row.windowStart+"-"+row.windowEnd+"-"+row.minutes:row.minutes,row.replaces].join("|");
+        if(slotKeys.has(signature)){setSaving(false);setError(zh?"存在重复时段，请调整后重试。":"Duplicate execution slots. Please revise.");return;}
+        slotKeys.add(signature);
         if(row.mode==="fixed"&&(!validTime(row.start)||!validTime(row.end)||row.end<=row.start)){
           setSaving(false);setError("请检查每个固定时段的开始与结束时间。");return;
         }
@@ -126,7 +134,11 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           setSaving(false);setError("替换的默认时段不存在。");return;
         }
         if(templates.some(t=>t.selector_kind===row.key.split(":")[0]&&t.selector_value===(row.key.includes(":")?Number(row.key.split(":")[1]):null)
-          &&t.starts_on<=effectiveStart&&(t.ends_on===null||effectiveStart<=t.ends_on))){
+          &&t.starts_on<=effectiveStart&&(t.ends_on===null||effectiveStart<=t.ends_on)
+          &&t.execution_mode===row.mode
+          &&(row.mode!=="fixed"||(t.start_time?.slice(0,5)===row.start&&t.end_time?.slice(0,5)===row.end))
+          &&(row.mode!=="window"||(t.window_start?.slice(0,5)===row.windowStart&&t.window_end?.slice(0,5)===row.windowEnd))
+          &&(row.mode==="fixed"||t.planned_minutes===Number(row.minutes)))){
           setSaving(false);setError("选中的日期已有重复模板，请先修改或停止原模板，避免重复。");return;
         }
       }
@@ -229,10 +241,10 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         <div className="flex flex-wrap gap-1.5">
           {(pattern?.period==="week"?(pattern.arrangement==="fixed"?pattern.weekdays:[1,2,3,4,5,6,7]).map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]}))
           :pattern?.period==="month"?[...(pattern.arrangement==="fixed"?pattern.month_days:Array.from({length:31},(_,i)=>i+1)).map(n=>({key:"month_day:"+n,label:n+"日"})),...(pattern.include_month_end?[{key:"month_end",label:"月末"}]:[])]
-          :!pattern&&projectEnd?[1,2,3,4,5,6,7].map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]})):[]).map(item=><button key={item.key} type="button" aria-pressed={dayPresets.some(x=>x.key===item.key)} disabled={saving} onClick={()=>setDayPresets(rows=>rows.some(x=>x.key===item.key)?rows.filter(x=>x.key!==item.key):[...rows,{key:item.key,mode:"fixed",start:"09:00",end:"10:00",minutes:"45",windowStart:"08:00",windowEnd:"12:00",replaces:""}])} className={`rounded-lg border px-2.5 py-2 text-xs ${dayPresets.some(x=>x.key===item.key)?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>{item.label}</button>)}
+          :!pattern&&projectEnd?[1,2,3,4,5,6,7].map(n=>({key:"weekday:"+n,label:"周"+"一二三四五六日"[n-1]})):[]).map(item=><button key={item.key} type="button" aria-pressed={dayPresets.some(x=>x.key===item.key)} disabled={saving} onClick={()=>setDayPresets(rows=>rows.some(x=>x.key===item.key)?rows.filter(x=>x.key!==item.key):[...rows,makePreset(item.key)])} className={`rounded-lg border px-2.5 py-2 text-xs ${dayPresets.some(x=>x.key===item.key)?"border-sage-400 bg-sage-50":"border-line bg-white"}`}>{item.label}</button>)}
         </div>
-        {dayPresets.map((row,index)=><div key={row.key} className="space-y-2 rounded-xl border border-line bg-white p-3">
-          <div className="flex items-center justify-between"><strong className="text-xs text-ink">{row.key==="month_end"?"每月最后一天":row.key.startsWith("weekday:")?"每周星期"+"一二三四五六日"[Number(row.key.split(":")[1])-1]:"每月 "+row.key.split(":")[1]+" 日"}</strong><button type="button" className="text-xs text-ink-faint underline" onClick={()=>setDayPresets(rows=>rows.filter(x=>x.key!==row.key))}>移除</button></div>
+        {dayPresets.map((row,index)=><div key={row.id} className="space-y-2 rounded-xl border border-line bg-white p-3">
+          <div className="flex items-center justify-between"><strong className="text-xs text-ink">{row.key==="month_end"?"每月最后一天":row.key.startsWith("weekday:")?"每周星期"+"一二三四五六日"[Number(row.key.split(":")[1])-1]:"每月 "+row.key.split(":")[1]+" 日"}</strong><button type="button" className="text-xs text-ink-faint underline" onClick={()=>setDayPresets(rows=>rows.filter(x=>x.id!==row.id))}>移除</button></div>
           <div className="grid grid-cols-3 gap-1">{(["flexible","window","fixed"] as const).map(next=><button key={next} type="button" aria-pressed={row.mode===next} className={`rounded-lg border p-1.5 text-xs ${row.mode===next?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,mode:next}:x))}>{next==="flexible"?"灵活":next==="window"?"时间窗口":"固定时段"}</button>)}</div>
           {row.mode==="fixed"?<div className="grid grid-cols-2 gap-2"><label className="text-xs text-ink-soft">开始<input type="time" className={field+" mt-1"} value={row.start} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,start:e.target.value}:x))}/></label><label className="text-xs text-ink-soft">结束<input type="time" className={field+" mt-1"} value={row.end} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,end:e.target.value}:x))}/></label></div>:<>
             <label className="block text-xs text-ink-soft">每次预计投入（分钟）<input type="number" min="1" max="1440" className={field+" mt-1"} value={row.minutes} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,minutes:e.target.value}:x))}/></label>
@@ -240,7 +252,15 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           </>}
           {templates.some(t=>t.selector_kind==="all")&&<label className="block text-xs text-ink-soft">和默认安排的关系<select className={field+" mt-1"} value={row.replaces} onChange={e=>setDayPresets(rows=>rows.map((x,i)=>i===index?{...x,replaces:e.target.value}:x))}><option value="">额外增加一段</option>{[...new Map(templates.filter(t=>t.selector_kind==="all").map(t=>[t.slot_key,t])).values()].map(t=><option key={t.slot_key} value={t.slot_key}>替换默认 {t.start_time?.slice(0,5)??t.execution_mode}</option>)}</select></label>}
         </div>)}
-        <p className="text-xs text-ink-faint">本组日期一次保存；固定时段进入 Calendar，灵活与时间窗口不占用小时网格。</p>
+        <div className="flex flex-wrap gap-2">{[...new Set(dayPresets.map(x=>x.key))].map(key=><button key={key} type="button" className="rounded-lg border border-line bg-white px-3 py-2 text-xs text-ink-soft" onClick={()=>setDayPresets(rows=>[...rows,makePreset(key)])}>{zh?"＋ 添加时段":"＋ Add slot"} · {key}</button>)}</div>
+        {dayPresets.length>0&&<div className="space-y-2 rounded-xl border border-line bg-white p-3">
+          <p className="text-xs font-semibold">{zh?"复制日期安排":"Copy day schedule"}</p>
+          <select className={field} value={copyFrom} onChange={e=>{setCopyFrom(e.target.value);setCopyTo([]);}}><option value="">{zh?"选择来源日期":"Select source day"}</option>{[...new Set(dayPresets.map(x=>x.key))].map(key=><option key={key} value={key}>{key}</option>)}</select>
+          <div className="flex flex-wrap gap-1">{[...new Set(dayPresets.map(x=>x.key))].filter(key=>key!==copyFrom).map(key=><button key={key} type="button" aria-pressed={copyTo.includes(key)} className={`rounded-lg border px-2 py-1.5 text-xs ${copyTo.includes(key)?"border-sage-400 bg-sage-50":"border-line"}`} onClick={()=>setCopyTo(old=>old.includes(key)?old.filter(v=>v!==key):[...old,key])}>{key}</button>)}</div>
+          <button type="button" disabled={!copyFrom||copyTo.length===0} className="rounded-lg border border-sage-300 px-3 py-2 text-xs text-sage-700 disabled:opacity-50" onClick={()=>setShowCopyConfirm(true)}>{zh?"复制到所选日期":"Copy to selected days"}</button>
+          {showCopyConfirm&&<div className="rounded-lg bg-paper p-3 text-xs"><p>{zh?"将替换目标日期当前草稿的时段，不影响已保存的历史。":"This replaces target-day slots in the current draft, not saved history."}</p><div className="mt-2 flex gap-2"><button type="button" className="rounded-lg border px-2 py-1" onClick={()=>setShowCopyConfirm(false)}>{zh?"取消":"Cancel"}</button><button type="button" className="rounded-lg bg-sage-100 px-2 py-1" onClick={()=>{setDayPresets(rows=>[...rows.filter(x=>!copyTo.includes(x.key)),...copyTo.flatMap(key=>rows.filter(x=>x.key===copyFrom).map(x=>({...x,id:crypto.randomUUID(),key,replaces:""})))]);setCopyTo([]);setShowCopyConfirm(false);}}>{zh?"确认复制":"Confirm copy"}</button></div></div>}
+        </div>}
+        <p className="text-xs text-ink-faint">{zh?"每个日期支持多个时段，未来重复安排不会批量生成预约。":"Each day can have multiple slots; future bookings are expanded virtually."}</p>
       </div>}
       {scope!=="once"&&<p className="text-xs text-ink-faint">生效日期不等于执行日期。只对符合任务规则的未来日期生效，不会把不匹配的今天安排进去。</p>}
       {scope!=="once"&&<p className="text-xs text-ink-faint">预计生效日期：{preview.join("、")||"当前选择暂无符合日期"}</p>}
