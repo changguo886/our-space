@@ -57,24 +57,24 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
     ...(todo.todo_sessions?.length?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
-    return templates.filter(t=>t.execution_mode==="fixed"&&t.start_time&&t.end_time&&
+    return templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&t.execution_mode==="fixed"&&t.start_time&&t.end_time&&
       templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date)).flatMap(t=>{
       const change=overrides.find(x=>x.todo_id===t.todo_id&&x.slot_key===t.slot_key&&x.occurrence_date===d);
       if(change?.action==="cancel")return [];
       const title=tasks.find(x=>x.id===t.todo_id)?.title??"任务";
       if(change?.action==="reschedule"&&change.scheduled_start&&change.scheduled_end){
-        return inDay(change.scheduled_start,d)?[{todoId:t.todo_id,title:title+"（已调整）",start:change.scheduled_start,end:change.scheduled_end}]:[];
+        return inDay(change.scheduled_start,d)?[{todoId:t.todo_id,virtualId:"virtual:"+t.todo_id+":"+t.slot_key+":"+d,title:title+"（已调整）",start:change.scheduled_start,end:change.scheduled_end}]:[];
       }
       const start=wallClockISO(d,t.start_time!,t.timezone);
       const end=wallClockISO(d,t.end_time!,t.timezone);
       if(!start||!end||end<=start)return [];
-      return [{todoId:t.todo_id,title:title+"（重复）",start,end}];
+      return [{todoId:t.todo_id,virtualId:"virtual:"+t.todo_id+":"+t.slot_key+":"+d,title:title+"（重复）",start,end}];
     });
   }
   function movedOverrideEvents(d:string){
     return overrides.filter(o=>o.action==="reschedule"&&o.scheduled_start&&o.occurrence_date!==d&&inDay(o.scheduled_start,d)
-      &&templates.some(t=>t.todo_id===o.todo_id&&t.slot_key===o.slot_key)).map(o=>({
-      todoId:o.todo_id,title:(tasks.find(t=>t.id===o.todo_id)?.title??"任务")+"（单次改期）",
+      &&templates.some(t=>t.todo_id===o.todo_id&&t.slot_key===o.slot_key)&&tasks.some(t=>t.id===o.todo_id)).map(o=>({
+      todoId:o.todo_id,virtualId:"virtual:"+o.todo_id+":"+o.slot_key+":"+o.occurrence_date,title:(tasks.find(t=>t.id===o.todo_id)?.title??"任务")+"（单次改期）",
       start:o.scheduled_start!,end:o.scheduled_end!
     }));
   }
@@ -92,8 +92,8 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     </div>
     {mode==="day" ? <div className="space-y-3">
       <CalendarPlanner initialTodos={initialTodos} initialDate={date} onDateChange={setDate}
-        virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].map((e,i)=>({
-          todo_id:e.todoId,id:"virtual:"+e.todoId+":"+date+":"+i,
+        virtualSessions={[...recurringEvents(date),...movedOverrideEvents(date)].map(e=>({
+          todo_id:e.todoId,id:e.virtualId,
           scheduled_start:e.start,scheduled_end:e.end,
         }))}/>
       {(recurringEvents(date).length+movedOverrideEvents(date).length)>0&&<section className="rounded-xl border border-line bg-white p-3">
