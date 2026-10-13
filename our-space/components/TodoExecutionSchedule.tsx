@@ -23,7 +23,7 @@ const field="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm tex
 export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const {language} = useI18n();
   const zh = language === "zh-CN";
-  const [open,setOpen]=useState(false);
+  const [open,setOpen]=useState(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).get("plan")==="1");
   const [scope,setScope]=useState<"once"|"all"|"by_day">("once");
   const [copyOpen,setCopyOpen]=useState(false);
   const [copySource,setCopySource]=useState<{id:string;day:string;mode:Mode;start:string;end:string;minutes:number}|null>(null);
