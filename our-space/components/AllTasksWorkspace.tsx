@@ -7,7 +7,7 @@ import TodoList, { type Todo, type TodoCategory, type TodoNotesOpenPayload } fro
 import type { TodoSubtask } from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
 
-type TaskType = "one_time" | "recurring" | "habit";
+type TaskType = "one_time" | "project" | "routine";
 type Filter = "all" | TodoCategory | "unclassified";
 type TypeFilter = "all" | TaskType;
 type Sort = "date" | "title";
@@ -35,8 +35,8 @@ export default function AllTasksWorkspace({ todos }: { todos: Todo[] }) {
   const typeLabels: Record<TypeFilter, string> = {
     all: zh ? "全部类型" : "All types",
     one_time: zh ? "单次任务" : "One-time",
-    recurring: zh ? "重复任务" : "Recurring",
-    habit: zh ? "维持习惯" : "Habit",
+    project: zh ? "长期项目" : "Project",
+    routine: zh ? "周期任务" : "Routine",
   };
 
   const filtered = useMemo(() => todos.filter(todo => (
