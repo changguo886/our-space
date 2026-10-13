@@ -133,7 +133,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     setCopyNotice("");setError("");
     const db=createClient();
     if(!validDate(sourceDay)||!copySelected.length){setError(zh?"请选择要复制到的日期。":"Choose destination dates.");return;}
-    if(copyMode==="fixed"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart)){setError("请检查固定时间。");return;}
+    if(copyMode==="fixed"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart)){setError(zh?"跨日固定预约暂不支持按日期批量复制，请单独安排。":"Overnight fixed sessions cannot be copied across dates yet.");return;}
     if(copyMode==="window"&&(!validTime(sourceStart)||!validTime(sourceEnd)||sourceEnd<=sourceStart||copyMinutes>((Number(sourceEnd.slice(0,2))-Number(sourceStart.slice(0,2)))*60+Number(sourceEnd.slice(3))-Number(sourceStart.slice(3))))){setError("请检查时间窗口和预计分钟。");return;}
     setCopyBusy(true);
     const occupied=new Set([...plans.map(p=>p.plan_date),...sessions.map(p=>localDate(new Date(p.scheduled_start)))]);
@@ -203,14 +203,15 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       .filter(item=>pattern.arrangement==="flexible"||copyEligible(item.target));
     const occupied=new Set([...plans.map(p=>p.plan_date),...sessions.map(p=>localDate(new Date(p.scheduled_start)))]);
     let failure="";
+    if(items.some(item=>item.mode==="fixed"&&(!validTime(item.start)||!validTime(item.end)||item.end<=item.start))){setContinuationBusy(false);setError(zh?"存在跨日或无效的固定时段，请单独调整后再延续。":"An overnight or invalid fixed slot needs individual scheduling.");return;}
     if(forever){
       const start=shiftPeriod(continuationDays[0]);
       if(!start||items.length===0){failure=zh?"下一周期没有符合条件的日期。":"No eligible dates next period.";}
       else {
         const rows=items.map(item=>({
           todo_id:todoId,starts_on:start,ends_on:projectEnd,timezone,replaces_slot_key:null,
-          selector_kind:pattern.period==="week"?"weekday":"month_day",
-          selector_value:pattern.period==="week"?weekdayISO(item.day):Number(item.day.slice(-2)),
+          selector_kind:pattern.period==="week"?"weekday":pattern.include_month_end&&Number(item.day.slice(-2))===lastDayISO(item.day)&&!pattern.month_days.includes(Number(item.day.slice(-2)))?"month_end":"month_day",
+          selector_value:pattern.period==="week"?weekdayISO(item.day):pattern.include_month_end&&Number(item.day.slice(-2))===lastDayISO(item.day)&&!pattern.month_days.includes(Number(item.day.slice(-2)))?null:Number(item.day.slice(-2)),
           execution_mode:item.mode,
           start_time:item.mode==="fixed"?item.start:null,end_time:item.mode==="fixed"?item.end:null,
           window_start:item.mode==="window"?item.start:null,window_end:item.mode==="window"?item.end:null,
