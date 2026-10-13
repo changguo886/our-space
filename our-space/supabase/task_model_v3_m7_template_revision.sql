@@ -49,13 +49,13 @@ BEGIN
    WHERE id=previous.id;
  INSERT INTO public.todo_execution_templates(
    todo_id,slot_key,starts_on,ends_on,start_time,end_time,timezone,
-   execution_mode,selector_kind,selector_value,planned_minutes,
+   execution_mode,selector_kind,selector_value,replaces_slot_key,planned_minutes,
    window_start,window_end
  ) VALUES(
    previous.todo_id,previous.slot_key,p_effective_on,previous.ends_on,
    CASE WHEN p_new_mode='fixed' THEN p_start_time ELSE NULL END,
    CASE WHEN p_new_mode='fixed' THEN p_end_time ELSE NULL END,
-   previous.timezone,p_new_mode,previous.selector_kind,previous.selector_value,
+   previous.timezone,p_new_mode,previous.selector_kind,previous.selector_value,previous.replaces_slot_key,
    CASE WHEN p_new_mode='fixed' THEN NULL ELSE p_planned_minutes END,
    CASE WHEN p_new_mode='window' THEN p_window_start ELSE NULL END,
    CASE WHEN p_new_mode='window' THEN p_window_end ELSE NULL END
