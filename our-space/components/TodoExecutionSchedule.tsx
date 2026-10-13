@@ -74,6 +74,9 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     if(repeating&&!validDate(date)){setSaving(false);setError("请选择有效的重复安排生效日期。");return;}
     if(repeating&&selectorKind==="all"&&scope==="by_day"){setSaving(false);setError("请先选择需要分别安排的日期。");return;}
     if(repeating&&!pattern&&!projectEnd){setSaving(false);setError("此任务没有重复规则或计划结束日期，请使用单次安排。");return;}
+    if(repeating&&pattern?.arrangement==="flexible"&&pattern.period!=="day"&&scope==="all"){
+      setSaving(false);setError("每周／每月灵活次数没有固定执行日期，不能自动预约每天。请切换为固定日期，或选择具体星期／月日期，或仅安排一次。");return;
+    }
     if(repeating&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
     if(repeating&&!editingTemplateId&&templates.some(t=>
       t.selector_kind===selectorKind&&t.selector_value===selectorValue&&
@@ -153,8 +156,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {scope==="by_day"&&<label className="block text-xs text-ink-soft">选择重复日期
         <select className={field+" mt-1"} value={selector} onChange={e=>setSelector(e.target.value)}>
           <option value="all">请选择日期</option>
-          {pattern?.period==="week"&&pattern.arrangement==="fixed"&&(pattern.weekdays??[]).map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
-          {pattern?.period==="month"&&pattern.arrangement==="fixed"&&(pattern.month_days??[]).map(x=><option key={x} value={"month_day:"+x}>每月 {x} 日</option>)}
+          {pattern?.period==="week"&&(pattern.arrangement==="fixed"?pattern.weekdays:[1,2,3,4,5,6,7]).map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
+          {pattern?.period==="month"&&(pattern.arrangement==="fixed"?pattern.month_days:Array.from({length:31},(_,i)=>i+1)).map(x=><option key={x} value={"month_day:"+x}>每月 {x} 日</option>)}
           {pattern?.period==="month"&&pattern.include_month_end&&<option value="month_end">每月最后一天</option>}
           {!pattern&&projectEnd&&[1,2,3,4,5,6,7].map(x=><option key={x} value={"weekday:"+x}>每周星期{"一二三四五六日"[x-1]}</option>)}
         </select>
