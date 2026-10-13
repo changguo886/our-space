@@ -50,7 +50,7 @@ import DurationInput, {
 import TodoSubtasks from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
 import { useI18n } from "@/components/I18nProvider";
-import {taskCardVisual} from "@/lib/task-colors";
+import {taskCardVisual,categoryBadgeVisual,CATEGORY_VISUALS} from "@/lib/task-colors";
 
 /* =========================================================
    Types
@@ -722,7 +722,7 @@ function PoolTask({
           </p>
 
           <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+            className="shrink-0 rounded-full border px-2 py-0.5 text-[10px]" style={categoryBadgeVisual(todo.category)}
           >
             {category.label}
           </span>
@@ -798,7 +798,7 @@ function DragPreview({
         <p className="truncate text-sm font-medium text-ink">{todo.title}</p>
 
         <span
-          className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+          className="rounded-full border px-2 py-0.5 text-[10px]" style={categoryBadgeVisual(todo.category)}
         >
           {category.label}
         </span>
@@ -1059,7 +1059,7 @@ function ScheduledSession({
 
                 {!compact && !starting && !running && (
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+                    className="rounded-full border px-2 py-0.5 text-[10px]" style={categoryBadgeVisual(todo.category)}
                   >
                     {category.label}
                   </span>
