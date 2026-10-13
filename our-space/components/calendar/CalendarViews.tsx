@@ -54,8 +54,8 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const [y,m]=date.split("-").map(Number);const month=date.slice(0,7);
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
   const tasks=initialTodos as CalendarTask[];
-  const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
-    ...(todo.todo_sessions?.length?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
+  const sessions=tasks.flatMap(todo=>[...(todo.todo_sessions??[]).filter(s=>s.scheduled_start&&s.scheduled_end).map(s=>({todoId:todo.id,title:todo.title,start:s.scheduled_start,end:s.scheduled_end})),
+    ...(todo.todo_sessions?.some(s=>s.scheduled_start&&s.scheduled_end)?[]:todo.scheduled_start&&todo.scheduled_end?[{todoId:todo.id,title:todo.title,start:todo.scheduled_start,end:todo.scheduled_end}]:[])]);
   function recurringEvents(d:string){
     const active=templates.filter(t=>tasks.some(todo=>todo.id===t.todo_id)&&
       templateEligible(d,t,patterns[t.todo_id],tasks.find(x=>x.id===t.todo_id)?.task_date));
