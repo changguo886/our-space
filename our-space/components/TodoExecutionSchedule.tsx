@@ -71,9 +71,18 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     const selected=selector.split(":");
     const selectorKind=scope==="all"?"all":selected[0];
     const selectorValue=scope==="all"?null:selected[1]?Number(selected[1]):null;
+    if(repeating&&!validDate(date)){setSaving(false);setError("请选择有效的重复安排生效日期。");return;}
     if(repeating&&selectorKind==="all"&&scope==="by_day"){setSaving(false);setError("请先选择需要分别安排的日期。");return;}
     if(repeating&&!pattern&&!projectEnd){setSaving(false);setError("此任务没有重复规则或计划结束日期，请使用单次安排。");return;}
     if(repeating&&mode==="fixed"&&(fixedStartTime>=fixedEndTime||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setSaving(false);setError("重复固定时段必须在同一天内结束，且结束时间晚于开始时间。");return;}
+    if(repeating&&!editingTemplateId&&templates.some(t=>
+      t.selector_kind===selectorKind&&t.selector_value===selectorValue&&
+      t.starts_on<=date&&(t.ends_on===null||date<=t.ends_on)&&
+      t.execution_mode===mode&&
+      (mode!=="fixed"||(t.start_time?.slice(0,5)===fixedStartTime&&t.end_time?.slice(0,5)===fixedEndTime))&&
+      (mode!=="window"||(t.window_start?.slice(0,5)===windowStart&&t.window_end?.slice(0,5)===windowEnd))&&
+      (mode==="fixed"||t.planned_minutes===Number(minutes))
+    )){setSaving(false);setError("相同的重复安排已经存在，请直接修改原模板。");return;}
     const result=repeating&&editingTemplateId
       ? await db.rpc("revise_execution_template_v3",{
           p_template_id:editingTemplateId,
@@ -122,7 +131,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
     {loading?<p className="mt-3 text-xs text-ink-faint">读取安排中…</p>:<div className="mt-3 space-y-1.5">
       {plans.map(p=><div key={p.id} className="rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft">{p.plan_date} · {p.mode==="flexible"?"灵活安排":`时间窗口 ${p.window_start?.slice(0,5)}–${p.window_end?.slice(0,5)}`} · {p.planned_minutes} 分钟</div>)}
       {sessions.map(s=><div key={s.id} className="rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">固定时段 · {new Date(s.scheduled_start).toLocaleString()} – {new Date(s.scheduled_end).toLocaleTimeString()}</div>)}
-      {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><span className="flex shrink-0 gap-2"><button type="button" className="underline" onClick={()=>{setEditingTemplateId(t.id);setScope("all");setOpen(true);setDate(t.starts_on>date?t.starts_on:date);setMode(t.execution_mode);setFixedStartTime(t.start_time?.slice(0,5)??"09:00");setFixedEndTime(t.end_time?.slice(0,5)??"10:00");setWindowStart(t.window_start?.slice(0,5)??"08:00");setWindowEnd(t.window_end?.slice(0,5)??"12:00");setMinutes(String(t.planned_minutes??45));}}>从这天起修改</button><button type="button" className="underline" onClick={async()=>{if(!window.confirm("删除这条未来重复安排？"))return;const x=await createClient().from("todo_execution_templates").delete().eq("id",t.id);if(x.error)setError(x.error.message);else await refresh();}}>删除</button></span></div>)}
+      {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><span className="flex shrink-0 gap-2"><button type="button" className="underline" onClick={()=>{setEditingTemplateId(t.id);setScope("all");setOpen(true);setDate(t.starts_on>date?t.starts_on:date);setMode(t.execution_mode);setFixedStartTime(t.start_time?.slice(0,5)??"09:00");setFixedEndTime(t.end_time?.slice(0,5)??"10:00");setWindowStart(t.window_start?.slice(0,5)??"08:00");setWindowEnd(t.window_end?.slice(0,5)??"12:00");setMinutes(String(t.planned_minutes??45));}}>从这天起修改</button><button type="button" className="underline" onClick={async()=>{const effective=date<t.starts_on?t.starts_on:date;if(!window.confirm("停止从 "+effective+" 起的重复安排？之前的时间计划保留。"))return;const x=await createClient().rpc("stop_execution_template_future_v3",{p_template_id:t.id,p_effective_on:effective});if(x.error)setError(x.error.message);else await refresh();}}>停止后续</button></span></div>)}
       {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">尚无执行安排。可以先不安排。</p>}
     </div>}
     {templates.some(t=>t.execution_mode==="fixed")&&<details className="mt-4 rounded-xl border border-line p-3">
