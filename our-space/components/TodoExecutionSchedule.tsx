@@ -73,7 +73,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   async function save(){
     setError("");
     if(scope!=="by_day"&&mode!=="fixed"&&(!Number.isInteger(Number(minutes))||Number(minutes)<1||Number(minutes)>1440)){setError("计划投入需为 1–1440 分钟。");return;}
-    if(scope!=="by_day"&&mode==="window"&&windowEnd<=windowStart){setError("时间窗口结束时间必须晚于开始时间。");return;}
+    if(scope!=="by_day"&&mode==="window"&&(!validTime(windowStart)||!validTime(windowEnd)||windowEnd<=windowStart||Number(minutes)>((Number(windowEnd.slice(0,2))*60+Number(windowEnd.slice(3)))-(Number(windowStart.slice(0,2))*60+Number(windowStart.slice(3))))){setError("时间窗口结束时间必须晚于开始时间。");return;}
     if(scope==="once"&&mode==="fixed"&&(!validDate(fixedStartDate)||!validDate(fixedEndDate)||!validTime(fixedStartTime)||!validTime(fixedEndTime))){setError("请填写有效日期（YYYY-MM-DD）与24小时制时间（HH:mm）。");return;}
     if(scope==="once"&&mode==="fixed"&&toFixedDateTime(fixedEndDate,fixedEndTime).getTime()<=toFixedDateTime(fixedStartDate,fixedStartTime).getTime()){setError("固定结束时间必须晚于开始时间。");return;}
     setSaving(true);
@@ -121,6 +121,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         const signature=[row.key,row.mode,row.mode==="fixed"?row.start+"-"+row.end:row.mode==="window"?row.windowStart+"-"+row.windowEnd+"-"+row.minutes:row.minutes,row.replaces].join("|");
         if(slotKeys.has(signature)){setSaving(false);setError(zh?"存在重复时段，请调整后重试。":"Duplicate execution slots. Please revise.");return;}
         slotKeys.add(signature);
+        if(row.mode==="window"&&validTime(row.windowStart)&&validTime(row.windowEnd)&&Number(row.minutes)>((Number(row.windowEnd.slice(0,2))*60+Number(row.windowEnd.slice(3)))-(Number(row.windowStart.slice(0,2))*60+Number(row.windowStart.slice(3))))){setSaving(false);setError(zh?"预计投入不能超过时间窗口长度。":"Planned minutes cannot exceed the window.");return;}
         if(row.mode==="fixed"&&(!validTime(row.start)||!validTime(row.end)||row.end<=row.start)){
           setSaving(false);setError("请检查每个固定时段的开始与结束时间。");return;
         }
@@ -141,6 +142,10 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
           &&(row.mode==="fixed"||t.planned_minutes===Number(row.minutes)))){
           setSaving(false);setError("选中的日期已有重复模板，请先修改或停止原模板，避免重复。");return;
         }
+      }
+      for(let i=0;i<dayPresets.length;i++)for(let j=i+1;j<dayPresets.length;j++){
+        const a=dayPresets[i],b=dayPresets[j];
+        if(a.key===b.key&&a.mode==="fixed"&&b.mode==="fixed"&&a.start<b.end&&b.start<a.end){setSaving(false);setError(zh?"同一天的固定时段不能重叠。":"Fixed slots on the same day cannot overlap.");return;}
       }
       const records=dayPresets.map(row=>({
         todo_id:todoId,starts_on:effectiveStart,ends_on:projectEnd,timezone,
@@ -215,10 +220,10 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       <button type="button" className="rounded-lg border border-sage-300 px-3 py-2 text-xs text-sage-700" onClick={()=>setOpen(v=>!v)}>{open?(zh?"收起":"Close"):(zh?"＋ 安排执行":"+ Plan execution")}</button>
     </div>
     {loading?<p className="mt-3 text-xs text-ink-faint">读取安排中…</p>:<div className="mt-3 space-y-1.5">
-      {plans.map(p=><div key={p.id} className="rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft">{p.plan_date} · {p.mode==="flexible"?"灵活安排":`时间窗口 ${p.window_start?.slice(0,5)}–${p.window_end?.slice(0,5)}`} · {p.planned_minutes} 分钟</div>)}
-      {sessions.map(s=><div key={s.id} className="rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">固定时段 · {new Date(s.scheduled_start).toLocaleString()} – {new Date(s.scheduled_end).toLocaleTimeString()}</div>)}
+      {plans.map(p=><div key={p.id} className="rounded-lg bg-paper/60 px-3 py-2 text-xs text-ink-soft">{p.plan_date} · {p.mode==="flexible"?(zh?"灵活安排":"Flexible"):(zh?"时间窗口":"Window")+` ${p.window_start?.slice(0,5)}–${p.window_end?.slice(0,5)}`} · {p.planned_minutes} {zh?"分钟":"min"}</div>)}
+      {sessions.map(s=><div key={s.id} className="rounded-lg bg-sage-50 px-3 py-2 text-xs text-sage-700">{zh?"固定时段":"Fixed slot"} · {new Date(s.scheduled_start).toLocaleString(zh?"zh-CN":"en-US")} – {new Date(s.scheduled_end).toLocaleTimeString(zh?"zh-CN":"en-US")}</div>)}
       {templates.map(t=><div key={t.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-sage-50 px-3 py-2 text-xs text-sage-700"><span>未来重复 · {t.selector_kind==="all"?"所有符合日期":t.selector_kind==="weekday"?"星期"+t.selector_value:t.selector_kind==="month_day"?"每月"+t.selector_value+"日":"月末"} · {t.execution_mode==="fixed"?t.start_time?.slice(0,5)+"–"+t.end_time?.slice(0,5):t.execution_mode==="window"?"时间窗口":"灵活安排"} · 从 {t.starts_on}</span><span className="flex shrink-0 gap-2"><button type="button" className="underline" onClick={()=>{setEditingTemplateId(t.id);setScope("all");setOpen(true);setDate(t.starts_on>date?t.starts_on:date);setMode(t.execution_mode);setFixedStartTime(t.start_time?.slice(0,5)??"09:00");setFixedEndTime(t.end_time?.slice(0,5)??"10:00");setWindowStart(t.window_start?.slice(0,5)??"08:00");setWindowEnd(t.window_end?.slice(0,5)??"12:00");setMinutes(String(t.planned_minutes??45));}}>从这天起修改</button><button type="button" className="underline" onClick={async()=>{const effective=date<t.starts_on?t.starts_on:date;if(!window.confirm("停止从 "+effective+" 起的重复安排？之前的时间计划保留。"))return;const x=await createClient().rpc("stop_execution_template_future_v3",{p_template_id:t.id,p_effective_on:effective});if(x.error)setError(x.error.message);else await refresh();}}>停止后续</button></span></div>)}
-      {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">尚无执行安排。可以先不安排。</p>}
+      {!plans.length&&!sessions.length&&!templates.length&&<p className="text-xs text-ink-faint">{zh?"尚无执行安排。可以先不安排。":"No execution plans yet. You can schedule later."}</p>}
     </div>}
     {templates.some(t=>t.execution_mode==="fixed")&&<details className="mt-4 rounded-xl border border-line p-3">
       <summary className="cursor-pointer text-xs font-semibold text-ink-soft">{zh?"修改／取消某一次固定预约":"Change or cancel one fixed occurrence"}</summary>
