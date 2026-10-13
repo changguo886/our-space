@@ -151,46 +151,39 @@ export default function AddTodoForm({
     const supabase =
       createClient();
 
-    let created: { id: string } | null = null;
-    let createError: { message: string } | null = null;
-    if (taskType === "habit") {
-      const fixedWeek = goalPeriod==="week" && cadence==="weekly_days";
-      const fixedMonth = goalPeriod==="month" && habitArrangement==="fixed";
-      const target = fixedWeek ? weekdays.length : fixedMonth ? monthDays.length+(includeMonthEnd?1:0) : Number(goalValue);
-      const {data,error:rpcError}=await supabase.rpc("save_habit_v3",{
-        payload:{
-          title:cleanTitle,description:description.trim()||null,estimated_minutes:parsedMinutes,
-          task_date:taskDate,category,custom_tag:category==="other"?customTag.trim()||null:null,
-          group_id:visibility==="space"?activeSpaceId:null,
-          period:goalPeriod,arrangement:fixedWeek||fixedMonth?"fixed":"flexible",
-          target_count:target,weekdays:fixedWeek?weekdays:[],month_days:fixedMonth?monthDays:[],
-          include_month_end:fixedMonth&&includeMonthEnd,
-        },
-      });
-      createError=rpcError;
-      if(!rpcError&&data)created={id:data as string};
-    } else {
-      const { data, error } = await supabase.from("todos").insert({
-        user_id: userId,
-        group_id: visibility === "space" ? activeSpaceId : null,
+    const fixedWeek = taskType==="habit" && goalPeriod==="week" && cadence==="weekly_days";
+    const fixedMonth = taskType==="habit" && goalPeriod==="month" && habitArrangement==="fixed";
+    const target = fixedWeek ? weekdays.length : fixedMonth ? monthDays.length+(includeMonthEnd?1:0) : Number(goalValue);
+    // V4 semantic types; the compatibility RPC maps these to V3 storage while
+    // legacy Calendar / Focus clients are still using the old schema.
+    const { data: savedId, error: saveError } = await supabase.rpc("save_task_v4", {
+      payload: {
+        task_type: taskType==="planned" ? "project" : taskType==="habit" ? "routine" : "one_time",
         title: cleanTitle,
-        description: description.trim() || null,
+        description: description.trim()||null,
         estimated_minutes: parsedMinutes,
         task_date: taskDate,
         category,
-        custom_tag: customTag.trim() || null,
-        task_type: "one_time",
-        ...(taskType==="planned" ? { plan_start_date:startDate, target_finish_date:targetFinish, deadline_date:officialDeadline||null } : {}),
-      }).select("id").single();
-      created = data;
-      createError = error;
-    }
-    const error = createError;
-
-    // Habit recurrence is persisted atomically by save_habit_v3.
-    // Do not write habit_patterns_v3 or duplicate the frequency in
-    // task_goal_settings from this form. Optional performance-goal
-    // persistence will be reinstated via a separate atomic RPC revision.
+        custom_tag: category==="other" ? customTag.trim()||null : null,
+        group_id: visibility==="space" ? activeSpaceId : null,
+        ...(taskType==="planned" ? {
+          plan_start_date:startDate,target_finish_date:targetFinish,
+          deadline_date:officialDeadline||null,
+        } : {}),
+        ...(taskType==="habit" ? {
+          period:goalPeriod,
+          arrangement:fixedWeek||fixedMonth?"fixed":"flexible",
+          target_count:target,
+          weekdays:fixedWeek?weekdays:[],
+          month_days:fixedMonth?monthDays:[],
+          include_month_end:fixedMonth&&includeMonthEnd,
+          starts_on:taskDate,
+          strict:false,
+        } : {}),
+      },
+    });
+    const created = !saveError&&savedId ? {id:savedId as string} : null;
+    const error = saveError;
 
     if (!error && created && taskType==="planned") {
       const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:journeyColor});
