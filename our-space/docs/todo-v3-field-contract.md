@@ -11,7 +11,7 @@ Updated: 2026-10-12. Repository: changguo886/our-space; branch feature/task-mode
 | quick_notes | id, todo_id, subtask_id nullable, title, content, color, sort_order, created_at, updated_at | No redundant user_id; ON DELETE SET NULL on subtask removal |
 | habit_patterns_v3 | todo_id PK, period: day/week/month; arrangement: flexible/fixed; target_count, weekdays, month_days, include_month_end | The **only new authoritative habit recurrence**. Week fixed target_count == weekdays length; month fixed target count must be calculated per actual month, NOT blindly use stored target_count. |
 | todo_execution_plans | id, todo_id, plan_date, mode flexible/window, planned_minutes, window_start, window_end | Intent, never an hourly Calendar booking |
-| todo_execution_templates | id, todo_id, slot_key, starts_on, ends_on, start_time, end_time, timezone | Default exact-time repeat; one template may yield many virtual instances |
+| todo_execution_templates | id, todo_id, slot_key, starts_on, ends_on, start_time, end_time, timezone, execution_mode, selector_kind, selector_value, replaces_slot_key, planned_minutes, window_start, window_end | Repeat execution mode (flexible/window/fixed), rule-day selector, and optional specific-date replacement of a default slot. `starts_on/ends_on` version intervals. Only fixed times enter hourly Calendar. |
 | todo_execution_overrides | id, todo_id, slot_key, occurrence_date, action, scheduled_start/end | One-date cancellation or reschedule |
 | todo_sessions | id, todo_id, scheduled_start/end, reminder_minutes_before | Persisted one-off booked slot |
 | task_occurrences | id, todo_id, occurrence_key, occurrence_date, status, completed_at | Explicit outcome / exception; not every future virtual slot |
@@ -44,3 +44,11 @@ Updated: 2026-10-12. Repository: changguo886/our-space; branch feature/task-mode
 - Never `DROP ... CASCADE` to make a migration pass. Repair callers first.
 - Preserve todo_sessions, todo_subtasks, quick_notes, actual Focus activity, and habit_logs as separate facts.
 - No destructive schema change on Production without a full checklist and user confirmation for the exact proposed statements.
+
+## M6 / M7 implementation supplement
+
+- M6 adds `execution_mode: flexible|window|fixed`, `selector_kind: all|weekday|month_day|month_end`, optional `selector_value`, `planned_minutes`, `window_start/end`, and `replaces_slot_key`. `replaces_slot_key` explicitly identifies which generic `slot_key` a date-specific template substitutes; NULL means independent extra slot. Multiple templates may intentionally produce multiple bookings.
+- M7 provides atomic `revise_execution_template_v3` to end the previous effective interval and create the next version **with the same slot_key**; `stop_execution_template_future_v3` closes one template's future range. Neither rewrites actual Focus history.
+- `todo_execution_overrides` is single-date cancellation/rescheduling, keyed uniquely by (todo_id, slot_key, occurrence_date). Specific-day replacement takes priority over generic template unless the generic slot itself has an explicit date override; explicit overrides have highest precedence. Never update `todo_sessions` with virtual IDs.
+- All Calendar date expansions use `habit_patterns_v3` and only visible window dates, plus explicit template effective ranges. Week/month flexible quota is NOT a daily recurrence: scheduling all future dates without selecting concrete dates is prohibited.
+- The implementation status is **code committed, awaiting M6/M7 application and build/QA**. Use [task-v3-recurring-execution-acceptance.md](./task-v3-recurring-execution-acceptance.md) for test sequence; do not mark released before these checks.
