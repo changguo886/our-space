@@ -3,6 +3,19 @@
 Status: **Product workflow accepted; incremental implementation underway**. This document is the source of truth for Todo / Calendar / Focus / History semantics. It supersedes earlier assumptions that every Todo must be fully specified at creation. Existing architecture and production migration safety documents remain in force.
 
 
+## BATCH PER-DAY EXECUTION UI — 2026-10-12
+
+The `by_day` scope in `TodoExecutionSchedule.tsx` is a **multi-row editor**, not a dropdown that requires repeatedly saving one date at a time. Each row is one selector (`weekday:n`, `month_day:n`, or `month_end`) and independently specifies:
+- `execution_mode`: flexible, window, or fixed.
+- `planned_minutes` for flexible/window; `window_start/end` for window; `start_time/end_time` for exact fixed.
+- Optional `replaces_slot_key`: NULL = another independent slot; UUID = replaces the referenced all-dates default.
+
+The user selects several eligible date selectors, configures each, reviews a combined summary and saves all rows in one Supabase PostgREST INSERT statement. The service must validate *all* rows before the write. Do not evaluate the old single-row `mode` input when `scope=by_day`. This UI intentionally hides that irrelevant mode selector.
+
+**QA gate:** Check unique selectors, malformed hours, partial failures, month-end overlap with explicit 28/29/30/31, differences across flexible/window/fixed rows, refresh persistence, and replacement priority in Calendar. Batch insertion remains vulnerable to simultaneous duplicate requests unless DB overlap constraints/idempotency are hardened; do not claim full release before live build and tests.
+
+---
+
 ## IMPLEMENTATION HANDOFF — REPEATING EXECUTION (code committed 2026-10-12)
 
 Implementation source paths and canonical variables:
