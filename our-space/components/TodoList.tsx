@@ -911,10 +911,10 @@ export default function TodoList({
         return (
           <div
             key={todo.id}
-            className="group rounded-2xl border transition hover:brightness-[0.98]"
+            className="group rounded-2xl border shadow-sm transition hover:shadow-md"
             style={taskCardVisual(todo.category,todo.color_hex)}
           >
-            <div className="flex items-center gap-3 px-4 py-3">
+            <div className="flex items-start gap-3 px-4 py-3.5">
               <button
                 type="button"
                 onClick={() =>
@@ -949,7 +949,7 @@ export default function TodoList({
                   >
                     {todo.title}
                   </p>
-                  <span className="rounded-full bg-paper px-2 py-0.5 text-[10px] text-ink-soft">{(todo.task_type==="routine"||todo.task_type==="habit")?"习惯":todo.task_type==="recurring"?"重复":"单次"}</span>
+                  {todo.task_type&&<span className="rounded-full border border-line bg-white/70 px-2 py-0.5 text-[10px] text-ink-soft">{todo.task_type==="routine"||todo.task_type==="habit"?(language==="zh-CN"?"周期任务":"Routine"):todo.task_type==="project"?(language==="zh-CN"?"长期项目":"Project"):todo.task_type==="recurring"?(language==="zh-CN"?"重复任务":"Recurring"):(language==="zh-CN"?"单次任务":"One-time")}</span>}
 
                   {category && (
                     <span
