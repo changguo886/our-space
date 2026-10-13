@@ -78,6 +78,15 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
   const hasPastOrTodaySingle=plans.some(p=>p.plan_date<=todayISO)||sessions.some(session=>localDate(new Date(session.scheduled_start))<=todayISO);
   const autoSeriesDate=scope!=="once"&&!editingTemplateId&&date<=todayISO&&hasPastOrTodaySingle
     ? addDaysISO(todayISO,1) : date;
+  // When switching to a new repeat series, show its actual proposed start in the date field.
+  const onScopeChange=(next:"once"|"all"|"by_day")=>{
+    setScope(next);
+    if(next!=="once"&&!editingTemplateId&&date<=todayISO&&hasPastOrTodaySingle)setDate(addDaysISO(todayISO,1));
+    setSelector("all");
+    setReplaceSlotKey(next==="by_day"?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"");
+  };
+  const bookedDates=new Set([...plans.map(p=>p.plan_date),...sessions.map(x=>localDate(new Date(x.scheduled_start)))]);
+
 
   async function save(){
     setError("");
@@ -261,7 +270,7 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
       {editingTemplateId&&<p className="rounded-lg bg-sage-50 p-2 text-xs text-sage-700">正在修改已保存的重复安排。日期表示「从这天开始采用新时间」，更早的执行模板保留。<button type="button" className="ml-2 underline" onClick={()=>setEditingTemplateId(null)}>取消修改</button></p>}
       <p className="text-xs font-semibold text-ink-soft">{zh?"第一步 · 应用范围":"Step 1 · Scope"}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {([{id:"once",label:zh?"仅安排一次":"One time"},{id:"all",label:zh?"统一安排":"Uniform schedule"},{id:"by_day",label:zh?"自定义安排":"Custom schedule"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>{setScope(x.id);setSelector("all");setReplaceSlotKey(x.id==="by_day"?[...new Set(templates.filter(t=>t.selector_kind==="all").map(t=>t.slot_key))].length===1?templates.find(t=>t.selector_kind==="all")?.slot_key??"":"":"");}} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
+        {([{id:"once",label:zh?"仅安排一次":"One time"},{id:"all",label:zh?"统一安排":"Uniform schedule"},{id:"by_day",label:zh?"自定义安排":"Custom schedule"}] as const).map(x=><button key={x.id} type="button" disabled={Boolean(editingTemplateId)} aria-pressed={scope===x.id} onClick={()=>onScopeChange(x.id)} className={`rounded-lg border px-2 py-2 text-xs ${scope===x.id?"border-sage-400 bg-sage-50":"border-line"}`}>{x.label}</button>)}
       </div>
       {scope==="by_day"&&!editingTemplateId&&<div className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
         <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-ink-soft">{zh?"为不同日期设置时间":"Configure different dates"}</p><span className="text-xs text-ink-faint">{dayPresets.length} {zh?"个时段":"slots"}</span></div>
@@ -290,7 +299,8 @@ export default function TodoExecutionSchedule({todoId}:{todoId:string}){
         <p className="text-xs text-ink-faint">{zh?"每个日期支持多个时段，未来重复安排不会批量生成预约。":"Each day can have multiple slots; future bookings are expanded virtually."}</p>
       </div>}
       {scope!=="once"&&<p className="text-xs text-ink-faint">生效日期不等于执行日期。只对符合任务规则的未来日期生效，不会把不匹配的今天安排进去。</p>}
-      {scope!=="once"&&<p className="text-xs text-ink-faint">{zh?"预计生效日期：":"Effective dates: "}{preview.join("、")|| (zh?"当前选择暂无符合日期":"No matching dates")}</p>}
+      {scope!=="once"&&<p className="text-xs text-ink-faint">{zh?"后续符合日期：":"Next eligible dates: "}{preview.filter(day=>!bookedDates.has(day)).join("、")|| (zh?"暂无可安排的新日期":"No new eligible dates")}</p>}
+      {scope!=="once"&&preview.some(day=>bookedDates.has(day))&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">{zh?"注意：以下日期已有单次计划："+preview.filter(day=>bookedDates.has(day)).join("、")+"。目前数据库不会自动取消这些单次计划；保存前请确认是否保留。":"Some dates already have individual plans. Saving this rule will not remove them; review overlaps first."}</p>}
       {scope!=="by_day"&&<p className="text-xs font-semibold text-ink-soft">{zh?"第二步 · 时间方式":"Step 2 · Timing"}</p>}
       {scope!=="by_day"&&<div className="grid grid-cols-3 gap-1.5">{([{id:"flexible",label:zh?"灵活投入":"Flexible"},{id:"window",label:zh?"时间窗口":"Window"},{id:"fixed",label:zh?"固定时段":"Fixed"}] as const).map(x=><button type="button" key={x.id} onClick={()=>setMode(x.id)} aria-pressed={mode===x.id} className={`rounded-lg border px-1 py-2 text-xs ${mode===x.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{x.label}</button>)}</div>}
       {scope!=="once"&&!editingTemplateId&&autoSeriesDate!==date&&<p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{zh?`今天或之前已有单次安排；新的重复系列建议从 ${autoSeriesDate} 开始，不覆盖已有记录。未来单次计划仍需检查冲突。`:`Earlier standalone plans are protected; the new series begins ${autoSeriesDate}. Review any future bookings for conflicts.`}</p>}
