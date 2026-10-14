@@ -86,7 +86,7 @@ export default function JourneyRoadMonth({
         const done = fill ? rowPoints(week, model.start, (d) => inRange(d) && d <= fill) : [];
         const hasRoad = base.length > 0;
         return (
-          <div key={week[0]} className="relative h-[92px] border-b border-line last:border-b-0 sm:h-[124px]" style={{ background: hasRoad ? tone.tint : undefined }}>
+          <div key={week[0]} className="relative h-[100px] border-b border-line last:border-b-0 sm:h-[136px]" style={{ background: hasRoad ? tone.tint : undefined }}>
             {/* day cells */}
             <div className="absolute inset-0 grid grid-cols-7">
               {week.map((day, i) => {
@@ -149,14 +149,14 @@ export default function JourneyRoadMonth({
                     nodes.push(
                       <div key="start" className="absolute -translate-x-[22%] -translate-y-[88%]" style={{ left, top }}>
                         <img src="/journey/flag-start.svg" alt="起点" className="h-12 w-auto sm:h-16" />
-                        <span className="absolute left-[60%] top-0 hidden whitespace-nowrap rounded-xl bg-sage-50 px-2 py-1 text-[11px] font-semibold leading-tight text-sage-700 shadow-sm sm:block">起点<br /><span className="font-normal">{short(day)}</span></span>
+                        <span className="absolute left-[60%] top-[34%] hidden whitespace-nowrap rounded-xl bg-sage-50 px-2 py-1 text-[11px] font-semibold leading-tight text-sage-700 shadow-sm sm:block">起点<br /><span className="font-normal">{short(day)}</span></span>
                       </div>
                     );
                   } else if (day === model.end) {
                     nodes.push(
                       <div key="end" className="absolute -translate-x-[22%] -translate-y-[88%]" style={{ left, top }}>
                         <img src="/journey/flag-goal.svg" alt="终点" className="h-12 w-auto sm:h-16" />
-                        <span className="absolute right-[70%] top-0 hidden whitespace-nowrap rounded-xl bg-blush-50 px-2 py-1 text-[11px] font-semibold leading-tight text-[#B5675D] shadow-sm sm:block">{model.target && model.target !== model.end ? "截止" : "目标"}<br /><span className="font-normal">{short(day)}</span></span>
+                        <span className="absolute right-[70%] top-[34%] hidden whitespace-nowrap rounded-xl bg-blush-50 px-2 py-1 text-[11px] font-semibold leading-tight text-[#B5675D] shadow-sm sm:block">{model.target && model.target !== model.end ? "截止" : "目标"}<br /><span className="font-normal">{short(day)}</span></span>
                       </div>
                     );
                   } else if (milestone) {
@@ -180,7 +180,12 @@ export default function JourneyRoadMonth({
                   }
                   if (day === catDay) {
                     nodes.push(
-                      <img key="cat" src={catSrc} alt="旅程小猫" className={`absolute h-[78%] w-auto -translate-x-1/2 -translate-y-[78%] ${catAnimation}`} style={{ left, top }} />
+                      // The wrapper does the positioning (feet on the road); the image only animates,
+                      // so the bob/hop keyframes cannot override the translate.
+                      <div key="cat" className="pointer-events-none absolute z-10 h-[60%] -translate-x-1/2 -translate-y-[90%]"
+                        style={{ left: day === model.start || day === model.end ? `${(i + (day === model.end ? 0.28 : 0.72)) / 7 * 100}%` : left, top }}>
+                        <img src={catSrc} alt="旅程小猫" className={`h-full w-auto max-w-none ${catAnimation}`} />
+                      </div>
                     );
                   }
                   return <div key={"m" + day}>{nodes}</div>;
