@@ -6,8 +6,8 @@ import { addDays, dayDiff, monthWeeks, pick, type JourneyModel } from "@/lib/gro
 /* eslint-disable @next/next/no-img-element */
 
 const ROW_VB = 100; // SVG viewBox height for one week row
-const ROAD_Y = 70; // road baseline inside a row (0–100)
-const WAVE = 7;
+const ROAD_Y = 76; // road baseline inside a row (0–100)
+const WAVE = 5;
 
 type Season = { far: string; near: string; tint: string };
 function season(month: number): Season {
@@ -73,8 +73,32 @@ export default function JourneyRoadMonth({
   const planned = new Set(model.plannedDays);
   const fill = model.fillDay;
 
+  const slash = (day: string) => `${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))}`;
+  const milestonesDone = model.milestones.filter((m) => m.done).length;
+  const endLabel = model.target && model.target !== model.end ? "截止" : "目标";
+  // Horizontal position inside a cell (0–1). When the cat shares a day with a flag or star,
+  // they stand side by side instead of on top of each other.
+  const markerAt = (day: string) => (day === catDay ? (day === model.end ? 0.68 : 0.3) : 0.5);
+  const catAt = (day: string) => {
+    const shared = day === model.start || day === model.end || milestoneByDay.has(day) || day === model.target;
+    if (!shared) return 0.5;
+    return day === model.end ? 0.3 : 0.7;
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-white">
+      {/* One-line summary replaces the labels that used to sit inside the cells. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line bg-paper/40 px-3 py-2 text-xs text-ink-soft sm:px-4">
+        <span className="inline-flex items-center gap-1"><img src="/journey/flag-start.svg" alt="" className="h-4 w-auto" />起点 {slash(model.start)}</span>
+        {model.milestones.length > 0 && (
+          <span className="inline-flex items-center gap-1"><img src="/journey/milestone-star.svg" alt="" className="h-3.5 w-3.5" />阶段目标 {milestonesDone}/{model.milestones.length}</span>
+        )}
+        {model.target && model.target !== model.end && (
+          <span className="inline-flex items-center gap-1"><img src="/journey/milestone-star-pending.svg" alt="" className="h-3.5 w-3.5" />目标 {slash(model.target)}</span>
+        )}
+        <span className="inline-flex items-center gap-1"><img src="/journey/flag-goal.svg" alt="" className="h-4 w-auto" />{endLabel} {slash(model.end)}</span>
+      </div>
+
       <div className="grid grid-cols-7 border-b border-line text-center text-xs text-ink-soft">
         {["周一", "周二", "周三", "周四", "周五", "周六", "周日"].map((w, i) => (
           <div key={w} className={`py-2 ${i >= 5 ? "bg-blush-50/60" : ""}`}>{w}</div>
@@ -85,21 +109,25 @@ export default function JourneyRoadMonth({
         const base = rowPoints(week, model.start, inRange);
         const done = fill ? rowPoints(week, model.start, (d) => inRange(d) && d <= fill) : [];
         const hasRoad = base.length > 0;
+        // Weeks the journey does not touch stay compact, so the space goes to the road.
         return (
-          <div key={week[0]} className="relative h-[100px] border-b border-line last:border-b-0 sm:h-[136px]" style={{ background: hasRoad ? tone.tint : undefined }}>
-            {/* day cells */}
+          <div key={week[0]} className={`relative border-b border-line last:border-b-0 ${hasRoad ? "h-[128px] sm:h-[176px]" : "h-[44px] sm:h-[60px]"}`} style={{ background: hasRoad ? tone.tint : undefined }}>
+            {/* day cells: the top strip holds only the date */}
             <div className="absolute inset-0 grid grid-cols-7">
               {week.map((day, i) => {
                 const other = day.slice(0, 7) !== month;
                 const isToday = day === today;
                 return (
                   <div key={day} className={`relative border-r border-line/70 last:border-r-0 ${i >= 5 ? "bg-blush-50/25" : ""}`}>
-                    <span className={`absolute left-1.5 top-1 text-[11px] sm:left-2.5 sm:top-1.5 sm:text-sm ${other ? "text-ink-faint/60" : i >= 5 ? "text-[#C48479]" : "text-ink"} ${isToday ? "font-semibold" : ""}`}>
+                    <span
+                      aria-current={isToday ? "date" : undefined}
+                      title={isToday ? "今天" : undefined}
+                      className={`absolute left-1 top-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] sm:left-2 sm:top-1.5 sm:h-7 sm:min-w-7 sm:text-sm ${
+                        isToday ? "bg-mist-500 font-semibold text-white" : other ? "text-ink-faint/60" : i >= 5 ? "text-[#C48479]" : "text-ink"
+                      }`}
+                    >
                       {other ? short(day) : Number(day.slice(8, 10))}
                     </span>
-                    {isToday && (
-                      <span className="absolute right-1 top-1 rounded-full bg-mist-500 px-1.5 py-0.5 text-[10px] font-semibold text-white sm:right-2 sm:top-1.5 sm:px-2.5 sm:text-xs">今天</span>
-                    )}
                   </div>
                 );
               })}
@@ -108,21 +136,22 @@ export default function JourneyRoadMonth({
             {hasRoad && (
               <>
                 {/* meadow */}
-                <svg className="pointer-events-none absolute inset-x-0 bottom-0 h-[58%] w-full" viewBox="0 0 700 60" preserveAspectRatio="none" aria-hidden>
+                <svg className="pointer-events-none absolute inset-x-0 bottom-0 h-[46%] w-full" viewBox="0 0 700 60" preserveAspectRatio="none" aria-hidden>
                   <path d="M0 22 C120 8 220 30 350 18 C480 6 580 26 700 14 L700 60 L0 60 Z" fill={tone.far} />
                   <path d="M0 40 C140 28 260 46 400 36 C540 26 620 42 700 34 L700 60 L0 60 Z" fill={tone.near} />
                 </svg>
 
-                {/* scenery above the road, only on journey days */}
+                {/* scenery: middle band only, never on or next to a day with a marker or the cat */}
                 {week.map((day, i) => {
-                  if (!inRange(day) || day === catDay || milestoneByDay.has(day) || day === model.start || day === model.end) return null;
+                  const busy = (d: string) => d === catDay || milestoneByDay.has(d) || d === model.start || d === model.end || d === model.target;
+                  if (!inRange(day) || busy(day) || busy(addDays(day, -1)) || busy(addDays(day, 1))) return null;
                   const item = pick(day + projectId, SCENERY);
                   if (!item) return null;
                   const tall = item.startsWith("tree");
                   return (
                     <img key={"s" + day} src={`/journey/${item}.svg`} alt="" aria-hidden
-                      className={`pointer-events-none absolute ${tall ? "h-[44%]" : "h-[18%]"} w-auto`}
-                      style={{ left: `calc(${(i + 0.62) / 7 * 100}% )`, bottom: tall ? "36%" : "40%" }} />
+                      className={`pointer-events-none absolute ${tall ? "h-[32%]" : "h-[14%]"} w-auto`}
+                      style={{ left: `${(i + 0.55) / 7 * 100}%`, bottom: "32%" }} />
                   );
                 })}
 
@@ -135,45 +164,37 @@ export default function JourneyRoadMonth({
                   )}
                 </svg>
 
-                {/* markers */}
+                {/* road layer: flags, stars, waypoints and the cat (labels on hover) */}
                 {week.map((day, i) => {
                   if (!inRange(day)) return null;
-                  const left = `${(i + 0.5) / 7 * 100}%`;
+                  const at = (fraction: number) => `${(i + fraction) / 7 * 100}%`;
+                  const left = at(markerAt(day));
                   const top = `${y(day, model.start)}%`;
                   const milestone = milestoneByDay.get(day);
                   const nodes: ReactNode[] = [];
                   if (flowers.has(day)) {
-                    nodes.push(<img key="f" src="/journey/flowers.svg" alt="" title="这天完成了步骤" className="absolute bottom-[4%] h-[20%] w-auto -translate-x-1/2" style={{ left }} />);
+                    nodes.push(<img key="f" src="/journey/flowers.svg" alt="" title="这天完成了步骤" className="absolute bottom-[3%] h-[16%] w-auto -translate-x-1/2" style={{ left: at(0.5) }} />);
                   }
                   if (day === model.start) {
                     nodes.push(
-                      <div key="start" className="absolute -translate-x-[22%] -translate-y-[88%]" style={{ left, top }}>
-                        <img src="/journey/flag-start.svg" alt="起点" className="h-12 w-auto sm:h-16" />
-                        <span className="absolute left-[60%] top-[34%] hidden whitespace-nowrap rounded-xl bg-sage-50 px-2 py-1 text-[11px] font-semibold leading-tight text-sage-700 shadow-sm sm:block">起点<br /><span className="font-normal">{short(day)}</span></span>
-                      </div>
+                      <img key="start" src="/journey/flag-start.svg" alt={`起点 ${short(day)}`} title={`起点 · ${short(day)}`}
+                        className="absolute h-[38%] w-auto -translate-x-[30%] -translate-y-[90%]" style={{ left, top }} />
                     );
                   } else if (day === model.end) {
                     nodes.push(
-                      <div key="end" className="absolute -translate-x-[22%] -translate-y-[88%]" style={{ left, top }}>
-                        <img src="/journey/flag-goal.svg" alt="终点" className="h-12 w-auto sm:h-16" />
-                        <span className="absolute right-[70%] top-[34%] hidden whitespace-nowrap rounded-xl bg-blush-50 px-2 py-1 text-[11px] font-semibold leading-tight text-[#B5675D] shadow-sm sm:block">{model.target && model.target !== model.end ? "截止" : "目标"}<br /><span className="font-normal">{short(day)}</span></span>
-                      </div>
+                      <img key="end" src="/journey/flag-goal.svg" alt={`${endLabel} ${short(day)}`} title={`${endLabel} · ${short(day)}`}
+                        className="absolute h-[38%] w-auto -translate-x-[30%] -translate-y-[90%]" style={{ left, top }} />
                     );
                   } else if (milestone) {
                     nodes.push(
-                      <div key="m" className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left, top }}>
-                        <img src={milestone.done ? "/journey/milestone-star.svg" : "/journey/milestone-star-pending.svg"} alt={milestone.done ? "已达成的阶段目标" : "阶段目标"} className="h-6 w-6 sm:h-8 sm:w-8" />
-                        <span className="absolute bottom-full left-1/2 mb-1 hidden max-w-[120px] -translate-x-1/2 truncate whitespace-nowrap rounded-xl bg-[#FBF3DE] px-2 py-1 text-[11px] font-semibold text-[#7A6236] shadow-sm sm:block" title={milestone.title}>
-                          {milestone.title}<span className="block text-[10px] font-normal">（阶段目标）</span>
-                        </span>
-                      </div>
+                      <img key="m" src={milestone.done ? "/journey/milestone-star.svg" : "/journey/milestone-star-pending.svg"}
+                        alt={`阶段目标：${milestone.title}`} title={`${milestone.done ? "已达成" : "阶段目标"} · ${milestone.title} · ${short(day)}`}
+                        className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 sm:h-8 sm:w-8" style={{ left, top }} />
                     );
                   } else if (model.target && day === model.target) {
                     nodes.push(
-                      <div key="t" className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left, top }}>
-                        <img src="/journey/milestone-star-pending.svg" alt="目标完成日" className="h-6 w-6 sm:h-8 sm:w-8" />
-                        <span className="absolute bottom-full left-1/2 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-xl bg-blush-50 px-2 py-1 text-[11px] font-semibold text-[#B5675D] shadow-sm sm:block">目标 {short(day)}</span>
-                      </div>
+                      <img key="t" src="/journey/milestone-star-pending.svg" alt={`目标完成日 ${short(day)}`} title={`目标完成日 · ${short(day)}`}
+                        className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 sm:h-8 sm:w-8" style={{ left, top }} />
                     );
                   } else if (planned.has(day) && day !== catDay) {
                     nodes.push(<img key="w" src="/journey/waypoint.svg" alt="" title="这天有执行安排" className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 sm:h-5 sm:w-5" style={{ left, top }} />);
@@ -182,8 +203,7 @@ export default function JourneyRoadMonth({
                     nodes.push(
                       // The wrapper does the positioning (feet on the road); the image only animates,
                       // so the bob/hop keyframes cannot override the translate.
-                      <div key="cat" className="pointer-events-none absolute z-10 h-[60%] -translate-x-1/2 -translate-y-[90%]"
-                        style={{ left: day === model.start || day === model.end ? `${(i + (day === model.end ? 0.28 : 0.72)) / 7 * 100}%` : left, top }}>
+                      <div key="cat" className="pointer-events-none absolute z-10 h-[50%] -translate-x-1/2 -translate-y-[90%]" style={{ left: at(catAt(day)), top }}>
                         <img src={catSrc} alt="旅程小猫" className={`h-full w-auto max-w-none ${catAnimation}`} />
                       </div>
                     );
