@@ -22,9 +22,11 @@ type SessionRow = {
   id: string; mode: Mode | null; plan_date: string | null; scheduled_start: string | null; scheduled_end: string | null;
   planned_minutes: number | null; window_start: string | null; window_end: string | null;
   reminder_minutes_before: number | null;
+  subtask_id: string | null;
 };
 /** reminder: "" = none, otherwise minutes before start. Shared with Calendar via todo_sessions.reminder_minutes_before. */
-type Draft = { day: string; mode: Mode; start: string; end: string; minutes: string; reminder?: string };
+type Draft = { day: string; mode: Mode; start: string; end: string; minutes: string; reminder?: string; step?: string };
+type StepOption = { id: string; title: string; completed: boolean };
 
 // Same choices as the Calendar reminder menu; only fixed slots have a start time to remind at.
 const REMINDER_CHOICES: { value: string; zh: string; en: string }[] = [
@@ -85,7 +87,7 @@ function draftError(d: Draft, zh: boolean): string {
   return "";
 }
 
-function DraftFields({ draft, setDraft, zh, showDate = true, showReminder = false }: { draft: Draft; setDraft: (d: Draft) => void; zh: boolean; showDate?: boolean; showReminder?: boolean }) {
+function DraftFields({ draft, setDraft, zh, showDate = true, showReminder = false, steps = [] }: { draft: Draft; setDraft: (d: Draft) => void; zh: boolean; showDate?: boolean; showReminder?: boolean; steps?: StepOption[] }) {
   return <div className="space-y-3">
     {showDate && <label className="block text-xs text-ink-soft">{zh ? "哪天" : "Date"}<AppDatePicker value={draft.day} onChange={(v) => setDraft({ ...draft, day: v })} /></label>}
     <ModePicker value={draft.mode} onChange={(m) => setDraft({ ...draft, mode: m })} zh={zh} />
@@ -95,6 +97,12 @@ function DraftFields({ draft, setDraft, zh, showDate = true, showReminder = fals
     </div>}
     {draft.mode !== "fixed" && <div className="text-xs text-ink-soft">{zh ? "大概多久" : "About how long"}
       <MinutesField value={draft.minutes} onChange={(minutes) => setDraft({ ...draft, minutes })} zh={zh} label={zh ? "大概多久" : "About how long"} /></div>}
+    {steps.length > 0 && <label className="block text-xs text-ink-soft">{zh ? "这段时间做哪个步骤（可选）" : "Step for this plan (optional)"}
+      <select className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink" value={draft.step ?? ""} onChange={(e) => setDraft({ ...draft, step: e.target.value })}>
+        <option value="">{zh ? "不指定" : "None"}</option>
+        {steps.map((st) => <option key={st.id} value={st.id}>{st.completed ? "✓ " : ""}{st.title}</option>)}
+      </select>
+      <span className="mt-1 block text-[11px] text-ink-faint">{zh ? "指定后，这一天会成为成长旅程上的阶段目标。" : "This day becomes a milestone on the Growth Journey."}</span></label>}
     {showReminder && draft.mode === "fixed" && <label className="block text-xs text-ink-soft">{zh ? "提醒我" : "Remind me"}
       <select className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink" value={draft.reminder ?? ""} onChange={(e) => setDraft({ ...draft, reminder: e.target.value })}>
         {REMINDER_CHOICES.map((c) => <option key={c.value} value={c.value}>{zh ? c.zh : c.en}</option>)}
@@ -140,11 +148,13 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   /** True once v4_11 is applied: every template save then carries one explicit batch_id. */
   const [batchColumn, setBatchColumn] = useState(false);
   const [reminders, setReminders] = useState<Record<string, number | null>>({});
+  const [stepOf, setStepOf] = useState<Record<string, string | null>>({});
+  const [steps, setSteps] = useState<StepOption[]>([]);
 
   async function refresh() {
     const db = createClient();
     const [s, h, t, td] = await Promise.all([
-      db.from("todo_sessions").select("id,mode,plan_date,scheduled_start,scheduled_end,planned_minutes,window_start,window_end,reminder_minutes_before").eq("todo_id", todoId),
+      db.from("todo_sessions").select("id,mode,plan_date,scheduled_start,scheduled_end,planned_minutes,window_start,window_end,reminder_minutes_before,subtask_id").eq("todo_id", todoId),
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end").eq("todo_id", todoId).maybeSingle(),
       db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end,replaces_slot_key,batch_id").eq("todo_id", todoId),
       db.from("todos").select("task_date,plan_start_date,target_finish_date").eq("id", todoId).single(),
@@ -154,8 +164,11 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
       const sessionRows = (s.data ?? []) as SessionRow[];
       setRows(sessionRows.map(toItem).filter((x): x is DatedItem => x !== null));
       setReminders(Object.fromEntries(sessionRows.map((r) => [r.id, r.reminder_minutes_before])));
+      setStepOf(Object.fromEntries(sessionRows.map((r) => [r.id, r.subtask_id])));
     }
     if (!h.error) setPattern(h.data as HabitPatternV3 | null);
+    const st = await db.from("todo_subtasks").select("id,title,completed").eq("todo_id", todoId).order("sort_order");
+    if (!st.error) setSteps((st.data ?? []) as StepOption[]);
     if (!t.error) { setTemplates((t.data ?? []) as ExecutionTemplateV3[]); setBatchColumn(true); }
     else if (t.error.code === "42703") {
       // batch_id column not there yet (v4_11 not applied): read without it, group by slot_key.
@@ -219,7 +232,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     if (fixedOverlap(candidate, rows)) { setError(zh ? "和这天的另一个固定时段重叠了。" : "Overlaps another fixed slot that day."); return; }
     if (sameNonFixed(candidate, rows) && !window.confirm(zh ? "这天已经有一条相同的安排。仍然再加一条吗？" : "That day already has an identical plan. Add another one?")) return;
     void run(
-      () => insertOnce("todo_sessions", [{ todo_id: todoId, ...sessionColumns(candidate, draftReminder(draft)) }]),
+      () => insertOnce("todo_sessions", [{ todo_id: todoId, ...sessionColumns(candidate, draftReminder(draft)), subtask_id: draft.step || null }]),
       () => { setPanel(null); setFollowUp({ id: "new", ...candidate }); });
   }
 
@@ -227,7 +240,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
   function openEdit(item: DatedItem) {
     if (!isEditable(item.day, todayISO)) return;
     const stored = reminders[item.id];
-    setDraft({ day: item.day, mode: item.mode, start: item.start || "19:00", end: item.end || "20:00", minutes: String(item.minutes || 45), reminder: stored === null || stored === undefined ? "" : String(stored) });
+    setDraft({ day: item.day, mode: item.mode, start: item.start || "19:00", end: item.end || "20:00", minutes: String(item.minutes || 45), reminder: stored === null || stored === undefined ? "" : String(stored), step: stepOf[item.id] ?? "" });
     setPanel({ kind: "edit", item });
   }
   function saveEdit(item: DatedItem) {
@@ -240,7 +253,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     if (fixedOverlap(next, others)) { setError(zh ? "和这天的另一个固定时段重叠了。" : "Overlaps another fixed slot that day."); return; }
     if (sameNonFixed(next, others) && !window.confirm(zh ? "这天已经有一条相同的安排。仍然再加一条吗？" : "That day already has an identical plan. Add another one?")) return;
     void run(async () => {
-      const r = await createClient().from("todo_sessions").update(sessionColumns(next, draftReminder(draft))).eq("id", item.id).eq("todo_id", todoId);
+      const r = await createClient().from("todo_sessions").update({ ...sessionColumns(next, draftReminder(draft)), subtask_id: draft.step || null }).eq("id", item.id).eq("todo_id", todoId);
       return r.error?.message ?? "";
     }, () => setPanel(null));
   }
@@ -501,7 +514,7 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
         {multi && item.mode === "fixed" && <input type="checkbox" aria-label={zh ? "选择这条安排" : "Select plan"} checked={picked.includes(item.id)} onChange={(e) => setPicked((ids) => e.target.checked ? [...ids, item.id] : ids.filter((x) => x !== item.id))} />}
         {dayChip(item.day)}
         <ModeIcon mode={item.mode} zh={zh} />
-        <span className="min-w-0 flex-1 truncate text-sm text-ink">{describeTiming(item.mode, item.start, item.end, item.minutes, zh)}{item.mode === "fixed" && reminderLabel(reminders[item.id], zh) && <span className="ml-1.5 text-xs text-ink-faint">· 🔔 {reminderLabel(reminders[item.id], zh)}</span>}</span>
+        <span className="min-w-0 flex-1 truncate text-sm text-ink">{describeTiming(item.mode, item.start, item.end, item.minutes, zh)}{item.mode === "fixed" && reminderLabel(reminders[item.id], zh) && <span className="ml-1.5 text-xs text-ink-faint">· 🔔 {reminderLabel(reminders[item.id], zh)}</span>}{stepOf[item.id] && steps.find((st) => st.id === stepOf[item.id]) && <span className="ml-1.5 text-xs text-ink-faint">· ⭐ {steps.find((st) => st.id === stepOf[item.id])!.title}</span>}</span>
         {!multi && <RowMenu zh={zh} items={[
           { label: zh ? "修改" : "Edit", onClick: () => openEdit(item) },
           { label: zh ? "复制到其他日子…" : "Copy to other days…", onClick: () => openCopy(item) },
@@ -548,13 +561,13 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     </div>}
 
     {panel?.kind === "compose" && !pattern && <div className="mt-4 space-y-3 border-t border-line pt-4">
-      <DraftFields draft={draft} setDraft={setDraft} zh={zh} showReminder />
+      <DraftFields draft={draft} setDraft={setDraft} zh={zh} showReminder steps={steps} />
       <button type="button" disabled={busy} className="btn-primary w-full" onClick={saveOnce}>{busy ? (zh ? "保存中…" : "Saving…") : (zh ? "保存" : "Save")}</button>
     </div>}
 
     {panel?.kind === "edit" && <div className="mt-4 space-y-3 border-t border-line pt-4">
       <p className="text-sm font-semibold text-ink">{zh ? `修改 ${formatDay(panel.item.day, true)} 的安排` : `Edit ${formatDay(panel.item.day, false)}`}</p>
-      <DraftFields draft={draft} setDraft={setDraft} zh={zh} showReminder />
+      <DraftFields draft={draft} setDraft={setDraft} zh={zh} showReminder steps={steps} />
       <div className="flex gap-2">
         <button type="button" className="flex-1 rounded-lg border border-line py-2.5 text-sm" onClick={close}>{zh ? "取消" : "Cancel"}</button>
         <button type="button" disabled={busy} className="btn-primary flex-[2]" onClick={() => saveEdit(panel.item)}>{zh ? "保存修改" : "Save"}</button>
