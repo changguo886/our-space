@@ -42,5 +42,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)"],
+  // Static illustrations and sounds in /public do not need a session check.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt|.*\\.(?:png|svg|webp|jpg|jpeg|gif|mp3)$).*)"],
 };
