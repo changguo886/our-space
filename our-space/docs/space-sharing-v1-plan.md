@@ -45,11 +45,11 @@
 | 编号 | 内容 | 难度 | 状态 |
 |---|---|---|---|
 | A1 | 自己的 Today / Todo / Calendar / History 不再按当前 Space 过滤 | 轻 | ✅ 已完成（分支 `fix/own-tasks-all-spaces`） |
-| A2 | 确认生产环境 RLS | 轻 | ✅ SELECT 已确认；INSERT 的 `with_check` 待确认 |
+| A2 | 确认生产环境 RLS | 轻 | ✅ 已确认：`todos_select` 允许成员读整行（A2b 修复）；三张表的 INSERT 均校验所有者，`todos_insert` 还校验 Space 成员身份 |
 | A2b | `todos_select` 收紧为 owner-only（`supabase/space_sharing_v1_00_tighten_todos_select.sql`） | 轻 | 待在生产运行 |
-| A3 | `save_task_v4` 写入 Space 前校验 `is_group_member()`，不是成员则报错 | 轻 | 待做（与 B5 合并发布） |
+| A3 | Space 成员身份校验 | 轻 | ✅ 不需要改 `save_task_v4`：它是 SECURITY INVOKER，`todos_insert` 已校验成员身份；新的分享写入走 `set_task_sharing` 和 `todo_space_shares` 的 RLS，同样校验 |
 
-### P1 — 数据层（一次迁移完成）
+### P1 — 数据层（`supabase/space_sharing_v1_01.sql`，✅ 已写好并通过本地测试，待在生产运行）
 
 | 编号 | 内容 | 难度 |
 |---|---|---|
@@ -57,7 +57,7 @@
 | B2 | `todos` 增加 `share_description boolean not null default true`、`share_progress boolean not null default false` | 轻 |
 | B3 | `group_members` 删除后触发器：删除该用户在该 Space 的 `todo_space_shares` 行 | 轻 |
 | B4 | 朋友端读取函数 `get_space_shared_tasks(p_group_id uuid, p_date date)`，`security definer`：先校验 `is_group_member(p_group_id)`；只返回分享到该 Space 的任务；返回标题、类型、日期、周期规则、作者；`share_description=false` 时描述返回 null；`share_progress=true` 时才返回当天完成状态和专注分钟数。权限 `revoke from public, anon; grant to authenticated` | 中 |
-| B5 | `save_task_v4` 接受 `space_ids uuid[]`、`share_description`、`share_progress`，在同一事务中重写 `todo_space_shares`；包含 A3 的成员校验 | 中 |
+| B5 | 独立函数 `set_task_sharing(todo_id, group_ids[], share_description, share_progress)`：整组替换分享范围并更新两个开关，非成员 Space 报错。保存任务后由界面再调用一次；如果这一步失败，任务保持私密（安全的默认）。不改动 `save_task_v4`，降低风险 | 中 |
 
 ### P1 — 界面
 
@@ -86,8 +86,8 @@
 
 ## 5. 推荐执行顺序
 
-1. 合并 A1，跑一次 A2 只读查询。
-2. 一个迁移文件完成 B1–B5 + A3（`supabase/space_sharing_v1.sql`），附带测试 `supabase/tests/14_space_sharing_test.sql`。
+1. 合并 A1；在生产依次运行 `space_sharing_v1_00_tighten_todos_select.sql`、`space_sharing_v1_01.sql`。
+2. 测试：`supabase/tests/14_space_sharing_test.sql`（覆盖第 6 节验收用例 1–7，已通过）。
 3. C1 + C2（创建和编辑同一个组件）。
 4. C3 + C4。
 5. 之后再评估 D 和 E。
