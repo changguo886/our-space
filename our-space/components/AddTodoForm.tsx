@@ -1,14 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
+import AppDatePicker from "@/components/ui/AppDatePicker";
+import TaskColorPicker from "@/components/ui/TaskColorPicker";
+import { DEFAULT_TASK_COLOR, LEGACY_JOURNEY_COLORS, categoryBadgeVisual,taskCardVisual } from "@/lib/task-colors";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
-import { CalendarDays, Clock3 } from "lucide-react";
-import DurationInput, {
-  durationValueToMinutes,
-  type DurationUnit,
-} from "@/components/DurationInput";
+
 
 function formatWorkDate(value: string, chinese: boolean): string {
   const day = value.slice(0,10);
@@ -43,13 +42,14 @@ export default function AddTodoForm({
   activeSpaceId,
   activeSpaceName,
   taskDate,
+  onCreated,
 }: {
   userId: string;
   activeSpaceId: string;
   activeSpaceName: string;
   taskDate: string;
+  onCreated?: (createdId:string, planNow:boolean) => void;
 }) {
-  const workDateRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { dictionary } = useI18n();
   const t = dictionary.todo;
@@ -62,16 +62,9 @@ export default function AddTodoForm({
     setDescription,
   ] = useState("");
 
-  const [minutes, setMinutes] =
-    useState("");
 
-  const [
-    durationUnit,
-    setDurationUnit,
-  ] =
-    useState<DurationUnit>(
-      "minute"
-    );
+
+
 
   const [
     category,
@@ -94,18 +87,29 @@ export default function AddTodoForm({
       "private" | "space"
     >("private");
 
-  const [planMode,setPlanMode]=useState<"flexible"|"fixed"|"recurring">("flexible");
+  const [taskType,setTaskType]=useState<"one_time"|"planned"|"habit">("one_time");
+
   const [cadence,setCadence]=useState<"daily"|"weekly_days"|"weekly_quota">("daily");
   const [weekdays,setWeekdays]=useState<number[]>([]);
+  const [habitArrangement,setHabitArrangement]=useState<"flexible"|"fixed">("flexible");
+  const [monthDays,setMonthDays]=useState<number[]>([]);
+  const [includeMonthEnd,setIncludeMonthEnd]=useState(false);
   const [timesPerWeek,setTimesPerWeek]=useState(3);
-  const [repeatEnd,setRepeatEnd]=useState("");
-  const [sessionStart,setSessionStart]=useState("");
-  const [sessionEnd,setSessionEnd]=useState("");
-  const [crossDay,setCrossDay]=useState(false);
-  const [longTerm, setLongTerm] = useState(false);
-  const [startDate, setStartDate] = useState(taskDate);
-  const [endDate, setEndDate] = useState(taskDate);
 
+
+
+  const [taskColor, setTaskColor] = useState(DEFAULT_TASK_COLOR);
+  const [goalPeriod, setGoalPeriod] = useState<"day" | "week" | "month">("week");
+  const [goalValue, setGoalValue] = useState("4");
+  const [startDate, setStartDate] = useState(taskDate);
+  const [targetFinish, setTargetFinish] = useState("");
+  const [officialDeadline, setOfficialDeadline] = useState("");
+
+
+  const [dayChoice,setDayChoice]=useState<"today"|"pick"|"none">("today");
+  const [pickedDay,setPickedDay]=useState(taskDate);
+  const [dateNotice,setDateNotice]=useState<null|{id:string;planNow:boolean}>(null);
+  const [partial,setPartial]=useState<null|{id:string;planNow:boolean;extras:{color:string|null;journey:Record<string,unknown>|null};message:string}>(null);
   const [busy, setBusy] =
     useState(false);
 
@@ -121,6 +125,9 @@ export default function AddTodoForm({
     e: React.FormEvent
   ) {
     e.preventDefault();
+    if (partial) return;
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+    const planNow = submitter?.dataset.plan === "1";
 
     const cleanTitle =
       title.trim();
@@ -132,436 +139,240 @@ export default function AddTodoForm({
       return;
     }
 
-    const parsedMinutes =
-      durationValueToMinutes(
-        minutes,
-        durationUnit
-      );
+    const parsedMinutes = null;
 
-    if (
-      parsedMinutes !== null &&
-      Number.isNaN(
-        parsedMinutes
-      )
-    ) {
-      setError(
-        t.invalidDuration
-      );
+    if (taskType==="habit") {
+      if (cadence==="weekly_days" && weekdays.length===0) {
+        setError(zh?"请至少选择一个星期。":"Select at least one weekday."); return;
+      }
+      if (goalPeriod==="week" && cadence==="weekly_quota" && (!Number.isInteger(Number(goalValue)) || Number(goalValue)<1 || Number(goalValue)>7)) {setError(zh?"目前每周灵活次数支持 1–7 次。":"Weekly flexible goals currently support 1–7 occurrences.");return;}
+      if (goalPeriod==="month" && habitArrangement==="fixed" && monthDays.length===0 && !includeMonthEnd){setError(zh?"请至少选择一个月度日期或每月最后一天。":"Select at least one monthly date or month-end.");return;}
+      const fixedFrequency=(goalPeriod==="week"&&cadence==="weekly_days")||(goalPeriod==="month"&&habitArrangement==="fixed");
+      if(!fixedFrequency&&(!Number.isSafeInteger(Number(goalValue))||Number(goalValue)<1||Number(goalValue)>10000)){setError(zh?"请输入有效的执行次数（1–10000）。":"Enter a valid occurrence count (1–10000).");return;}
+    }
+    if (taskType==="planned" && (!targetFinish || targetFinish<startDate || (officialDeadline && officialDeadline<targetFinish))) {
+      setError(zh?"目标完成日期不能早于开始日期；正式截止日期目前不能早于目标日期。":"Target finish cannot precede start; the official deadline currently cannot precede target finish.");
       return;
     }
 
-    if(planMode==="fixed"){
-      const from=new Date(sessionStart).getTime(),to=new Date(sessionEnd).getTime();
-      if(!sessionStart||!sessionEnd||!Number.isFinite(from)||!Number.isFinite(to)||to<=from){
-        setError(dictionary.common?.minutes==="分钟"?"请选择有效的开始与结束时间。":"Choose a valid start and end time.");return;
-      }
-    }
-    if (planMode==="recurring") {
-      if (cadence==="weekly_days" && weekdays.length===0) {
-        setError("请选择至少一天 / Select at least one weekday"); return;
-      }
-      if (repeatEnd && repeatEnd < taskDate) {
-        setError("重复结束日期不能早于开始日期 / Invalid repeat end date"); return;
-      }
-    }
-    if (longTerm && endDate < startDate) { setError("结束日期不能早于开始日期 / End date must be after start date"); return; }
     setBusy(true);
     setError(null);
 
     const supabase =
       createClient();
 
-    let created: { id: string } | null = null;
-    let createError: { message: string } | null = null;
-    if (planMode === "recurring") {
-      const { data, error: rpcError } = await supabase.rpc("create_recurring_todo", {
-        p_title: cleanTitle,
-        p_description: description.trim() || null,
-        p_estimated_minutes: parsedMinutes,
-        p_task_date: taskDate,
-        p_category: category,
-        p_custom_tag: customTag.trim() || null,
-        p_group_id: visibility === "space" ? activeSpaceId : null,
-        p_cadence: cadence,
-        p_weekdays: cadence === "weekly_days" ? weekdays : [],
-        p_times_per_week: cadence === "weekly_quota" ? timesPerWeek : null,
-        p_ends_on: repeatEnd || null,
-        p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      });
-      createError = rpcError;
-      if (!rpcError && data) created = { id: data as string };
-    } else {
-      const { data, error } = await supabase.from("todos").insert({
-        user_id: userId,
-        group_id: visibility === "space" ? activeSpaceId : null,
+    const fixedWeek = taskType==="habit" && goalPeriod==="week" && cadence==="weekly_days";
+    const fixedMonth = taskType==="habit" && goalPeriod==="month" && habitArrangement==="fixed";
+    const target = fixedWeek ? weekdays.length : fixedMonth ? monthDays.length+(includeMonthEnd?1:0) : Number(goalValue);
+    // V4 semantic types; the compatibility RPC maps these to V3 storage while
+    // legacy Calendar / Focus clients are still using the old schema.
+    const { data: savedId, error: saveError } = await supabase.rpc("save_task_v4", {
+      payload: {
+        task_type: taskType==="planned" ? "project" : taskType==="habit" ? "routine" : "one_time",
         title: cleanTitle,
-        description: description.trim() || null,
+        description: description.trim()||null,
         estimated_minutes: parsedMinutes,
-        task_date: taskDate,
+        task_date: taskType==="one_time" ? (dayChoice==="none" ? null : dayChoice==="pick" ? pickedDay : taskDate) : taskDate,
         category,
-        custom_tag: customTag.trim() || null,
-      }).select("id").single();
-      created = data;
-      createError = error;
-    }
-    const error = createError;
-
-    if (!error && created && planMode === "fixed") {
-      const { error: sessionError } = await supabase.from("todo_sessions").insert({
-        todo_id: created.id,
-        scheduled_start: new Date(sessionStart).toISOString(),
-        scheduled_end: new Date(sessionEnd).toISOString(),
-      });
-      if (sessionError) {
-        setError("任务已创建，但时间安排未保存 / Task created but schedule failed: " + sessionError.message);
-        setBusy(false);
-        router.refresh();
-        return;
-      }
-    }
-
-    if (!error && created && longTerm) {
-      const { error: journeyError } = await supabase.from("goal_journeys").insert({todo_id:created.id,start_date:startDate,target_date:endDate,animal_type:"cat",journey_type:"swim"});
-      if (journeyError) { setError("任务已创建，但成长旅程未创建：" + journeyError.message); setBusy(false); router.refresh(); return; }
-    }
-    setBusy(false);
-
-    if (error) {
-      setError(
-        t.addFailed +
-          error.message
-      );
+        custom_tag: category==="other" ? customTag.trim()||null : null,
+        group_id: visibility==="space" ? activeSpaceId : null,
+        ...(taskType==="planned" ? {
+          plan_start_date:startDate,target_finish_date:targetFinish,
+          deadline_date:officialDeadline||null,
+        } : {}),
+        ...(taskType==="habit" ? {
+          period:goalPeriod,
+          arrangement:fixedWeek||fixedMonth?"fixed":"flexible",
+          target_count:target,
+          weekdays:fixedWeek?weekdays:[],
+          month_days:fixedMonth?monthDays:[],
+          include_month_end:fixedMonth&&includeMonthEnd,
+          starts_on:taskDate,
+          strict:false,
+        } : {}),
+      },
+    });
+    if (saveError || !savedId) {
+      setBusy(false);
+      setError(t.addFailed + (saveError?.message ?? ""));
       return;
     }
-
-    /*
-     * 成功后清空任务内容
-     */
-    setTitle("");
-    setDescription("");
-    setMinutes("");
-    setCustomTag("");
-    setLongTerm(false);
-    setPlanMode("flexible");
-    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setRepeatEnd("");
-    setSessionStart("");setSessionEnd("");setCrossDay(false);
-    setStartDate(taskDate);
-    setEndDate(taskDate);
-
-    /*
-     * category 和 visibility
-     * 故意保留。
-     *
-     * 连续创建任务时，
-     * 不需要每次重新选择。
-     */
+    const createdId = savedId as string;
+    const wantedNoDate = taskType==="one_time" && dayChoice==="none";
+    const extras: Extras = {
+      color: taskColor,
+      journey: taskType==="planned" ? {todo_id:createdId,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:Object.entries(LEGACY_JOURNEY_COLORS).find(([,hex])=>hex.toUpperCase()===taskColor.toUpperCase())?.[0]??"green"} : null,
+    };
+    // The task row now exists: clear the form at once so a second click cannot create a duplicate (A10).
+    resetForm();
+    const failed = await saveExtras(createdId, extras);
+    setBusy(false);
     router.refresh();
+    if (failed) { setPartial({id:createdId, planNow, extras:failed.pending, message:failed.message}); return; }
+    if (wantedNoDate) {
+      // Before migration v4_12 the database still fills in today's date; say so instead of pretending.
+      const { data: saved } = await supabase.from("todos").select("task_date").eq("id", createdId).maybeSingle();
+      if (saved?.task_date) { setDateNotice({ id: createdId, planNow }); return; }
+    }
+    onCreated?.(createdId, planNow);
   }
 
+  type Extras = { color: string|null; journey: Record<string, unknown>|null };
+  async function saveExtras(id: string, extras: Extras): Promise<null|{pending:Extras;message:string}> {
+    const supabase = createClient();
+    const pending: Extras = { color: null, journey: null };
+    const problems: string[] = [];
+    if (extras.color) {
+      const { error: colorError } = await supabase.from("todos").update({ color_hex: extras.color }).eq("id", id);
+      if (colorError) { pending.color = extras.color; problems.push(zh ? "颜色" : "color"); }
+    }
+    if (extras.journey) {
+      const { error: journeyError } = await supabase.from("goal_journeys").insert(extras.journey);
+      // 23505: the journey row already exists from an earlier attempt.
+      if (journeyError && journeyError.code !== "23505") { pending.journey = extras.journey; problems.push(zh ? "成长旅程" : "journey"); }
+    }
+    if (!problems.length) return null;
+    return { pending, message: zh ? `任务已创建，但${problems.join("和")}没保存成功。` : `Task created, but the ${problems.join(" and ")} could not be saved.` };
+  }
+
+  async function retryPartial() {
+    if (!partial) return;
+    setBusy(true);
+    const failed = await saveExtras(partial.id, partial.extras);
+    setBusy(false);
+    router.refresh();
+    if (failed) { setPartial({ ...partial, extras: failed.pending, message: failed.message }); return; }
+    const done = partial; setPartial(null); onCreated?.(done.id, done.planNow);
+  }
+
+  function dismissPartial() {
+    if (!partial) return;
+    const done = partial; setPartial(null); onCreated?.(done.id, done.planNow);
+  }
+
+  function resetForm() {
+    setTitle("");
+    setDescription("");
+    setCustomTag("");
+    setTaskColor(DEFAULT_TASK_COLOR);
+    setGoalPeriod("week");
+    setGoalValue("4");
+    setTaskType("one_time");
+    setCadence("daily");setWeekdays([]);setTimesPerWeek(3);setHabitArrangement("flexible");setMonthDays([]);setIncludeMonthEnd(false);
+    setStartDate(taskDate);
+    setTargetFinish("");
+    setOfficialDeadline("");
+    setDayChoice("today");
+    setPickedDay(taskDate);
+    // category and visibility are kept on purpose for consecutive creation.
+  }
+
+
+  const zh = dictionary.common?.minutes === "分钟";
+  const field = "w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-sage-300 focus:ring-2 focus:ring-sage-100";
+  const countFromPattern = cadence==="daily" ? 1 : cadence==="weekly_days" ? weekdays.length : timesPerWeek;
   return (
-    <form
-      onSubmit={submit}
-      className="space-y-4"
-    >
-      {/* 任务名称 */}
+    <form onSubmit={submit} className="space-y-5 pb-4">
       <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.task}
+        <label className="mb-2 block text-xs font-medium text-ink-soft">{zh?"任务名称":"Task name"} *</label>
+        <input className={field} value={title} onChange={e=>setTitle(e.target.value)} placeholder={zh?"例如：完成论文":"e.g. Finish paper"} disabled={busy} autoFocus/>
+      </div>
+      <div className="space-y-3">
+        <label className="block text-xs font-medium text-ink-soft">{zh?"任务描述（可选）":"Description (optional)"}
+          <textarea className={field+" mt-1 min-h-16"} rows={2} value={description} onChange={e=>setDescription(e.target.value)} placeholder={zh?"简要说明任务要求；工作笔记请使用 Quick Notes":"Brief task requirements; use Quick Notes for working notes"} disabled={busy}/>
         </label>
-
-        <input
-          className="input"
-          placeholder={t.taskPlaceholder}
-          value={title}
-          onChange={(e) =>
-            setTitle(
-              e.target.value
-            )
-          }
-          disabled={busy}
-        />
-      </div>
-
-      {/* 任务细节 */}
-      <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.taskDetails}
+        <label className="block text-xs font-medium text-ink-soft">{zh?"分类":"Category"}
+          <select className={field+" mt-1"} value={category??""} onChange={e=>setCategory(e.target.value as Category||null)} disabled={busy}>
+            <option value="">{zh?"不分类":"None"}</option>
+            {CATEGORIES.map(c=><option key={c.value} value={c.value}>{t.categories[c.value]}</option>)}
+          </select>
         </label>
-
-        <textarea
-          className="input min-h-[96px] w-full resize-y"
-          placeholder={t.detailsPlaceholder}
-          value={description}
-          onChange={(e) =>
-            setDescription(
-              e.target.value
-            )
-          }
-          disabled={busy}
-        />
-
-        <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-          {t.detailsHelp}
-        </p>
+        <div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-full border px-2 py-1" style={categoryBadgeVisual(category)}>{category ? (t.categories as Record<string,string>)[category] : (zh?"未分类":"Uncategorized")}</span><span className="rounded-lg border px-3 py-2 text-ink" style={taskCardVisual(category,taskColor)}>{zh?"任务卡颜色预览":"Task card preview"}</span></div>
+        {category==="other"&&<input className={field} value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder={zh?"自定义分类":"Custom tag"} disabled={busy}/>}
       </div>
-
-      {/* 分类 */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs text-ink-faint">
-            {t.category}
-          </label>
-
-          {category && (
-            <button
-              type="button"
-              onClick={() =>
-                setCategory(null)
-              }
-              className="text-[11px] text-ink-faint transition hover:text-ink-soft"
-            >
-              {dictionary.common.clear}
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map(
-            (item) => {
-              const selected =
-                category ===
-                item.value;
-
-              return (
-                <button
-                  key={
-                    item.value
-                  }
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setCategory(
-                      item.value
-                    );
-
-                    /*
-                     * 如果切换到非 other，
-                     * 自动清掉之前的自定义标签。
-                     */
-                    if (
-                      item.value !==
-                      "other"
-                    ) {
-                      setCustomTag(
-                        ""
-                      );
-                    }
-                  }}
-                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                    selected
-                      ? "border-sage-300 bg-sage-100 font-medium text-sage-700"
-                      : "border-line bg-white/70 text-ink-soft hover:bg-white"
-                  }`}
-                >
-                  {t.categories[item.value]}
-                </button>
-              );
-            }
-          )}
-        </div>
-      </div>
-
-      {/* 其他分类自定义标签 */}
-      {category === "other" && (
-        <div>
-          <label className="mb-1.5 block text-xs text-ink-faint">
-            {t.customTag}
-          </label>
-
-          <input
-            className="input"
-            placeholder={t.customTagPlaceholder}
-            value={customTag}
-            onChange={(e) =>
-              setCustomTag(
-                e.target.value
-              )
-            }
-            disabled={busy}
-          />
-        </div>
-      )}
-
-      {/* 预计时间 */}
-      <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.estimatedTime}
-        </label>
-
-        <DurationInput
-          value={minutes}
-          unit={durationUnit}
-          onValueChange={
-            setMinutes
-          }
-          onUnitChange={
-            setDurationUnit
-          }
-          disabled={busy}
-        />
-
-        <p className="mt-1.5 text-[11px] text-ink-faint">
-          {t.durationHelp}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-line bg-white/80 p-4">
-        <p className="mb-2 text-sm font-medium text-ink">{dictionary.common?.minutes==="分钟"?"安排时间":"Schedule time"}</p>
+        <p className="mb-2 text-xs font-medium text-ink-soft">{zh?"任务类型":"Task type"}</p>
         <div className="grid grid-cols-3 gap-2">
-          {(["flexible","fixed","recurring"] as const).map(mode=><button key={mode} type="button" disabled={busy}
-            aria-pressed={planMode===mode} onClick={()=>setPlanMode(mode)}
-            className={`rounded-xl border px-3 py-3 text-left text-sm transition ${planMode===mode?"border-sage-300 bg-sage-50 font-semibold text-sage-700":"border-line bg-paper/40 text-ink-soft"}`}>
-            {mode==="flexible"?(dictionary.common?.minutes==="分钟"?"灵活安排":"Flexible"):mode==="fixed"?(dictionary.common?.minutes==="分钟"?"指定时段":"Specific time"):(dictionary.common?.minutes==="分钟"?"重复计划":"Repeat")}
-          </button>)}
+          {([{value:"one_time",label:zh?"单次任务":"One-time",help:zh?"做完即结束":"Finish once"},{value:"planned",label:zh?"长期项目":"Project",help:zh?"有起止日期":"Start to finish"},{value:"habit",label:zh?"周期任务":"Routine",help:zh?"按周期打卡":"Repeats, check in"}] as const).map(item=>
+            <button key={item.value} type="button" disabled={busy} aria-pressed={taskType===item.value} onClick={()=>{setTaskType(item.value);if(item.value==="habit"){setCadence("weekly_quota");setGoalPeriod("week");setGoalValue("3");setTimesPerWeek(3);}}}
+              className={`min-w-0 rounded-xl border px-2 py-3 text-center transition ${taskType===item.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line bg-white text-ink-soft hover:bg-paper"}`}>
+              <span className="block text-sm font-semibold">{item.label}</span><span className="mt-1 block text-[10px] opacity-70">{item.help}</span>
+            </button>)}
         </div>
-        {planMode==="recurring" && <div className="mt-4 space-y-3">
-          <label className="block text-xs font-medium text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"重复方式":"Repeat pattern"}
-            <select className="input mt-1 w-full" value={cadence} disabled={busy}
-              onChange={e=>setCadence(e.target.value as typeof cadence)}>
-              <option value="daily">{dictionary.common?.minutes==="分钟"?"每天":"Every day"}</option>
-              <option value="weekly_days">{dictionary.common?.minutes==="分钟"?"每周指定日期":"Specific weekdays"}</option>
-              <option value="weekly_quota">{dictionary.common?.minutes==="分钟"?"每周目标次数":"Times per week"}</option>
-            </select>
-          </label>
-          {cadence==="weekly_days" && <div>
-            <p className="mb-2 text-xs text-ink-soft">{dictionary.common?.minutes==="分钟"?"选择星期（周一至周日）":"Choose weekdays (Monday to Sunday)"}</p>
-            <div className="flex flex-wrap gap-2">
-              {(dictionary.common?.minutes==="分钟"?["一","二","三","四","五","六","日"]:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]).map((day,i)=>
-                <button key={i} type="button" disabled={busy} aria-pressed={weekdays.includes(i+1)}
-                  onClick={()=>setWeekdays(current=>current.includes(i+1)?current.filter(x=>x!==i+1):[...current,i+1].sort())}
-                  className={`rounded-lg border px-3 py-2 text-xs ${weekdays.includes(i+1)?"border-sage-400 bg-sage-100 text-sage-800":"border-line bg-white text-ink-soft"}`}>{day}</button>)}
-            </div>
+      </div>
+      {taskType==="planned" ? (
+        <section className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
+          <p className="text-xs text-ink-faint">{zh?"围绕一个成果制定计划，不是重复打卡。具体步骤与时间可创建后再安排。":"Plan toward one outcome, not recurring check-ins."}</p>
+          <label className="block text-xs text-ink-soft">{zh?"计划开始":"Plan start"}<input type="hidden" value={startDate} readOnly/><AppDatePicker value={startDate} onChange={setStartDate} disabled={busy}/></label>
+          <label className="block text-xs text-ink-soft">{zh?"目标完成":"Target finish"}<input type="hidden" value={targetFinish} readOnly/><AppDatePicker value={targetFinish} onChange={setTargetFinish} min={startDate} disabled={busy} required/></label>
+          <details><summary className="cursor-pointer text-xs text-ink-soft">{zh?"正式截止日期（可选）":"Official deadline (optional)"}</summary>
+            <input type="hidden" value={officialDeadline} readOnly/><AppDatePicker value={officialDeadline} onChange={setOfficialDeadline} disabled={busy}/>
+          </details>
+          <div className="space-y-1.5">
+            <TaskColorPicker value={taskColor} onChange={setTaskColor} disabled={busy}/>
+
+          </div>
+        </section>
+      ):taskType==="one_time" ? (
+        <section className="space-y-2 rounded-xl border border-line bg-paper/30 p-3">
+          <p className="text-xs font-medium text-ink-soft">{zh?"哪天做？":"Which day?"}</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([["today",zh?"今天":"Today"],["pick",zh?"选日期":"Pick a date"],["none",zh?"先不定":"No date"]] as const).map(([value,label])=>
+              <button key={value} type="button" disabled={busy} aria-pressed={dayChoice===value} onClick={()=>setDayChoice(value)}
+                className={`rounded-lg border px-2 py-2 text-xs ${dayChoice===value?"border-sage-400 bg-sage-50 text-sage-700":"border-line bg-white text-ink-soft"}`}>{label}</button>)}
+          </div>
+          {dayChoice==="pick"&&<AppDatePicker value={pickedDay} onChange={setPickedDay} disabled={busy}/>}
+          <p className="text-[11px] text-ink-soft">{zh?"只记日期，不占具体时间；需要时再在「时间安排」里加。":"A date only, no time reserved. Add a time plan later if needed."}</p>
+        </section>
+      ):(
+        <section className="space-y-3 rounded-xl bg-paper/40 p-3">
+          <p className="text-xs font-medium text-ink-soft">{zh?"重复频率":"Repeat frequency"}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-ink-soft">{zh?"统计周期":"Period"}<select className={field+" mt-1"} value={goalPeriod} onChange={e=>{setGoalPeriod(e.target.value as typeof goalPeriod);setCadence(e.target.value==="day"?"daily":"weekly_quota");setHabitArrangement("flexible");setGoalValue(e.target.value==="day"?"1":"3");setTimesPerWeek(3);}} disabled={busy}><option value="day">{zh?"每天":"Day"}</option><option value="week">{zh?"每周":"Week"}</option><option value="month">{zh?"每月":"Month"}</option></select></label>
+            {!(goalPeriod==="week"&&cadence==="weekly_days")&&!(goalPeriod==="month"&&habitArrangement==="fixed")&&<label className="text-xs text-ink-soft">{zh?"执行次数":"Occurrences"}<input className={field+" mt-1"} type="number" min="1" step="1" value={goalValue} disabled={busy} onChange={e=>{setGoalValue(e.target.value);setTimesPerWeek(Math.min(7,Math.max(1,Number(e.target.value)||1)));}}/></label>}
+          </div>
+          {goalPeriod==="week"&&<div className="space-y-2 rounded-xl border border-line bg-white p-3">
+            <p className="text-xs font-medium text-ink-soft">{zh?"每周执行方式":"Weekly pattern"}</p>
+            <div className="grid grid-cols-2 gap-2">{([{id:"weekly_quota",label:zh?"灵活次数":"Flexible quota"},{id:"weekly_days",label:zh?"固定星期":"Fixed weekdays"}] as const).map(option=><button key={option.id} type="button" disabled={busy} aria-pressed={cadence===option.id} onClick={()=>{setCadence(option.id);if(option.id==="weekly_days"){const selected=weekdays.length?weekdays:[1,3,5];setWeekdays(selected);setGoalValue(String(selected.length));}else{setGoalValue(String(timesPerWeek));}}} className={`rounded-lg border px-2 py-2 text-xs ${cadence===option.id?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
+            {cadence==="weekly_days"&&<><div className="grid grid-cols-7 gap-1">{(zh?["一","二","三","四","五","六","日"]:["M","T","W","T","F","S","S"]).map((label,index)=><button key={index} type="button" disabled={busy} aria-pressed={weekdays.includes(index+1)} onClick={()=>{const selected=weekdays.includes(index+1)?weekdays.filter(v=>v!==index+1):[...weekdays,index+1].sort((a,b)=>a-b);setWeekdays(selected);setGoalValue(String(selected.length));}} className={`rounded-lg border py-2 text-xs ${weekdays.includes(index+1)?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{label}</button>)}</div><p className="text-xs text-ink-faint">{zh?`已选 ${weekdays.length} 天；不自动占用日历。`:`${weekdays.length} selected days; no calendar time is booked automatically.`}</p></>}
           </div>}
-          {cadence==="weekly_quota" && <label className="block text-xs text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"每周次数":"Times per week"}
-            <select className="input mt-1 w-full" disabled={busy} value={timesPerWeek}
-              onChange={e=>setTimesPerWeek(Number(e.target.value))}>
-              {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
-            </select>
-          </label>}
-          <label className="block text-xs text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"结束日期（可选）":"End date (optional)"}
-            <input className="input mt-1 w-full" type="date" disabled={busy} min={taskDate}
-              value={repeatEnd} onChange={e=>setRepeatEnd(e.target.value)}/>
-          </label>
-          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"保存重复规则，不会自动创建未来日历时段。":"Save a repeat rule without auto-booking calendar sessions."}</p>
-        </div>}
-        {planMode==="fixed" ? <div className="mt-5 space-y-4">
-          <div>
-            <label className="mb-2 block text-xs font-semibold text-ink-soft">{dictionary.common?.minutes==="分钟"?"工作日期":"Work date"}</label>
-            <div className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
-              <CalendarDays className="h-4 w-4 shrink-0 text-sage-700"/>
-              <button type="button" disabled={busy} onClick={() => {
-                const input=workDateRef.current;
-                if (!input) return;
-                try { input.showPicker(); } catch { input.focus(); input.click(); }
-              }} className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink">
-                {formatWorkDate(sessionStart,dictionary.common?.minutes==="分钟")}
-              </button>
-              <input ref={workDateRef} aria-label={dictionary.common?.minutes==="分钟"?"选择工作日期":"Choose work date"}
-                type="date" value={sessionStart.slice(0,10)} disabled={busy}
-                onChange={e=>{const day=e.target.value;if(!day)return;setSessionStart(day+"T"+(sessionStart.slice(11)||"14:00"));setSessionEnd((crossDay?sessionEnd.slice(0,10)||day:day)+"T"+(sessionEnd.slice(11)||"16:00"));}}
-                className="h-9 w-10 shrink-0 cursor-pointer text-transparent outline-none [color-scheme:light] [&::-webkit-calendar-picker-indicator]:cursor-pointer"/>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {([{key:"start",label:dictionary.common?.minutes==="分钟"?"开始":"Start",value:sessionStart},{key:"end",label:dictionary.common?.minutes==="分钟"?"结束":"End",value:sessionEnd}] as const).map(item=>
-              <label key={item.key} className="min-w-0">
-                <span className="mb-2 block text-xs font-semibold text-ink-soft">{item.label}</span>
-                <span className="flex min-h-[52px] items-center gap-2 rounded-xl border border-line bg-white px-3 focus-within:border-sage-300 focus-within:ring-2 focus-within:ring-sage-100">
-                  <Clock3 className="h-4 w-4 shrink-0 text-sage-700"/>
-                  <input type="time" step={300} value={item.value.slice(11)} disabled={busy}
-                    onChange={e=>{const date=item.key==="start"?sessionStart.slice(0,10):crossDay?sessionEnd.slice(0,10):sessionStart.slice(0,10);
-                      if(item.key==="start")setSessionStart(date+"T"+e.target.value);else setSessionEnd(date+"T"+e.target.value);
-                    }}
-                    className="w-full min-w-0 bg-transparent text-base font-medium text-ink outline-none"/>
-                </span>
-              </label>)}
-          </div>
-          <label className="flex items-center gap-2 text-xs text-ink-soft">
-            <input type="checkbox" checked={crossDay} disabled={busy} onChange={e=>{setCrossDay(e.target.checked);if(!e.target.checked&&sessionStart)setSessionEnd(sessionStart.slice(0,10)+"T"+(sessionEnd.slice(11)||"16:00"));}}/>
-            {dictionary.common?.minutes==="分钟"?"跨天结束":"Ends on another day"}
-          </label>
-          {crossDay && <label className="block text-xs font-medium text-ink-soft">
-            {dictionary.common?.minutes==="分钟"?"结束日期":"End date"}
-            <input type="date" min={sessionStart.slice(0,10)||undefined} value={sessionEnd.slice(0,10)} disabled={busy}
-              onChange={e=>setSessionEnd(e.target.value+"T"+(sessionEnd.slice(11)||"16:00"))}
-              className="input mt-2 w-full"/>
-          </label>}
-          <p className="text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"仅安排这一次；以后可以在 Calendar 中拖动或新增时段。":"One session only; adjust or add sessions in Calendar later."}</p>
-        </div>:<p className="mt-3 text-xs text-ink-faint">{dictionary.common?.minutes==="分钟"?"先创建任务，不占用日历时间；以后再手动安排。":"Create the task without booking time; schedule it later."}</p>}
-      </div>
-
-      <div className="rounded-2xl border border-line bg-paper/40 p-4">
-        <label className="flex items-center gap-2 text-sm font-medium text-ink">
-          <input type="checkbox" checked={longTerm} onChange={e=>setLongTerm(e.target.checked)} disabled={busy} />
-          {dictionary.common?.minutes === "分钟" ? "开启成长旅程（可选）" : "Enable growth Journey (optional)"}
-        </label>
-        {longTerm && <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "开始日期" : "Start date"}
-            <input className="input mt-1 w-full" type="date" value={startDate} onChange={e=>{setStartDate(e.target.value);if(endDate<e.target.value)setEndDate(e.target.value);}} disabled={busy}/>
-          </label>
-          <label className="text-xs text-ink-soft">{dictionary.common?.minutes === "分钟" ? "目标结束日期" : "Target end date"}
-            <input className="input mt-1 w-full" type="date" min={startDate} value={endDate} onChange={e=>setEndDate(e.target.value)} disabled={busy}/>
-          </label>
-          <p className="text-xs text-ink-faint sm:col-span-2">{dictionary.common?.minutes === "分钟" ? "创建后可在 Calendar 的旅程视图中调整日期。" : "Adjust journey dates later in Calendar."}</p>
-        </div>}
-      </div>
-
-      {/* 可见范围 */}
-      <div>
-        <label className="mb-1.5 block text-xs text-ink-faint">
-          {t.visibility}
-        </label>
-
-        <select
-          className="input"
-          value={visibility}
-          onChange={(e) =>
-            setVisibility(
-              e.target.value as
-                | "private"
-                | "space"
-            )
-          }
-          disabled={busy}
-        >
-          <option value="private">
-            {t.privateVisibility}
-          </option>
-
-          <option value="space">
-            {t.shareToSpace.replace("{space}", activeSpaceName)}
-          </option>
-        </select>
-      </div>
-
-      <button
-        type="submit"
-        className="btn-primary w-full"
-        disabled={busy}
-      >
-        {busy
-          ? t.adding
-          : t.addTask}
-      </button>
-
-      {error && (
-        <p className="text-sm text-blush-500">
-          {error}
-        </p>
+          {goalPeriod==="month"&&<div className="space-y-3 rounded-xl border border-line bg-white p-3">
+            <p className="text-xs font-medium text-ink-soft">{zh?"每月执行方式":"Monthly pattern"}</p>
+            <div className="grid grid-cols-2 gap-2">{([{value:"flexible",label:zh?"灵活次数":"Flexible quota"},{value:"fixed",label:zh?"固定日期":"Fixed dates"}] as const).map(option=><button type="button" key={option.value} disabled={busy} onClick={()=>setHabitArrangement(option.value)} aria-pressed={habitArrangement===option.value} className={`rounded-lg border p-2 text-xs ${habitArrangement===option.value?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{option.label}</button>)}</div>
+            {habitArrangement==="fixed"&&<>
+              <div className="grid grid-cols-7 gap-1">{Array.from({length:31},(_,i)=>i+1).map(day=><button key={day} type="button" disabled={busy} onClick={()=>setMonthDays(current=>current.includes(day)?current.filter(x=>x!==day):[...current,day].sort((a,b)=>a-b))} aria-pressed={monthDays.includes(day)} className={`rounded-lg border py-2 text-xs ${monthDays.includes(day)?"border-sage-400 bg-sage-50 text-sage-700":"border-line text-ink-soft"}`}>{day}</button>)}</div>
+              <label className="flex items-center gap-2 text-xs text-ink-soft"><input type="checkbox" checked={includeMonthEnd} onChange={e=>setIncludeMonthEnd(e.target.checked)} disabled={busy}/> {zh?"每月最后一天（自动适配）":"Last day of month (automatic)"}</label>
+              <p className="text-xs text-ink-faint">{zh?`已选 ${monthDays.length} 个日期${includeMonthEnd?"，包含月末":""}。不存在的日期将跳过。`:`${monthDays.length} selected dates${includeMonthEnd?", including month-end":""}. Missing dates are skipped.`}</p>
+            </>}
+          </div>}
+          {goalPeriod==="week"&&Number(goalValue)>7&&<p className="text-xs text-amber-700">{zh?"请使用有效的目标次数。":"Enter a supported target count."}</p>}
+          <p className="text-xs text-ink-faint">{zh?"这里只制定执行频率；每次投入时间可在任务的执行安排中单独设置。":"Set the frequency here; choose execution times later."}</p>
+        </section>
       )}
+      {taskType!=="planned"&&<TaskColorPicker value={taskColor} onChange={setTaskColor} disabled={busy}/>}
+      <details className="rounded-xl border border-line px-3 py-3">
+        <summary className="cursor-pointer text-xs font-medium text-ink-soft">{zh?"更多选项（可选）":"More options (optional)"}</summary>
+        <div className="mt-4 space-y-4">
+          
+
+          
+          <label className="block text-xs text-ink-soft">{zh?"可见范围":"Visibility"}<select className={field+" mt-1"} value={visibility} onChange={e=>setVisibility(e.target.value as typeof visibility)} disabled={busy}><option value="private">{zh?"仅自己":"Private"}</option><option value="space">{activeSpaceName}</option></select></label>
+        </div>
+      </details>
+      {dateNotice ? <div role="status" className="space-y-3 rounded-xl border border-line bg-paper p-3 text-sm">
+        <p className="text-ink-soft">{zh?"任务已创建。数据库还没更新到 v4_12，所以它暂时记在今天；更新后就能选“先不定”。":"Task created. Until migration v4_12 the database still dates it today."}</p>
+        <button type="button" onClick={()=>{const done=dateNotice;setDateNotice(null);onCreated?.(done.id,done.planNow);}} className="rounded-lg border border-line bg-white px-3 py-2">{zh?"知道了":"OK"}</button>
+      </div> : partial ? <div role="alert" className="space-y-3 rounded-xl border border-blush-100 bg-blush-50 p-3 text-sm">
+        <p className="text-blush-500">{partial.message}</p>
+        <div className="flex gap-2">
+          <button type="button" disabled={busy} onClick={()=>void retryPartial()} className="flex-1 rounded-lg border border-blush-100 bg-white px-3 py-2">{busy?(zh?"重试中…":"Retrying…"):(zh?"重试":"Retry")}</button>
+          <button type="button" disabled={busy} onClick={dismissPartial} className="flex-1 rounded-lg px-3 py-2 text-ink-soft">{zh?"先这样":"Skip for now"}</button>
+        </div>
+      </div> : <div className="flex gap-2">
+        <button className="flex-1 rounded-xl border border-line bg-white px-4 py-3 text-[15px] font-medium text-ink disabled:opacity-50" type="submit" data-plan="0" disabled={busy}>{busy?(zh?"保存中…":"Saving..."):(zh?"创建":"Create")}</button>
+        <button className="btn-primary flex-[1.4]" type="submit" data-plan="1" disabled={busy}>{zh?"创建并安排时间":"Create & plan time"}</button>
+      </div>}
+      {error&&<p role="alert" className="text-sm text-blush-500">{error}</p>}
     </form>
   );
 }

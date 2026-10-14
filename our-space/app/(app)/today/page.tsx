@@ -209,6 +209,11 @@ export default async function TodayPage() {
       scheduled_start,
       scheduled_end,
       category,
+      color_hex,
+      task_type,
+      plan_start_date,
+      target_finish_date,
+      deadline_date,
       custom_tag
     `)
     .eq(

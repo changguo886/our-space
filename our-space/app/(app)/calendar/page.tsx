@@ -50,14 +50,21 @@ export default async function CalendarPage() {
   scheduled_start,
   scheduled_end,
   category,
+  color_hex,
   custom_tag,
   started_at,
   elapsed_seconds,
+  task_type,
   todo_sessions (
     id,
     scheduled_start,
     scheduled_end,
-    reminder_minutes_before
+    reminder_minutes_before,
+    mode,
+    plan_date,
+    planned_minutes,
+    window_start,
+    window_end
   )
 `)
     .eq(

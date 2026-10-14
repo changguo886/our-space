@@ -38,6 +38,7 @@ type FocusTimerProps = {
     status: string;
     started_at: string | null;
     elapsed_seconds: number;
+    task_type?: string | null;
   };
   initialPreferences: UserPreferences;
   disableFloatingWindow?: boolean;
@@ -92,7 +93,9 @@ export default function FocusTimer({
   const router = useRouter();
   const { dictionary } = useI18n();
   const focusText = dictionary.focus;
-  const [focusEncouragement] = useState(() => {
+  // SSR and the first client render must use identical text.
+  const [focusEncouragement, setFocusEncouragement] = useState("慢慢来，也是在向前走。");
+  useEffect(() => {
     const phrases = [
       "慢慢来，也是在向前走。",
       "每一小段专注，都值得被珍惜。",
@@ -103,8 +106,8 @@ export default function FocusTimer({
       "重要的不是速度，而是继续前行。",
       "让这一刻的专注，成为小小的收获。",
     ];
-    return phrases[Math.floor(Math.random() * phrases.length)];
-  });
+    setFocusEncouragement(phrases[Math.floor(Math.random() * phrases.length)]);
+  }, []);
   const common = dictionary.common;
 
   const [
@@ -131,6 +134,9 @@ export default function FocusTimer({
 
   const [now, setNow] =
     useState(Date.now());
+
+  // Visible focus duration is separate from the lifetime Todo counter.
+  const [sessionSeconds, setSessionSeconds] = useState(0);
 
   const [busy, setBusy] =
     useState(false);
@@ -375,6 +381,11 @@ export default function FocusTimer({
       now,
     ]);
 
+  const activeIntervalSeconds = status === "running" && startedAt
+    ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000))
+    : 0;
+  const currentSessionSeconds = sessionSeconds + activeIntervalSeconds;
+
   /*
    * 预计时间
    */
@@ -391,7 +402,7 @@ export default function FocusTimer({
     targetSeconds !== null
       ? Math.max(
           targetSeconds -
-            currentElapsed,
+            currentSessionSeconds,
           0
         )
       : null;
@@ -403,7 +414,7 @@ export default function FocusTimer({
     targetSeconds &&
     targetSeconds > 0
       ? Math.min(
-          currentElapsed /
+          currentSessionSeconds /
             targetSeconds,
           1
         )
@@ -464,17 +475,17 @@ export default function FocusTimer({
    */
   const floatingDisplayTime =
     targetSeconds !== null
-      ? currentElapsed >
+      ? currentSessionSeconds >
         targetSeconds
         ? `+${formatTime(
-            currentElapsed -
+            currentSessionSeconds -
               targetSeconds
           )}`
         : formatTime(
             remainingSeconds ?? 0
           )
       : formatTime(
-          currentElapsed
+          currentSessionSeconds
         );
 
   const floatingStatusText =
@@ -845,74 +856,63 @@ export default function FocusTimer({
    * 浮窗内部的 Continue 使用，
    * 避免再次打开一个浮窗。
    */
-  async function startTimer(
-    openFloating = true
-  ) {
-    if (
-      busy ||
-      status === "running"
-    ) {
-      return;
-    }
+  async function startTimer(openFloating = true) {
+    if (busy || status === "running" || status === "completed") return;
 
-    /*
-     * 非常重要：
-     *
-     * requestWindow 必须尽量直接发生在
-     * 用户点击操作之后。
-     *
-     * 所以一定放在 Supabase await 之前。
-     */
-    if (
-      openFloating &&
-      !disableFloatingWindow
-    ) {
-      void openFloatingTimer();
-    }
+    // Document PiP must be requested inside the user gesture.
+    if (openFloating && !disableFloatingWindow) void openFloatingTimer();
 
     setBusy(true);
-
-    const supabase =
-      createClient();
-
-    const start =
-      new Date().toISOString();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "running",
-
-          started_at:
-            start,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.startFailed +
-          error.message
-      );
-
-      return;
+    try {
+      const { data, error } = await createClient().rpc("start_focus_session_v2", {
+        p_todo_id: todo.id,
+      });
+      if (error) throw error;
+      if (typeof data !== "string") throw new Error("Invalid start timestamp");
+      setStartedAt(data);
+      setStatus("running");
+      setNow(Date.now());
+      if (!timeUp) alarmPlayedRef.current = false;
+    } catch (error) {
+      alert(focusText.startFailed + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
     }
+  }
 
-    setStartedAt(start);
-
-    setStatus("running");
-
-    setNow(Date.now());
-
-    if (!timeUp) {
-      alarmPlayedRef.current =
-        false;
+  async function restartFocus() {
+    if (busy || status === "completed") return;
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      if (status === "running") {
+        // Persist the old interval before starting a fresh one.
+        const { data: saved, error: finishError } = await supabase.rpc("finish_focus_session", {
+          p_todo_id: todo.id,
+          p_action: "end",
+          p_expected_started_at: startedAt,
+        });
+        if (finishError) throw finishError;
+        setElapsedSeconds(Number(saved));
+        setStartedAt(null);
+        setStatus("paused");
+      }
+      const { data: newStartedAt, error: startError } = await supabase.rpc("start_focus_session_v2", {
+        p_todo_id: todo.id,
+      });
+      if (startError) throw startError;
+      setSessionSeconds(0);
+      setStartedAt(newStartedAt as string);
+      setStatus("running");
+      setNow(Date.now());
+      setTimeUp(false);
+      alarmPlayedRef.current = false;
+    } catch (error) {
+      alert("重新开始失败；已保存的专注时间不会丢失。 / Restart failed: " +
+        (error instanceof Error ? error.message : String(error)));
+      router.refresh();
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -934,6 +934,7 @@ export default function FocusTimer({
     setBusy(true);
     try {
       const savedElapsed = await persistFocusAction("pause");
+      setSessionSeconds(currentSessionSeconds);
       setElapsedSeconds(savedElapsed);
       setStartedAt(null);
       setStatus("paused");
@@ -954,6 +955,7 @@ export default function FocusTimer({
     setBusy(true);
     try {
       const savedElapsed = await persistFocusAction("end");
+      setSessionSeconds(currentSessionSeconds);
       setElapsedSeconds(savedElapsed);
       setStartedAt(null);
       setStatus("paused");
@@ -965,6 +967,45 @@ export default function FocusTimer({
     } finally {
       setBusy(false);
     }
+  }
+
+  /*
+   * Routine: end this focus and record ONE completion event linked to it.
+   * The routine itself stays active. The idempotency key is kept until the call succeeds,
+   * so a retry after a network error cannot record the completion twice.
+   */
+  const routineCompletionKey = useRef<string | null>(null);
+  async function completeRoutineOccurrence() {
+    if (busy) return;
+    setBusy(true);
+    const key = routineCompletionKey.current ?? (routineCompletionKey.current = crypto.randomUUID());
+    const now = new Date();
+    const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
+    const { data, error } = await createClient().rpc("finish_focus_session_v4", {
+      p_todo_id: todo.id,
+      p_action: "complete",
+      p_expected_started_at: status === "running" ? startedAt : null,
+      p_client_event_id: key,
+      p_occurred_on: today,
+    });
+    setBusy(false);
+    if (error) {
+      const missing = /finish_focus_session_v4|PGRST202|Could not find the function/i.test(error.message);
+      alert(missing ? "完成一次需要先执行数据库更新 v4_10。本次专注时间不会丢失，可以先点「结束本次」。" : "记录失败 / Failed: " + error.message);
+      return;
+    }
+    routineCompletionKey.current = null;
+    const saved = data as { elapsed: number };
+    setSessionSeconds(currentSessionSeconds);
+    setElapsedSeconds(saved.elapsed);
+    setStartedAt(null);
+    setStatus("paused");
+    setTimeUp(false);
+    setCompactFinishConfirm(false);
+    setFinishConfirm(false);
+    closeFloatingTimer();
+    playCompleteSound();
+    alert("已记一次完成。这个周期任务会继续保留。");
   }
 
   function confirmWholeTask() {
@@ -985,8 +1026,13 @@ export default function FocusTimer({
   /*
    * 完成任务
    */
+  const isRoutine = todo.task_type === "routine" || todo.task_type === "habit";
   async function completeTimer() {
     if (busy) {
+      return;
+    }
+    if (todo.task_type === "routine" || todo.task_type === "habit") {
+      await completeRoutineOccurrence();
       return;
     }
 
@@ -1022,7 +1068,7 @@ export default function FocusTimer({
     );
 
     setFinalElapsed(
-      actualElapsed
+      currentSessionSeconds
     );
 
     setTimeUp(false);
@@ -1103,76 +1149,6 @@ export default function FocusTimer({
   }
 
   /*
-   * 重置
-   */
-  async function resetTimer() {
-    if (busy) {
-      return;
-    }
-
-    setBusy(true);
-
-    const supabase =
-      createClient();
-
-    const { error } =
-      await supabase
-        .from("todos")
-        .update({
-          status:
-            "pending",
-
-          started_at:
-            null,
-
-          elapsed_seconds:
-            0,
-
-          completed_at:
-            null,
-
-          completion_level:
-            null,
-        })
-        .eq(
-          "id",
-          todo.id
-        );
-
-    setBusy(false);
-
-    if (error) {
-      alert(
-        focusText.resetFailed +
-          error.message
-      );
-
-      return;
-    }
-
-    setElapsedSeconds(0);
-
-    setStartedAt(null);
-
-    setStatus("pending");
-
-    setNow(Date.now());
-
-    setTimeUp(false);
-
-    setCompletionLevel(null);
-
-    setFeedbackSaved(false);
-
-    setFeedbackError(null);
-
-    alarmPlayedRef.current =
-      false;
-
-    closeFloatingTimer();
-  }
-
-  /*
    * ==========================
    * 更新 Floating Window UI
    * ==========================
@@ -1242,7 +1218,7 @@ export default function FocusTimer({
           </div>
           {compactFinishConfirm ? (
             <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>结束这次专注，还是完成整个任务？</span>
+              <span style={{ fontSize: 10, color: "#A66D67", textAlign: "center" }}>{isRoutine ? "结束这次专注，还是记一次完成？" : "结束这次专注，还是完成整个任务？"}</span>
               <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
                 <button type="button" disabled={busy} onClick={() => void endFocusOnly()}
                   style={{ ...buttonBase, minWidth: 76, height: 30, borderRadius: 9, background: "#E4F0E6",
@@ -1612,7 +1588,7 @@ export default function FocusTimer({
         <span>
           {focusText.focusedFor.replace(
             "{time}",
-            formatTime(currentElapsed)
+            formatTime(currentSessionSeconds)
           )}
         </span>
       </div>
@@ -1737,7 +1713,7 @@ export default function FocusTimer({
                   600,
               }}
             >
-              {focusText.complete}
+              {isRoutine ? "完成一次" : focusText.complete}
             </button>
           </>
         ) : (
@@ -1831,7 +1807,7 @@ export default function FocusTimer({
             <button
               type="button"
               disabled={busy}
-              onClick={() => { if (window.confirm("确定完成整个 Todo 吗？如果只是结束本次专注，请选择「结束本次」。")) void completeTimer(); }}
+              onClick={() => { if (window.confirm(todo.task_type === "routine" || todo.task_type === "habit" ? "记一次完成并结束本次专注？周期任务本身会继续保留。" : "确定完成整个 Todo 吗？如果只是结束本次专注，请选择「结束本次」。")) void completeTimer(); }}
               title={focusText.completeTask}
               style={{
                 ...buttonBase,
@@ -2120,12 +2096,13 @@ export default function FocusTimer({
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 rounded-full border border-[#E4EAE3] bg-[#FCFDFB] px-5 py-2.5 text-center shadow-sm sm:gap-x-7">
           <div><span className="block text-[10px] tracking-wide text-ink-faint">预计</span><strong className="block text-sm font-medium tabular-nums text-ink">{todo.estimated_minutes != null ? `${todo.estimated_minutes} 分钟` : "未设定"}</strong></div>
           <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
-          <div><span className="block text-[10px] tracking-wide text-ink-faint">已专注</span><strong className="block text-sm font-semibold tabular-nums text-sage-700">{Math.floor(currentElapsed / 60)} 分钟</strong></div>
+          <div><span className="block text-[10px] tracking-wide text-ink-faint">本次专注</span><strong className="block text-sm font-semibold tabular-nums text-sage-700">{Math.floor(currentSessionSeconds / 60)} 分钟</strong></div>
           {todo.estimated_minutes != null && <>
             <span className="h-6 w-px bg-[#E4EAE3]" aria-hidden="true" />
-            <div><span className="block text-[10px] tracking-wide text-ink-faint">参考剩余</span><strong className="block text-sm font-medium tabular-nums text-ink">{Math.max(0, todo.estimated_minutes - Math.floor(currentElapsed / 60))} 分钟</strong></div>
+            <div><span className="block text-[10px] tracking-wide text-ink-faint">参考剩余</span><strong className="block text-sm font-medium tabular-nums text-ink">{Math.max(0, todo.estimated_minutes - Math.floor(currentSessionSeconds / 60))} 分钟</strong></div>
           </>}
         </div>
+        <p className="text-center text-xs text-[#7D9181]">任务累计：{formatTime(currentElapsed)}（已记录历史不会被重置）</p>
         <p className="text-center text-xs leading-relaxed text-[#7D9181]">{focusEncouragement}</p>
       </div>
 
@@ -2175,7 +2152,7 @@ export default function FocusTimer({
                   remainingSeconds
                 )
               : formatTime(
-                  currentElapsed
+                  currentSessionSeconds
                 )}
           </div>
 
@@ -2183,7 +2160,7 @@ export default function FocusTimer({
             {targetSeconds
               ? focusText.focusedFor.replace(
                   "{time}",
-                  formatTime(currentElapsed)
+                  formatTime(currentSessionSeconds)
                 )
               : focusText.focusedTime}
           </p>
@@ -2227,7 +2204,7 @@ export default function FocusTimer({
               disabled={busy}
               className="rounded-xl bg-blush-100 px-4 py-2.5 text-sm font-medium text-blush-500 transition hover:bg-blush-50"
             >
-              {focusText.completeTask}
+              {isRoutine ? "完成一次" : focusText.completeTask}
             </button>
           </div>
         </div>
@@ -2255,21 +2232,20 @@ export default function FocusTimer({
           <div className="flex items-center justify-center gap-4">
             <button type="button" onClick={confirmWholeTask} disabled={busy || status === "completed"}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-ink-soft transition hover:bg-sage-50 hover:text-sage-700 disabled:opacity-50">
-              <Check className="h-4 w-4" /> 完成整个任务
+              <Check className="h-4 w-4" /> {isRoutine ? "完成一次" : "完成整个任务"}
             </button>
-            <button type="button" onClick={() => {
-              if(window.confirm("重置会清零本任务累计的专注时间，确定继续吗？")) void resetTimer();
-            }} disabled={busy}
+            <button type="button" onClick={() => void restartFocus()}
+              disabled={busy || status === "completed"}
               className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-xs text-ink-faint transition hover:bg-mist-50"
-              title={focusText.reset}>
-              <RotateCcw className="h-3.5 w-3.5" /> 重置
+              title="保存当前专注并从零重新开始">
+              <RotateCcw className="h-3.5 w-3.5" /> 重新开始
             </button>
           </div>
         </div>
       )}
       {finishConfirm && <div role="dialog" aria-modal="true" aria-label="确认完成整个任务"
         className="mt-4 w-full max-w-sm rounded-2xl border border-line bg-white p-4 text-center shadow-soft">
-        <p className="text-sm font-semibold text-ink">确定完成整个任务吗？</p>
+        <p className="text-sm font-semibold text-ink">{isRoutine ? "记一次完成？周期任务会继续保留。" : "确定完成整个任务吗？"}</p>
         <p className="mt-1 text-xs text-ink-soft">这会将 Todo 标记为已完成，不只是结束本次专注。</p>
         <div className="mt-3 flex justify-center gap-2">
           <button type="button" disabled={busy} onClick={() => {setFinishConfirm(false);void completeTimer();}}

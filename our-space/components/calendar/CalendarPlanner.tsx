@@ -50,6 +50,7 @@ import DurationInput, {
 import TodoSubtasks from "@/components/TodoSubtasks";
 import QuickNotes from "@/components/QuickNotes";
 import { useI18n } from "@/components/I18nProvider";
+import {taskCardVisual,categoryBadgeVisual,CATEGORY_VISUALS} from "@/lib/task-colors";
 
 /* =========================================================
    Types
@@ -63,10 +64,18 @@ type TodoSession = {
   scheduled_start: string;
   scheduled_end: string;
   reminder_minutes_before: number | null;
+  mode?: "fixed"|"window"|"flexible";
+  plan_date?:string|null;
+  planned_minutes?:number|null;
+  window_start?:string|null;
+  window_end?:string|null;
+  virtual?: boolean;
 };
 
 type CalendarTodo = {
   id: string;
+  task_type?: string | null;
+  color_hex?: string | null;
   title: string;
   description: string | null;
   estimated_minutes: number | null;
@@ -85,6 +94,9 @@ type CalendarTodo = {
 type Props = {
   initialTodos: CalendarTodo[];
   initialDate: string;
+  virtualSessions?: Array<{todo_id:string;id:string;scheduled_start:string;scheduled_end:string}>;
+  windowPlans?:Array<{id:string;todo_id:string;title:string;category:string|null;color_hex:string|null;mode:string;planned_minutes:number;window_start:string|null;window_end:string|null}>;
+  onDateChange?: (date:string)=>void;
 };
 
 type SessionWithTodo = {
@@ -323,7 +335,7 @@ function sessionDurationMinutes(session: TodoSession) {
  * 不要拿它判断一个未完成 Todo 现在是否“已经排满”。
  */
 function scheduledMinutes(todo: CalendarTodo) {
-  return (todo.todo_sessions ?? []).reduce(
+  return (todo.todo_sessions ?? []).filter(session=>session.scheduled_start&&session.scheduled_end).reduce(
     (total, session) => total + sessionDurationMinutes(session),
     0
   );
@@ -342,6 +354,7 @@ function activeScheduledMinutes(
 ) {
   return (todo.todo_sessions ?? []).reduce(
     (total, session) => {
+      if(!session.scheduled_start||!session.scheduled_end)return total;
       const endMs = new Date(
         session.scheduled_end
       ).getTime();
@@ -362,7 +375,7 @@ function expiredSessionCount(
 ) {
   return (todo.todo_sessions ?? []).filter(
     (session) =>
-      new Date(session.scheduled_end).getTime() < nowMs
+      Boolean(session.scheduled_start&&session.scheduled_end)&&new Date(session.scheduled_end).getTime() < nowMs
   ).length;
 }
 
@@ -660,9 +673,11 @@ function readSlotId(id: string) {
 function PoolTask({
   todo,
   nowMs,
+  quota,
 }: {
   todo: CalendarTodo;
   nowMs: number;
+  quota?:{goal:number;booked:number};
 }) {
   const { dictionary, language } = useI18n();
   const cal = dictionary.calendar;
@@ -677,13 +692,11 @@ function PoolTask({
     todoText.categories,
     cal.unclassified
   );
-  const scheduled = activeScheduledMinutes(todo, nowMs);
-  const remaining =
-    remainingPlannableMinutes(todo, nowMs);
+  const scheduled = quota ? quota.booked : activeScheduledMinutes(todo, nowMs);
+  const remaining = quota ? Math.max(0,quota.goal-quota.booked) : remainingPlannableMinutes(todo, nowMs);
   const overplanned =
     activeOverplannedMinutes(todo, nowMs);
-  const progress =
-    activeScheduledRatio(todo, nowMs) * 100;
+  const progress = quota ? Math.min(100,100*quota.booked/quota.goal) : activeScheduledRatio(todo, nowMs) * 100;
   const expiredCount =
     expiredSessionCount(todo, nowMs);
 
@@ -695,15 +708,10 @@ function PoolTask({
       style={{
         touchAction: "none",
         userSelect: "none",
-        background: `
-          linear-gradient(
-            to right,
-            rgba(147, 169, 142, 0.26) 0%,
-            rgba(147, 169, 142, 0.26) ${progress}%,
-            rgba(251, 247, 241, 0.72) ${progress}%,
-            rgba(251, 247, 241, 0.72) 100%
-          )
-        `,
+        ...taskCardVisual(todo.category,todo.color_hex),
+        ...((quota?.goal??todo.estimated_minutes??0)>0 ? {
+          backgroundImage: `linear-gradient(to right, transparent 0%, transparent ${100-progress}%, rgba(255,255,255,0.88) ${100-progress}%, rgba(255,255,255,0.88) 100%)`
+        } : {}),
       }}
       className={`
         flex cursor-grab items-center gap-3 rounded-2xl border border-line
@@ -725,7 +733,7 @@ function PoolTask({
           </p>
 
           <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+            className="shrink-0 rounded-full border px-2 py-0.5 text-[10px]" style={categoryBadgeVisual(todo.category)}
           >
             {category.label}
           </span>
@@ -791,16 +799,17 @@ function DragPreview({
 
   return (
     <div
+      style={taskCardVisual(todo.category,todo.color_hex)}
       className={`
         w-[280px] scale-[1.015] rounded-2xl border px-3 py-3
-        shadow-[0_14px_36px_rgba(60,50,40,0.12)] ${category.card}
+        shadow-[0_14px_36px_rgba(60,50,40,0.12)]
       `}
     >
       <div className="flex items-center justify-between gap-3">
         <p className="truncate text-sm font-medium text-ink">{todo.title}</p>
 
         <span
-          className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+          className="rounded-full border px-2 py-0.5 text-[10px]" style={categoryBadgeVisual(todo.category)}
         >
           {category.label}
         </span>
@@ -865,7 +874,8 @@ function CalendarSlot({
       {isOver && activeTodo && (
         <div className="pointer-events-none absolute inset-x-2 top-1/2 z-40 -translate-y-1/2">
           <div
-            className={`rounded-xl border px-3 py-1.5 text-center text-[10px] shadow-sm ${category?.card}`}
+            className="rounded-xl border px-3 py-1.5 text-center text-[10px] shadow-sm"
+            style={taskCardVisual(activeTodo.category,activeTodo.color_hex)}
           >
             {previewStart.toLocaleTimeString([], {
               hour: "2-digit",
@@ -921,6 +931,7 @@ function ScheduledSession({
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `session:${session.id}`,
+    disabled: session.virtual === true,
   });
 
   const [previewEnd, setPreviewEnd] = useState<string | null>(null);
@@ -1006,12 +1017,12 @@ function ScheduledSession({
     <div
       ref={setNodeRef}
       onClick={onSelect}
-      style={{ top, height }}
+      style={{ top, height, ...taskCardVisual(todo.category,todo.color_hex) }}
       className={`
         absolute left-2 right-2 z-20 rounded-2xl border
         shadow-[0_3px_14px_rgba(60,50,40,0.045)]
         transition-[transform,box-shadow,opacity,filter] duration-150
-        ${category.card}
+        ${session.virtual ? "border-dashed opacity-85" : ""}
         ${selected ? "ring-2 ring-sage-300/50" : ""}
         ${isDragging ? "opacity-25" : ""}
         ${justPlaced ? "scale-[1.02] ring-2 ring-sage-300/45" : ""}
@@ -1020,7 +1031,7 @@ function ScheduledSession({
     >
       <div className={`relative h-full ${compact ? "px-3 py-1.5" : "px-3 py-2"}`}>
         <div className="flex items-start gap-2">
-          <button
+          {!session.virtual && <button
             type="button"
             {...attributes}
             {...listeners}
@@ -1030,7 +1041,7 @@ function ScheduledSession({
             title={cal.dragSession}
           >
             <GripVertical className="h-3.5 w-3.5" />
-          </button>
+          </button>}
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
@@ -1059,7 +1070,7 @@ function ScheduledSession({
 
                 {!compact && !starting && !running && (
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] ${category.badge}`}
+                    className="rounded-full border px-2 py-0.5 text-[10px]" style={categoryBadgeVisual(todo.category)}
                   >
                     {category.label}
                   </span>
@@ -1088,7 +1099,7 @@ function ScheduledSession({
           </div>
         )}
 
-        {!isDragging && (
+        {!session.virtual && !isDragging && (
           <button
             type="button"
             onPointerDown={beginResize}
@@ -1200,6 +1211,9 @@ function ContextTabButton({
 export default function CalendarPlanner({
   initialTodos,
   initialDate,
+  virtualSessions = [],
+  windowPlans = [],
+  onDateChange,
 }: Props) {
   const router = useRouter();
   const { dictionary, language } = useI18n();
@@ -1219,6 +1233,7 @@ export default function CalendarPlanner({
 
   const [todos, setTodos] = useState<CalendarTodo[]>(initialTodos);
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  useEffect(()=>{onDateChange?.(selectedDate);},[selectedDate,onDateChange]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
@@ -1281,6 +1296,17 @@ export default function CalendarPlanner({
     lastAutoScrolledDateRef.current = null;
   }, [selectedDate]);
 
+  // Plan quota is scoped to the displayed day, not historical all-time bookings.
+  // With no explicit per-day plan, fall back to legacy estimated_minutes.
+  const dailyQuota=(todo:CalendarTodo)=>{
+    const plans=windowPlans.filter(p=>p.todo_id===todo.id&&p.planned_minutes>0);
+    const planned=plans.reduce((sum,p)=>sum+p.planned_minutes,0);
+    const goal=planned>0?planned:todo.estimated_minutes??0;
+    if(goal<=0)return null;
+    const booked=(todo.todo_sessions??[]).filter(session=>session.scheduled_start&&session.scheduled_end&&localDatePart(session.scheduled_start)===selectedDate)
+      .reduce((sum,session)=>sum+sessionDurationMinutes(session),0);
+    return {goal,booked};
+  };
   const poolTodos = useMemo(
     () =>
       todos.filter((todo) => {
@@ -1288,11 +1314,11 @@ export default function CalendarPlanner({
           return false;
         }
 
-        const remaining =
-          remainingPlannableMinutes(todo, now);
+        const quota=dailyQuota(todo);
+        const remaining=quota?Math.max(0,quota.goal-quota.booked):remainingPlannableMinutes(todo,now);
         return remaining === null || remaining > 0;
       }),
-    [todos, now]
+    [todos, now, selectedDate, windowPlans]
   );
 
   const fullyPlannedTodos = useMemo(
@@ -1302,21 +1328,39 @@ export default function CalendarPlanner({
           return false;
         }
 
-        const remaining =
-          remainingPlannableMinutes(todo, now);
+        const quota=dailyQuota(todo);
+        const remaining=quota?Math.max(0,quota.goal-quota.booked):remainingPlannableMinutes(todo,now);
         return remaining !== null && remaining === 0;
       }),
     [todos, now]
   );
 
+  const flexiblePlans=windowPlans.filter(p=>p.mode==="flexible");
+  const windows=windowPlans.filter(p=>p.mode==="window"&&p.window_start&&p.window_end&&p.window_start<p.window_end);
+  // Merge intersecting windows for readable visual groups; this never changes bookings.
+  const groupedWindows:typeof windows[]=[];
+  for(const win of [...windows].sort((a,b)=>(a.window_start??"").localeCompare(b.window_start??""))){
+    const last=groupedWindows[groupedWindows.length-1];
+    if(last&&last.some(p=>p.window_end!>win.window_start!))last.push(win);
+    else groupedWindows.push([win]);
+  }
   const scheduledSessions = useMemo(() => {
     const result: SessionWithTodo[] = [];
 
     for (const todo of todos) {
       for (const session of todo.todo_sessions ?? []) {
-        if (localDatePart(session.scheduled_start) === selectedDate) {
+        if (session.scheduled_start&&session.scheduled_end&&localDatePart(session.scheduled_start) === selectedDate) {
           result.push({ todo, session });
         }
+      }
+    }
+    for(const item of virtualSessions){
+      const todo=todos.find(x=>x.id===item.todo_id);
+      if(todo&&localDatePart(item.scheduled_start)===selectedDate){
+        result.push({todo,session:{
+          id:item.id,scheduled_start:item.scheduled_start,scheduled_end:item.scheduled_end,
+          reminder_minutes_before:null,virtual:true,
+        }});
       }
     }
 
@@ -1325,7 +1369,7 @@ export default function CalendarPlanner({
         new Date(a.session.scheduled_start).getTime() -
         new Date(b.session.scheduled_start).getTime()
     );
-  }, [todos, selectedDate]);
+  }, [todos, selectedDate, virtualSessions]);
 
   const visibleWindow = useMemo(
     () =>
@@ -1333,9 +1377,9 @@ export default function CalendarPlanner({
         scheduledSessions,
         selectedDate,
         now,
-        showFullDay
+        showFullDay || windows.length>0
       ),
-    [scheduledSessions, selectedDate, now, showFullDay]
+    [scheduledSessions, selectedDate, now, showFullDay, windows.length]
   );
 
   const visibleStartHour = visibleWindow.startHour;
@@ -1394,7 +1438,7 @@ export default function CalendarPlanner({
     }
 
     if (activeTodo) {
-      return defaultSessionMinutes(activeTodo, now);
+      return dailyQuota(activeTodo) ? Math.max(SLOT_MINUTES,dailyQuota(activeTodo)!.goal-dailyQuota(activeTodo)!.booked) : defaultSessionMinutes(activeTodo, now);
     }
 
     return DEFAULT_SESSION_MINUTES;
@@ -1889,6 +1933,8 @@ export default function CalendarPlanner({
   }
 
   async function completeTodo(todo: CalendarTodo) {
+    // Routines are completed per occurrence, never as a whole task.
+    if (todo.task_type === "routine" || todo.task_type === "habit") return;
     const previousTodos = todos;
     let elapsed = todo.elapsed_seconds ?? 0;
 
@@ -2154,10 +2200,16 @@ export default function CalendarPlanner({
               )}
 
               {poolTodos.map((todo) => (
-                <PoolTask key={todo.id} todo={todo} nowMs={now} />
+                <PoolTask key={todo.id} todo={todo} nowMs={now} quota={dailyQuota(todo)??undefined} />
               ))}
             </div>
 
+            {flexiblePlans.length>0&&<section className="mt-4 border-t border-line pt-3">
+              <h3 className="mb-2 text-xs font-semibold text-ink-soft">{language==="zh-CN"?"今日灵活投入（未指定时段）":"Flexible plans (unbooked time)"}</h3>
+              <div className="space-y-2">{flexiblePlans.map(p=><div key={p.id} className="rounded-xl border px-3 py-2 text-xs text-ink-soft" style={taskCardVisual(p.category,p.color_hex)}>
+                <strong className="block text-ink">{p.title}</strong>{p.planned_minutes} {language==="zh-CN"?"分钟 · 不占用小时格":"min · No hour-grid booking"}
+              </div>)}</div>
+            </section>}
             {fullyPlannedTodos.length > 0 && (
               <details className="mt-4 border-t border-line pt-3">
                 <summary className="cursor-pointer select-none text-[11px] text-ink-faint transition hover:text-ink-soft">
@@ -2170,6 +2222,7 @@ export default function CalendarPlanner({
                       key={`planned-${todo.id}`}
                       todo={todo}
                       nowMs={now}
+                      quota={dailyQuota(todo)??undefined}
                     />
                   ))}
                 </div>
@@ -2229,6 +2282,23 @@ export default function CalendarPlanner({
               />
             )}
 
+            {groupedWindows.length>0&&<div className="border-b border-line px-5 py-3">
+              <p className="mb-2 text-xs font-medium text-ink-soft">{language==="zh-CN"?"今日可执行时间窗口":"Available execution windows"}</p>
+              <div className="space-y-2">{groupedWindows.map((group,index)=>{
+                const start=group.map(p=>p.window_start!.slice(0,5)).sort()[0],end=group.map(p=>p.window_end!.slice(0,5)).sort().at(-1)!;
+                const effort=group.reduce((sum,p)=>sum+p.planned_minutes,0);
+                const capacity=Number(end.slice(0,2))*60+Number(end.slice(3))-Number(start.slice(0,2))*60-Number(start.slice(3));
+                return <details key={index} className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 px-3 py-2 text-xs">
+                  <summary className="cursor-pointer font-medium">{start}–{end} · {group.length} {language==="zh-CN"?"个任务":"tasks"} · {effort} min
+                    {effort>capacity&&<span className="ml-2 text-amber-700">{language==="zh-CN"?"预计总时长超出窗口":"Estimated effort exceeds window"}</span>}
+                  </summary>
+                  <div className="mt-2 space-y-2">{group.map(p=><div key={p.id} className="flex items-center justify-between gap-2 border-t border-line pt-2">
+                    <span>{p.title} · {p.planned_minutes} min</span>
+                    <Link className="shrink-0 text-sage-700 underline" href={"/todo?todoId="+encodeURIComponent(p.todo_id)}>{language==="zh-CN"?"查看任务":"Open task"}</Link>
+                  </div>)}</div>
+                </details>;
+              })}</div>
+            </div>}
             {/* Timeline viewport */}
             <div
               ref={timelineScrollRef}
@@ -2293,8 +2363,26 @@ export default function CalendarPlanner({
                     </div>
                   )}
 
+                  {/* Planning windows share a positioned layer with timeline slots. */}
+                  <div className="pointer-events-none absolute inset-0 z-10">
+                  {groupedWindows.map(group=>{
+                    const start=group.map(p=>p.window_start!.slice(0,5)).sort()[0];const end=group.map(p=>p.window_end!.slice(0,5)).sort().at(-1)!;
+                    const startMinutes=Number(start.slice(0,2))*60+Number(start.slice(3));
+                    const endMinutes=Number(end.slice(0,2))*60+Number(end.slice(3));
+                    const top=Math.max(0,(startMinutes-visibleStartHour*60)/60*HOUR_HEIGHT);
+                    const height=Math.max(24,(endMinutes-startMinutes)/60*HOUR_HEIGHT);
+                    if(top>=visibleTotalHeight)return null;
+                    const category=group.length===1?group[0].category:null;
+                    return <div key={start+end} className="pointer-events-none absolute left-3 right-3 z-10 overflow-hidden rounded-xl border-2 border-dashed p-2 text-xs shadow-sm"
+                      style={{top:Math.max(0,top),height:Math.min(height,visibleTotalHeight-top),backgroundColor:category?(taskCardVisual(category,group[0].color_hex).backgroundColor):"#F5F7FB",borderColor:group.length===1?taskCardVisual(category,group[0].color_hex).borderLeftColor:"#98A9C6",opacity:0.85}}>
+                      <strong>{start}–{end} · {group.length} {language==="zh-CN"?"项窗口任务":"window tasks"} · {group.reduce((n,p)=>n+p.planned_minutes,0)} min</strong>
+                      {group.slice(0,3).map(p=><div key={p.id} className="mt-1 truncate">{p.title} · {p.planned_minutes} min</div>)}
+                      {group.length>3&&<div>+{group.length-3}</div>}
+                    </div>;
+                  })}
+                  </div>
                   {/* Sessions */}
-                  <div className="absolute inset-0">
+                  <div className="absolute inset-0 z-20">
                     {scheduledSessions.map(({ todo, session }) => (
                       <ScheduledSession
                         key={session.id}
@@ -2307,11 +2395,12 @@ export default function CalendarPlanner({
                         saving={busyId === session.id}
                         starting={startingFocusTodoId === todo.id}
                         onSelect={() => {
+                          if (session.virtual) {router.push("/todo?todoId="+encodeURIComponent(todo.id));return;}
                           if (!activeDragId) {
                             openSelectedSession(session.id);
                           }
                         }}
-                        onResize={handleResize}
+                        onResize={session.virtual?()=>{}:handleResize}
                       />
                     ))}
                   </div>
@@ -2692,29 +2781,34 @@ export default function CalendarPlanner({
                             {common.edit}
                           </button>
 
-                          <button
+                          {selectedSessionInfo.todo.task_type !== "routine" && selectedSessionInfo.todo.task_type !== "habit" && <button
                             type="button"
                             onClick={() => completeTodo(selectedSessionInfo.todo)}
                             className="flex items-center justify-center gap-2 rounded-xl bg-blush-50 px-3 py-2 text-xs font-medium text-blush-500 transition hover:bg-blush-100"
                           >
                             <Check className="h-3.5 w-3.5" />
                             {todoText.completed}
-                          </button>
+                          </button>}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            removeSession(
-                              selectedSessionInfo.todo,
-                              selectedSessionInfo.session
-                            )
-                          }
-                          className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
+                        {!selectedSessionInfo.session.virtual && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeSession(selectedSessionInfo.todo, selectedSessionInfo.session)
+                            }
+                            className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-faint transition hover:bg-blush-50 hover:text-blush-500"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {cal.cancelSession}
+                          </button>
+                        )}
+                        <Link
+                          href={"/todo?todoId="+encodeURIComponent(selectedSessionInfo.todo.id)}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-xs text-ink-soft hover:bg-paper"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          {cal.cancelSession}
-                        </button>
+                          {language==="zh-CN"?"管理重复安排：取消一次／停止后续":"Manage series: cancel once / stop future"}
+                        </Link>
                       </>
                     )}
                   </div>
