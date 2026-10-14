@@ -1,0 +1,32 @@
+{
+  "status": "review_required",
+  "release": "2026-10-14-refined",
+  "characters": [
+    "cat_box.png",
+    "cat_butterfly.png",
+    "cat_cheer.png",
+    "cat_drink.png",
+    "cat_flag.png",
+    "cat_garden.png",
+    "cat_laptop.png",
+    "cat_listen.png",
+    "cat_love.png",
+    "cat_nap.png",
+    "cat_read.png",
+    "cat_rest.png",
+    "cat_run.png",
+    "cat_sleep.png",
+    "cat_umbrella.png",
+    "cat_walk.png"
+  ],
+  "character_canvas": "512x512 RGBA",
+  "seasons": [
+    "spring.webp",
+    "summer.webp",
+    "autumn.webp",
+    "winter.webp",
+    "night.webp"
+  ],
+  "binary_status": "not_uploaded",
+  "notes": "Auto-matte edge cleanup; still needs visual approval; downloadable ZIP in ChatGPT conversation. Binary image files are not yet committed to GitHub."
+}
