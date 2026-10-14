@@ -32,3 +32,9 @@ Reference as `/assets/growth/icons/flag-start.svg` (and similarly for other icon
 ## QA boundary
 
 These SVGs have been checked structurally for standalone viewBox, valid SVG markup and no embedded bitmap or external resources, but **have not been visually regression-tested in the running app**. They are candidates for production integration, not a completed release. The cat artwork still needs consistent redraw and human review before it can be described as production-ready.
+
+## Mascot and seasonal vector additions
+
+Eight mascot SVGs in `characters/` use a shared cat body and face geometry: `cat-walk`, `cat-flag`, `cat-read`, `cat-cheer`, `cat-sleep`, `cat-love`, `cat-study`, `cat-celebrate`. These are new simplified vector redraws, **not pixel-faithful replicas** of the concept artwork. Four seasonal SVGs in `seasons/` are `spring`, `summer`, `autumn`, `winter` (800x320 viewBox). Seasonal compositions use the same landscape geometry with palette variations, not four detailed hand-painted illustrations.
+
+**Review required before release:** visually inspect each rendered SVG, verify character silhouette and prop overlaps, contrast and accessibility, mobile rendering, and actual UI screenshots. No runtime build or visual regression test was executed as part of this asset-only commit.
