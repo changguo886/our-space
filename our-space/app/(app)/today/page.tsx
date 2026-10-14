@@ -224,9 +224,6 @@ export default async function TodayPage() {
       "task_date",
       today
     )
-    .or(
-      `group_id.is.null,group_id.eq.${group.id}`
-    )
     .order(
       "created_at",
       {

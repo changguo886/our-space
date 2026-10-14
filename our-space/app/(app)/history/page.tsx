@@ -41,11 +41,8 @@ export default async function HistoryPage() {
 
   // Todo 历史
   //
-  // 包括：
-  // - private Todo
-  // - 当前 Space Todo
-  //
-  // 不读取其他 Space 的 Todo
+  // 自己的全部 Todo：分享范围只决定朋友能否看到，
+  // 不影响自己的视图
   const { data: todos } =
     await supabase
       .from("todos")
@@ -60,9 +57,6 @@ export default async function HistoryPage() {
         group_id
       `)
       .eq("user_id", user.id)
-      .or(
-        `group_id.is.null,group_id.eq.${group.id}`
-      )
       .order(
         "task_date",
         {

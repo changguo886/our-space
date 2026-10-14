@@ -105,9 +105,6 @@ export default async function TodoPage() {
         "user_id",
         user.id
       )
-      .or(
-        `group_id.is.null,group_id.eq.${group.id}`
-      )
       .order(
         "task_date",
         {
