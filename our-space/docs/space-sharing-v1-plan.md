@@ -25,7 +25,7 @@
 ## 2. 现状审查结论
 
 1. **自己的任务被「当前 Space」过滤（已修复，A1）。** Today、Todo、Calendar、History 都使用 `group_id is null or group_id = 当前 Space`。切换 Space 后，分享到其他 Space 的任务会从自己的页面消失。这也可能是问题 11「Today 没显示全部任务」的成因之一。
-2. **朋友目前完全读不到任务。** `todos` 表的 RLS 不在仓库中（应是当时在控制台创建），测试 mock 中是 owner-only。Space 页面（`friends/page.tsx`）只读取 `daily_entries`。所以选择「发布到 Space」目前只是写入了 `todos.group_id`，没有任何读取路径。
+2. **数据库层面朋友能读到整行任务，但界面没有入口。** 生产环境 `todos_select` 为 `user_id = auth.uid() or (group_id is not null and is_group_member(group_id))`，Space 成员可以直接通过 Supabase 接口读到朋友任务的全部字段（包括描述）。Space 页面（`friends/page.tsx`）只读取 `daily_entries`，应用代码中没有任何地方依赖成员读取规则。`todo_sessions`、`focus_entries` 的 SELECT 已是 owner-only。
 3. **分享只能单选。** `todos.group_id` 是一个字段；`AddTodoForm` 只提供「仅自己 / 当前 Space」两个选项；编辑任务时没有修改可见范围的入口（`TodoList` 直接保留原值）。
 4. **`save_task_v4` 没有校验 Space 成员身份。** 它直接写入 payload 中的 `group_id`。目前朋友读不到所以没有影响，但开放读取之前必须修复。
 5. **日记是「每人每天一条」。** `daily_entries` 有 `unique (user_id, entry_date)`，所以一篇日记只能属于一个 Space。日记多 Space 分享是另一个决定，不在 V1 范围内。
@@ -45,7 +45,8 @@
 | 编号 | 内容 | 难度 | 状态 |
 |---|---|---|---|
 | A1 | 自己的 Today / Todo / Calendar / History 不再按当前 Space 过滤 | 轻 | ✅ 已完成（分支 `fix/own-tasks-all-spaces`） |
-| A2 | 在 Supabase 运行只读查询，确认生产环境 `todos`、`todo_sessions`、`focus_entries` 的实际 RLS：`select tablename, policyname, cmd, qual from pg_policies where schemaname='public' and tablename in ('todos','todo_sessions','focus_entries');` | 轻 | 待做 |
+| A2 | 确认生产环境 RLS | 轻 | ✅ SELECT 已确认；INSERT 的 `with_check` 待确认 |
+| A2b | `todos_select` 收紧为 owner-only（`supabase/space_sharing_v1_00_tighten_todos_select.sql`） | 轻 | 待在生产运行 |
 | A3 | `save_task_v4` 写入 Space 前校验 `is_group_member()`，不是成员则报错 | 轻 | 待做（与 B5 合并发布） |
 
 ### P1 — 数据层（一次迁移完成）
