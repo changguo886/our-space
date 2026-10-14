@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 50" width="70" height="50">
+  <!-- 小花丛 -->
+  <g stroke="#8FAE88" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <path d="M16 48 Q16 34 14 26"/><path d="M36 48 Q38 30 36 18"/><path d="M54 48 Q54 36 56 30"/>
+    <path d="M36 36 Q44 30 48 32"/>
+  </g>
+  <g>
+    <g transform="translate(14 22)"><circle r="5" cx="-5" fill="#EDC3B4"/><circle r="5" cx="5" fill="#EDC3B4"/><circle r="5" cy="-5" fill="#EDC3B4"/><circle r="5" cy="5" fill="#EDC3B4"/><circle r="3.2" fill="#E6C27A"/></g>
+    <g transform="translate(36 14)"><circle r="6" cx="-6" fill="#F3E2B5"/><circle r="6" cx="6" fill="#F3E2B5"/><circle r="6" cy="-6" fill="#F3E2B5"/><circle r="6" cy="6" fill="#F3E2B5"/><circle r="3.8" fill="#D9A86A"/></g>
+    <g transform="translate(56 26)"><circle r="4.5" cx="-4.5" fill="#D9C7E0"/><circle r="4.5" cx="4.5" fill="#D9C7E0"/><circle r="4.5" cy="-4.5" fill="#D9C7E0"/><circle r="4.5" cy="4.5" fill="#D9C7E0"/><circle r="2.8" fill="#E6C27A"/></g>
+  </g>
+</svg>

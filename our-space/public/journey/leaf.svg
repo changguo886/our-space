@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30" width="30" height="30">
+  <!-- 飘落的叶子 -->
+  <path d="M4 26 Q2 6 26 4 Q26 26 4 26 Z" fill="#B3CAA9"/>
+  <path d="M6 24 Q14 14 22 8" stroke="#8FAE88" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 120" width="80" height="120">
+  <!-- 松树 -->
+  <ellipse cx="40" cy="114" rx="22" ry="4" fill="#6F8C6A" opacity=".18"/>
+  <rect x="36" y="90" width="8" height="24" rx="3" fill="#9C7F68"/>
+  <path d="M40 10 L64 52 L52 52 L70 80 L54 80 L74 100 L6 100 L26 80 L10 80 L28 52 L16 52 Z" fill="#8FAE88"/>
+  <path d="M40 10 L52 34 L46 34 L58 56 L48 56 L60 78 L40 78 Z" fill="#A9C4A0" opacity=".8"/>
+  <path d="M40 10 L28 34 L34 34 L22 56 L32 56 L20 78 L40 78 Z" fill="#7C9C76" opacity=".55"/>
+</svg>

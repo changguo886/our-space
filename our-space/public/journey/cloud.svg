@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 56" width="120" height="56">
+  <!-- 云 -->
+  <g fill="#EEF2F5">
+    <circle cx="36" cy="32" r="18"/><circle cx="62" cy="22" r="22"/><circle cx="88" cy="32" r="16"/>
+    <rect x="20" y="30" width="84" height="20" rx="10"/>
+  </g>
+  <path d="M24 48 L100 48" stroke="#E1E7EC" stroke-width="3" stroke-linecap="round"/>
+</svg>
