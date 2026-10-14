@@ -17,7 +17,7 @@ export default function ReactionBar({
   userId: string;
   isOwn: boolean;
   initial: R[];
-  size?: "sm" | "md";
+  size?: "xs" | "sm" | "md";
 }) {
   const [reactions, setReactions] = useState<R[]>(initial);
   const [busy, setBusy] = useState(false);
@@ -41,10 +41,10 @@ export default function ReactionBar({
     setBusy(false);
   }
 
-  const pad = size === "md" ? "px-3.5 py-2 text-sm" : "px-3 py-1.5 text-[13px]";
+  const pad = size === "md" ? "px-3.5 py-2 text-sm" : size === "xs" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-[13px]";
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className={`flex flex-wrap ${size === "xs" ? "gap-1.5" : "gap-2"}`}>
       {REACTIONS.map(({ type, emoji, label }) => {
         const count = reactions.filter((r) => r.reaction_type === type).length;
         if (isOwn && count === 0) return null;
@@ -56,7 +56,7 @@ export default function ReactionBar({
             onClick={() => toggle(type)}
             disabled={isOwn}
             aria-pressed={on}
-            className={`inline-flex items-center gap-1.5 rounded-full border transition ${pad} ${
+            className={`inline-flex items-center gap-1 rounded-full border transition ${pad} ${
               on
                 ? "border-blush-100 bg-blush-50 text-ink"
                 : "border-line bg-white/70 text-ink-soft hover:bg-white"

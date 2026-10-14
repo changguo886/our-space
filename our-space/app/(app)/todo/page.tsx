@@ -99,14 +99,12 @@ export default async function TodoPage() {
         task_type,
         plan_start_date,
         target_finish_date,
-        deadline_date
+        deadline_date,
+        todo_space_shares ( group_id )
       `)
       .eq(
         "user_id",
         user.id
-      )
-      .or(
-        `group_id.is.null,group_id.eq.${group.id}`
       )
       .order(
         "task_date",

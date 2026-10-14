@@ -1,5 +1,6 @@
 "use client";
 
+import LinkifiedText from "@/components/LinkifiedText";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CalendarDays, CheckCircle2, ChevronRight, Plus, X } from "lucide-react";
@@ -14,6 +15,8 @@ import { addDaysISO, habitEligible, templateEligible, upcomingEligible, type Exe
 
 type Filter = "today" | "upcoming" | "backlog" | "completed" | "all";
 type Props = {
+  /** Today page hides the board heading (it has its own greeting). */
+  showHeading?: boolean;
   todos: Todo[];
   today: string;
   userId: string;
@@ -29,7 +32,15 @@ const typeLabel: Record<string,string> = {
   project: "长期项目",
 };
 
-export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activeSpaceName }: Props) {
+// Start of the current statistics period for a routine (weeks start on Monday, like the calendar).
+function periodStart(today:string, period:string){
+  if(period==="day")return today;
+  if(period==="month")return today.slice(0,8)+"01";
+  const [y,m,d]=today.split("-").map(Number);const date=new Date(y,m-1,d);
+  return addDaysISO(today,-((date.getDay()+6)%7));
+}
+
+export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activeSpaceName, showHeading = true }: Props) {
   const {language} = useI18n();
   const zh = language === "zh-CN";
   const [filter,setFilter] = useState<Filter>("today");
@@ -44,16 +55,23 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
   const [bookedCounts,setBookedCounts]=useState<Record<string,number>>({});
   const [executionTemplates,setExecutionTemplates]=useState<ExecutionTemplateV3[]>([]);
   const [bookedDays,setBookedDays]=useState<Record<string,string[]>>({});
+  const [periodDone,setPeriodDone]=useState<Record<string,number>>({});
   useEffect(()=>{
     let active=true;
     const db=createClient();
     void Promise.all([
       db.from("habit_patterns_v3").select("todo_id,period,arrangement,target_count,weekdays,month_days,include_month_end"),
       db.from("todo_sessions").select("todo_id,id,scheduled_start,plan_date,mode"),
-      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end")
-    ]).then(([p,slots,templateRows])=>{
+      db.from("todo_execution_templates").select("id,todo_id,slot_key,starts_on,ends_on,execution_mode,selector_kind,selector_value,start_time,end_time,timezone,planned_minutes,window_start,window_end"),
+      // Earliest period start we may need (this month or this week).
+      db.from("habit_logs").select("todo_id,occurred_on").gte("occurred_on",[periodStart(today,"week"),periodStart(today,"month")].sort()[0]).lte("occurred_on",today)
+    ]).then(([p,slots,templateRows,logs])=>{
       if(!active)return;
-      if(!p.error)setHabitPatterns(Object.fromEntries(((p.data??[]) as HabitPattern[]).map(pattern=>[pattern.todo_id,pattern])));
+      if(!p.error){
+        const patterns=Object.fromEntries(((p.data??[]) as HabitPattern[]).map(pattern=>[pattern.todo_id,pattern]));
+        setHabitPatterns(patterns);
+        if(!logs.error){const done:Record<string,number>={};for(const log of logs.data??[]){const pattern=patterns[log.todo_id];if(pattern&&log.occurred_on>=periodStart(today,pattern.period))done[log.todo_id]=(done[log.todo_id]??0)+1;}setPeriodDone(done);}
+      }
       if(!templateRows.error)setExecutionTemplates((templateRows.data??[]) as ExecutionTemplateV3[]);
       if(!slots.error){const counts:Record<string,number>={},days:Record<string,string[]>={};for(const slot of slots.data??[]){
         counts[slot.todo_id]=(counts[slot.todo_id]??0)+1;
@@ -64,13 +82,15 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
       }setBookedCounts(counts);setBookedDays(days);}
     });
     return()=>{active=false};
-  },[todos]);
+  },[todos,today]);
   const ruleSummary=(todo:Todo)=>{
     const p=habitPatterns[todo.id];
     if(todo.task_type!=="habit"&&todo.task_type!=="routine"||!p)return "";
-    if(p.period==="day")return `每天 ${p.target_count} 次`;
-    if(p.period==="week")return p.arrangement==="fixed"?`每周 ${(p.weekdays??[]).map(x=>"一二三四五六日"[x-1]).join("、")}`:`每周 ${p.target_count} 次`;
-    return p.arrangement==="fixed"?`每月 ${(p.month_days??[]).join("、")}${p.include_month_end?"、最后一天":""} 日`:`每月 ${p.target_count} 次`;
+    // One row per routine, with progress for the current period (issue 02).
+    const progress=` · ${p.period==="day"?"今天":p.period==="week"?"本周":"本月"} ${periodDone[todo.id]??0}/${p.target_count}`;
+    if(p.period==="day")return `每天 ${p.target_count} 次${progress}`;
+    if(p.period==="week")return (p.arrangement==="fixed"?`每周 ${(p.weekdays??[]).map(x=>"一二三四五六日"[x-1]).join("、")}`:`每周 ${p.target_count} 次`)+progress;
+    return (p.arrangement==="fixed"?`每月 ${(p.month_days??[]).join("、")}${p.include_month_end?"、最后一天":""} 日`:`每月 ${p.target_count} 次`)+progress;
   };
   const [typeFilter,setTypeFilter] = useState<"all"|"one_time"|"project"|"routine">("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
@@ -89,8 +109,15 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
     const p=habitPatterns[t.id];
     return Boolean(p&&upcomingEligible(p,t.task_date??today,today,370,5).some(day=>day>today));
   };
+  // A project exists on every day between its start and target finish (issue 11).
+  const projectSpansToday=(t:Todo)=>{
+    if(t.task_type!=="project")return false;
+    const start=t.plan_start_date??t.task_date;const end=t.target_finish_date??t.deadline_date;
+    return Boolean(start&&start<=today&&(!end||end>=today));
+  };
   const isToday=(t:Todo)=>{
     if((t.task_type==="habit"||t.task_type==="routine"))return isHabitToday(t);
+    if(projectSpansToday(t))return true;
     if(templateForDate(t,today))return true;
     const booked=bookedDays[t.id]??[];
     return booked.length?booked.includes(today):t.task_date===today;
@@ -122,13 +149,13 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
 
   return (
     <div className="relative mt-6 min-w-0">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      {showHeading&&<div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-ink">{zh?"我的任务":"My Tasks"}</h1>
           <p className="mt-1 text-xs text-ink-faint">{zh?"先记录，再规划。错过计划不会删除任务。":"Capture first, schedule later. Missed plans never delete tasks."}</p>
         </div>
 
-      </div>
+      </div>}
 
       <div className={selected?"grid min-w-0 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]":"mx-auto grid min-w-0 max-w-[780px] gap-5"}>
         <section className="min-w-0 rounded-2xl border border-line bg-white/85 p-4 shadow-soft">
@@ -178,6 +205,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
             <span className="text-xs font-medium text-ink-faint">{zh?"任务工作区":"Task workspace"}</span>
             <button type="button" onClick={()=>setSelectedId(null)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-soft hover:bg-paper"><X className="h-3.5 w-3.5"/> {zh?"关闭详情":"Close details"}</button>
           </div>
+          {selected.description?.trim()&&<p className="mb-3 whitespace-pre-wrap break-words rounded-xl border border-line bg-white/70 px-4 py-3 text-sm leading-relaxed text-ink-soft"><LinkifiedText text={selected.description}/></p>}
           <TodayTodoWorkspace key={selected.id} todayTodos={selected.status==="completed"?[]:[selected]}
             todayCompleted={selected.status==="completed"?[selected]:[]}
             title={selected.title} description={displayType(selected)} showProgress={false}/>

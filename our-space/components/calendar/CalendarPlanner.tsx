@@ -1,5 +1,6 @@
 "use client";
 
+import LinkifiedText from "@/components/LinkifiedText";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -2608,7 +2609,7 @@ export default function CalendarPlanner({
                               {cal.taskDescription}
                             </p>
                             <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-ink-soft">
-                              {selectedSessionInfo.todo.description}
+                              <LinkifiedText text={selectedSessionInfo.todo.description} />
                             </p>
                           </div>
                         )}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 90" width="60" height="90">
+  <!-- 终点旗 -->
+  <circle cx="18" cy="80" r="15" fill="#F2C9C0" opacity=".45"/>
+  <circle cx="18" cy="80" r="9" fill="#D98A80" stroke="#FFFFFF" stroke-width="3.5"/>
+  <path d="M18 72 L18 8" stroke="#8C5F58" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M19 8 Q34 4 54 14 Q40 22 52 34 Q34 30 19 36 Z" fill="#E09A90" stroke="#C47D73" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M46 46 L48 52 L54 54 L48 56 L46 62 L44 56 L38 54 L44 52 Z" fill="#E6C27A"/>
+</svg>

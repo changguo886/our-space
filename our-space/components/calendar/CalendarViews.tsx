@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import CalendarPlanner from "@/components/calendar/CalendarPlanner";
-import JourneyCalendar from "@/components/JourneyCalendar";
+import GrowthJourney from "@/components/growth/GrowthJourney";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import AppTimePicker from "@/components/ui/AppTimePicker";
@@ -14,8 +14,6 @@ import { templateEligible, wallClockISO, type ExecutionTemplateV3, type HabitPat
 
 type EventSession = { id:string; scheduled_start:string|null; scheduled_end:string|null; reminder_minutes_before:number|null; mode?:"fixed"|"window"|"flexible"; plan_date?:string|null; planned_minutes?:number|null; window_start?:string|null; window_end?:string|null };
 type CalendarTask = { id:string; category?:string|null; color_hex?:string|null; title:string; task_date?:string; task_type?:"one_time"|"project"|"routine"|"recurring"|"habit"; todo_sessions: EventSession[]; scheduled_start:string|null; scheduled_end:string|null };
-type JourneyRow = { id:string; todo_id:string; start_date:string; target_date:string; animal_type:string; journey_type:string; status:string; color_key:string };
-const JOURNEY_PALETTE:Record<string,string> = {blue:"#4B83D1",green:"#38A179",purple:"#9268C5",orange:"#DE9144",pink:"#D9769B",teal:"#329B9C"};
 type Props = { initialTodos: React.ComponentProps<typeof CalendarPlanner>["initialTodos"]; initialDate:string };
 type Mode = "day"|"week"|"month"|"journey";
 const modes: { key:Mode; title:string }[]=[{key:"day",title:"日"},{key:"week",title:"周"},{key:"month",title:"月"},{key:"journey",title:"旅程"}];
@@ -30,7 +28,6 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   const queryMode=params.get("view");const requested=queryMode==="journey"||queryMode==="month"||queryMode==="week"?"journey"===queryMode?"journey":queryMode:"day";
   const [mode,setMode]=useState<Mode>(requested);
   const [date,setDate]=useState(params.get("date")?.match(/^\d{4}-\d{2}-\d{2}$/)?.[0]??initialDate);
-  const [journeys,setJourneys]=useState<JourneyRow[]>([]);
   const [selectedTodo,setSelectedTodo]=useState(params.get("todoId")??"");
   const [loadError,setLoadError]=useState("");
   const [patterns,setPatterns]=useState<Record<string,HabitPatternV3>>({});
@@ -55,15 +52,14 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     });return()=>{live=false};
   },[]);
   useEffect(()=>{setMode(requested);if(params.get("todoId"))setSelectedTodo(params.get("todoId")??"");},[requested,params]);
-  useEffect(()=>{if(mode!=="journey"&&mode!=="month"&&mode!=="week")return;let alive=true;
-    void createClient().from("goal_journeys").select("id,todo_id,start_date,target_date,animal_type,journey_type,status,color_key")
-      .order("start_date",{ascending:false}).then(({data,error})=>{
-      if(!alive)return;if(error)setLoadError(error.message);else{setJourneys((data??[]) as JourneyRow[]);setLoadError("");}
-    });return()=>{alive=false;};
-  },[mode]);
   function change(next:Mode){setMode(next);const url=new URLSearchParams();url.set("view",next);url.set("date",date);if(next==="journey"&&selectedTodo)url.set("todoId",selectedTodo);router.replace("/calendar?"+url.toString(),{scroll:false});}
   const [y,m]=date.split("-").map(Number);const month=date.slice(0,7);
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
+  // Header for week/month views: show the actual range, and make "today" stand out once you navigate away (issue 01).
+  const weekDays=Array.from({length:7},(_,i)=>addDay(date,i-((new Date(y,m-1,Number(date.slice(-2))).getDay()+6)%7)));
+  const md=(d:string)=>`${Number(d.slice(5,7))}/${Number(d.slice(8,10))}`;
+  const showsToday=mode==="week"?weekDays.includes(initialDate):month===initialDate.slice(0,7);
+  const rangeLabel=mode==="week"?`${showsToday?"本周 · ":""}${md(weekDays[0])} – ${md(weekDays[6])}`:`${y} 年 ${m} 月`;
   const tasks=initialTodos as CalendarTask[];
   const eventVisual=(todoId:string)=>{const task=tasks.find(t=>t.id===todoId);return taskCardVisual(task?.category,task?.color_hex);};
   // A dated one-off schedule takes precedence over virtual recurring defaults
@@ -199,7 +195,6 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       window_start:t.window_start??null,window_end:t.window_end??null}));
   const allDailyPlans=[...dailyPlans,...recurringPlans];
   const taskTitle = new Map(tasks.map(t=>[t.id,t.title]));
-  const activeJourney=journeys.find(j=>j.todo_id===selectedTodo)??journeys[0];
   return <div className="mt-6">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-xl font-semibold text-ink">Calendar</h1><p className="mt-1 text-xs text-ink-faint">同一个计划中心 · 日程、月份与成长旅程</p></div>
@@ -226,41 +221,21 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       </section>}
     </div> :
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-medium text-ink">{mode==="week"?"本周":month+" 月"}</div>
+      {mode!=="journey"&&<div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm font-medium text-ink">{rangeLabel}</div>
         <div className="flex gap-2">
           <button type="button" className="rounded-lg border border-line px-3 py-1" aria-label="上一段"
             onClick={()=>setDate(d=>mode==="week"?addDay(d,-7):addMonth(d,-1))}>‹</button>
-          <button type="button" className="rounded-lg border border-line px-3 py-1 text-xs" onClick={()=>setDate(initialDate)}>今天</button>
+          <button type="button" aria-label="回到今天" className={`rounded-lg border px-3 py-1 text-xs transition ${showsToday?"border-line text-ink-soft":"border-sage-400 bg-sage-50 font-medium text-sage-700"}`} onClick={()=>setDate(initialDate)}>{showsToday?"今天":"回到今天"}</button>
           <button type="button" className="rounded-lg border border-line px-3 py-1" aria-label="下一段"
             onClick={()=>setDate(d=>mode==="week"?addDay(d,7):addMonth(d,1))}>›</button>
         </div>
-      </div>
-      {mode==="journey"?<div className="relative min-h-[420px] overflow-hidden rounded-2xl border border-line bg-white p-4"><div aria-hidden="true" inert className="pointer-events-none select-none opacity-40 blur-[2px]">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-ink-faint">成长旅程 · 选择任务，查看日期中的点滴进展</p><Link className="rounded-lg border border-line bg-paper px-3 py-2 text-xs font-medium text-sage-700 hover:bg-sage-50" href={activeJourney?"/todo?todoId="+encodeURIComponent(activeJourney.todo_id):"/todo"}>← 返回任务</Link></div>
-        <label className="mb-3 block text-sm text-ink-soft">选择长期旅程
-          <select className="input mt-1 w-full" value={activeJourney?.todo_id??""} onChange={e=>setSelectedTodo(e.target.value)}>
-            {journeys.map(j=><option key={j.id} value={j.todo_id}>{initialTodos.find(t=>t.id===j.todo_id)?.title??"长期任务"}</option>)}
-          </select>
-        </label>
-        {activeJourney && <p className="mb-3 flex items-center gap-2 text-xs text-ink-soft"><span className="h-3 w-7 rounded-full" style={{backgroundColor:JOURNEY_PALETTE[activeJourney.color_key]??JOURNEY_PALETTE.blue}} />旅程颜色：{activeJourney.color_key}</p>}
-        {loadError?<p role="alert" className="text-xs text-blush-500">读取旅程失败：{loadError}</p>:activeJourney?
-          <JourneyCalendar key={activeJourney.id} journeyId={activeJourney.id} startDate={activeJourney.start_date}
-            targetDate={activeJourney.target_date} animal={activeJourney.animal_type} route={activeJourney.journey_type} initialDate={date}/>:
-          <p className="text-sm text-ink-faint">还没有成长旅程。请先从 Todo 创建一条长期旅程。</p>}
-      </div>
-        <div className="absolute inset-0 flex items-center justify-center bg-white/55 p-6 backdrop-blur-[1px]">
-          <div role="status" className="max-w-sm rounded-2xl border border-line bg-white px-6 py-5 text-center shadow-soft">
-            <p className="text-xs font-medium tracking-wide text-sage-700">{zh?"即将上线":"Coming soon"}</p>
-            <h3 className="mt-1 text-lg font-semibold text-ink">{zh?"成长旅程":"Growth journey"}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-ink-soft">{zh?"小伙伴会陪你沿着长期项目的路线一步步前进。我们正在准备，敬请期待。":"A companion will walk your long-term projects with you. We are preparing it."}</p>
-            <p className="mt-2 text-xs text-ink-faint">{zh?"项目的日期、步骤和打卡记录都会保留。":"Your project dates, steps and check-ins are kept."}</p>
-          </div>
-        </div>
-      </div>:<div className="rounded-2xl border border-line bg-white p-4">
+      </div>}
+      {mode==="journey"?<GrowthJourney today={initialDate} initialProjectId={selectedTodo||undefined} onProjectChange={setSelectedTodo}/>
+      :<div className="rounded-2xl border border-line bg-white p-4">
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-ink-faint">{["一","二","三","四","五","六","日"].map(x=><div key={x}>{x}</div>)}</div>
         <div className="mt-3 grid grid-cols-7 gap-1">
-          {(mode==="month"?[...Array.from({length:(new Date(y,m-1,1).getDay()+6)%7},()=>null),...monthly]:Array.from({length:7},(_,i)=>addDay(date,i-((new Date(y,m-1,Number(date.slice(-2))).getDay()+6)%7)))).map((d,i)=>
+          {(mode==="month"?[...Array.from({length:(new Date(y,m-1,1).getDay()+6)%7},()=>null),...monthly]:weekDays).map((d,i)=>
             <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>

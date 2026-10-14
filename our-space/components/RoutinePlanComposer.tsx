@@ -1,4 +1,5 @@
 "use client";
+import MinutesField from "@/components/ui/MinutesField";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import AppTimePicker from "@/components/ui/AppTimePicker";
@@ -164,7 +165,7 @@ export default function RoutinePlanComposer({ batchColumn = false, todoId, patte
         <label className="text-xs text-ink-soft">{shared.mode === "window" ? (zh ? "最早" : "From") : (zh ? "开始" : "Start")}<AppTimePicker value={shared.start} onChange={(v) => setShared((s) => ({ ...s, start: v }))} /></label>
         <label className="text-xs text-ink-soft">{shared.mode === "window" ? (zh ? "最晚" : "Until") : (zh ? "结束" : "End")}<AppTimePicker value={shared.end} onChange={(v) => setShared((s) => ({ ...s, end: v }))} /></label>
       </div>}
-      {shared.mode !== "fixed" && <label className="block text-xs text-ink-soft">{zh ? "大概多久（分钟）" : "About how long (min)"}<input type="number" min={1} max={1440} className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm" value={shared.minutes} onChange={(e) => setShared((s) => ({ ...s, minutes: e.target.value }))} /></label>}
+      {shared.mode !== "fixed" && <div className="text-xs text-ink-soft">{zh ? "大概多久" : "About how long"}<MinutesField value={shared.minutes} onChange={(minutes) => setShared((s) => ({ ...s, minutes }))} zh={zh} label={zh ? "大概多久" : "About how long"} /></div>}
       <button type="button" onClick={apply} disabled={!chosen.length} className="w-full rounded-lg border border-sage-400 bg-white p-2 text-sm text-sage-700 disabled:opacity-40">{zh ? `用到选中的 ${chosen.length} 天` : `Use for ${chosen.length} days`}</button>
     </div>
 
@@ -176,7 +177,7 @@ export default function RoutinePlanComposer({ batchColumn = false, todoId, patte
         </div>
         <ModePicker compact value={s.mode} onChange={(m) => update(s.id, { mode: m })} zh={zh} />
         {s.mode !== "flexible" && <div className="grid grid-cols-2 gap-2"><AppTimePicker value={s.start} onChange={(v) => update(s.id, { start: v })} /><AppTimePicker value={s.end} onChange={(v) => update(s.id, { end: v })} /></div>}
-        {s.mode !== "fixed" && <input type="number" aria-label={zh ? "预计分钟" : "Minutes"} className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm" value={s.minutes} onChange={(e) => update(s.id, { minutes: e.target.value })} />}
+        {s.mode !== "fixed" && <MinutesField value={s.minutes} onChange={(minutes) => update(s.id, { minutes })} zh={zh} label={zh ? "预计时长" : "Duration"} />}
       </div>)}
     </div>}
 

@@ -67,6 +67,16 @@ if [ -f tests/13_schedule_integrity_test.sql ]; then
   psql_db -f tests/13_schedule_integrity_test.sql 2>&1 | grep -E "PASS|ERROR|FATAL"
 fi
 
+if [ -f tests/14_space_sharing_test.sql ]; then
+  step "space sharing v1"
+  quiet -f tests/14_space_sharing_setup.sql
+  quiet -f space_sharing_v1_01.sql
+  quiet -f space_sharing_v1_01.sql
+  psql_db -f tests/14_space_sharing_test.sql 2>&1 | grep -E "PASS|ERROR|FATAL"
+  sed -n '/^-- ROLLBACK-BEGIN/,/^-- ROLLBACK-END/p' space_sharing_v1_01.sql | sed -e 's/^-- \{0,1\}//' -e '/^ROLLBACK-/d' > /tmp/os_rb_share.sql
+  psql_db -f /tmp/os_rb_share.sql && echo "PASS rollback space_sharing_v1_01.sql"
+fi
+
 step "rollbacks (newest first)"
 for f in v4_13_schedule_integrity.sql v4_12_date_only_tasks.sql v4_11_series_identity.sql; do
   [ -f "$f" ] || continue

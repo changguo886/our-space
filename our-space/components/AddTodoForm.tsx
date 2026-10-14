@@ -7,6 +7,7 @@ import { DEFAULT_TASK_COLOR, LEGACY_JOURNEY_COLORS, categoryBadgeVisual,taskCard
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
+import SpaceSharingPicker, { PRIVATE_SHARING, saveTaskSharing, type TaskSharing } from "@/components/SpaceSharingPicker";
 
 
 function formatWorkDate(value: string, chinese: boolean): string {
@@ -38,15 +39,13 @@ const CATEGORIES: {
 ];
 
 export default function AddTodoForm({
-  userId,
-  activeSpaceId,
-  activeSpaceName,
   taskDate,
   onCreated,
 }: {
-  userId: string;
-  activeSpaceId: string;
-  activeSpaceName: string;
+  // userId / activeSpace* are still passed by callers; visibility now lists every Space the user is in.
+  userId?: string;
+  activeSpaceId?: string;
+  activeSpaceName?: string;
   taskDate: string;
   onCreated?: (createdId:string, planNow:boolean) => void;
 }) {
@@ -79,13 +78,7 @@ export default function AddTodoForm({
     setCustomTag,
   ] = useState("");
 
-  const [
-    visibility,
-    setVisibility,
-  ] =
-    useState<
-      "private" | "space"
-    >("private");
+  const [sharing, setSharing] = useState<TaskSharing>(PRIVATE_SHARING);
 
   const [taskType,setTaskType]=useState<"one_time"|"planned"|"habit">("one_time");
 
@@ -109,7 +102,7 @@ export default function AddTodoForm({
   const [dayChoice,setDayChoice]=useState<"today"|"pick"|"none">("today");
   const [pickedDay,setPickedDay]=useState(taskDate);
   const [dateNotice,setDateNotice]=useState<null|{id:string;planNow:boolean}>(null);
-  const [partial,setPartial]=useState<null|{id:string;planNow:boolean;extras:{color:string|null;journey:Record<string,unknown>|null};message:string}>(null);
+  const [partial,setPartial]=useState<null|{id:string;planNow:boolean;extras:{color:string|null;sharing:TaskSharing|null;journey:Record<string,unknown>|null};message:string}>(null);
   const [busy, setBusy] =
     useState(false);
 
@@ -175,7 +168,8 @@ export default function AddTodoForm({
         task_date: taskType==="one_time" ? (dayChoice==="none" ? null : dayChoice==="pick" ? pickedDay : taskDate) : taskDate,
         category,
         custom_tag: category==="other" ? customTag.trim()||null : null,
-        group_id: visibility==="space" ? activeSpaceId : null,
+        // Sharing lives in todo_space_shares (set_task_sharing below); the legacy column stays empty.
+        group_id: null,
         ...(taskType==="planned" ? {
           plan_start_date:startDate,target_finish_date:targetFinish,
           deadline_date:officialDeadline||null,
@@ -201,6 +195,7 @@ export default function AddTodoForm({
     const wantedNoDate = taskType==="one_time" && dayChoice==="none";
     const extras: Extras = {
       color: taskColor,
+      sharing: sharing.groupIds.length ? sharing : null,
       journey: taskType==="planned" ? {todo_id:createdId,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:Object.entries(LEGACY_JOURNEY_COLORS).find(([,hex])=>hex.toUpperCase()===taskColor.toUpperCase())?.[0]??"green"} : null,
     };
     // The task row now exists: clear the form at once so a second click cannot create a duplicate (A10).
@@ -217,14 +212,18 @@ export default function AddTodoForm({
     onCreated?.(createdId, planNow);
   }
 
-  type Extras = { color: string|null; journey: Record<string, unknown>|null };
+  type Extras = { color: string|null; sharing: TaskSharing|null; journey: Record<string, unknown>|null };
   async function saveExtras(id: string, extras: Extras): Promise<null|{pending:Extras;message:string}> {
     const supabase = createClient();
-    const pending: Extras = { color: null, journey: null };
+    const pending: Extras = { color: null, sharing: null, journey: null };
     const problems: string[] = [];
     if (extras.color) {
       const { error: colorError } = await supabase.from("todos").update({ color_hex: extras.color }).eq("id", id);
       if (colorError) { pending.color = extras.color; problems.push(zh ? "颜色" : "color"); }
+    }
+    if (extras.sharing) {
+      // If this fails the task simply stays private — the safe default.
+      if (await saveTaskSharing(supabase, id, extras.sharing)) { pending.sharing = extras.sharing; problems.push(zh ? "分享范围" : "sharing"); }
     }
     if (extras.journey) {
       const { error: journeyError } = await supabase.from("goal_journeys").insert(extras.journey);
@@ -232,7 +231,7 @@ export default function AddTodoForm({
       if (journeyError && journeyError.code !== "23505") { pending.journey = extras.journey; problems.push(zh ? "成长旅程" : "journey"); }
     }
     if (!problems.length) return null;
-    return { pending, message: zh ? `任务已创建，但${problems.join("和")}没保存成功。` : `Task created, but the ${problems.join(" and ")} could not be saved.` };
+    return { pending, message: zh ? `任务已创建，但${problems.join("和")}没保存成功${pending.sharing ? "（目前仅自己可见）" : ""}。` : `Task created, but the ${problems.join(" and ")} could not be saved.` };
   }
 
   async function retryPartial() {
@@ -264,7 +263,7 @@ export default function AddTodoForm({
     setOfficialDeadline("");
     setDayChoice("today");
     setPickedDay(taskDate);
-    // category and visibility are kept on purpose for consecutive creation.
+    // category and sharing are kept on purpose for consecutive creation.
   }
 
 
@@ -350,15 +349,7 @@ export default function AddTodoForm({
         </section>
       )}
       {taskType!=="planned"&&<TaskColorPicker value={taskColor} onChange={setTaskColor} disabled={busy}/>}
-      <details className="rounded-xl border border-line px-3 py-3">
-        <summary className="cursor-pointer text-xs font-medium text-ink-soft">{zh?"更多选项（可选）":"More options (optional)"}</summary>
-        <div className="mt-4 space-y-4">
-          
-
-          
-          <label className="block text-xs text-ink-soft">{zh?"可见范围":"Visibility"}<select className={field+" mt-1"} value={visibility} onChange={e=>setVisibility(e.target.value as typeof visibility)} disabled={busy}><option value="private">{zh?"仅自己":"Private"}</option><option value="space">{activeSpaceName}</option></select></label>
-        </div>
-      </details>
+      <SpaceSharingPicker value={sharing} onChange={setSharing} hasDescription={description.trim().length>0} zh={zh} disabled={busy}/>
       {dateNotice ? <div role="status" className="space-y-3 rounded-xl border border-line bg-paper p-3 text-sm">
         <p className="text-ink-soft">{zh?"任务已创建。数据库还没更新到 v4_12，所以它暂时记在今天；更新后就能选“先不定”。":"Task created. Until migration v4_12 the database still dates it today."}</p>
         <button type="button" onClick={()=>{const done=dateNotice;setDateNotice(null);onCreated?.(done.id,done.planNow);}} className="rounded-lg border border-line bg-white px-3 py-2">{zh?"知道了":"OK"}</button>

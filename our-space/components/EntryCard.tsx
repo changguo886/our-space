@@ -51,46 +51,33 @@ export default function EntryCard({
   const commentCount = entry.comments?.[0]?.count ?? 0;
 
   return (
-    <article className="card p-4 md:p-5">
-      <div className="flex flex-col gap-3 md:flex-row md:gap-5">
-        <Link href={`/entry/${entry.id}`} className="flex items-center gap-3 md:w-32 md:shrink-0 md:flex-col md:items-start md:gap-2">
-          <Avatar profile={entry.profiles} size={44} />
-          <div>
-            <p className="font-medium">{nameOf(entry.profiles)}</p>
-            <p className="text-xs text-ink-faint">
-              {relativeDay(entry.entry_date, viewerTz)} {timeIn(entry.updated_at, viewerTz)}
-            </p>
-          </div>
+    <article className="card px-4 py-3.5 md:px-5">
+      <header className="flex items-center gap-2.5">
+        <Link href={`/entry/${entry.id}`} className="shrink-0" aria-label="查看这篇日记">
+          <Avatar profile={entry.profiles} size={32} />
         </Link>
+        <Link href={`/entry/${entry.id}`} className="flex min-w-0 items-baseline gap-2 hover:opacity-80">
+          <span className="truncate text-sm font-medium">{nameOf(entry.profiles)}</span>
+          <span className="shrink-0 text-xs text-ink-faint">
+            {relativeDay(entry.entry_date, viewerTz)} {timeIn(entry.updated_at, viewerTz)}
+          </span>
+        </Link>
+      </header>
 
-        <div className="min-w-0 flex-1">
-          <Link href={`/entry/${entry.id}`} className="block transition hover:opacity-90">
-            <EntryBody
-              entry={entry}
-              tint={
-                isOwn
-                  ? "bg-mist-50"
-                  : "bg-blush-50"
-              }
-              media={
-                entry.media ?? []
-              }
-              mediaControls={
-                false
-              }
-            />
-          </Link>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <ReactionBar entryId={entry.id} userId={viewerId} isOwn={isOwn} initial={entry.reactions ?? []} />
-            <Link
-              href={`/entry/${entry.id}#comments`}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/70 px-3 py-1.5 text-[13px] text-ink-soft transition hover:bg-white"
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              留言{commentCount > 0 && <span className="tabular-nums text-ink-faint">{commentCount}</span>}
-            </Link>
-          </div>
-        </div>
+      {/* Not wrapped in a link: the body holds clickable links and image thumbnails. */}
+      <div className="mt-2.5">
+        <EntryBody entry={entry} tint={isOwn ? "bg-mist-50" : "bg-blush-50"} media={entry.media ?? []} />
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <ReactionBar entryId={entry.id} userId={viewerId} isOwn={isOwn} initial={entry.reactions ?? []} size="xs" />
+        <Link
+          href={`/entry/${entry.id}#comments`}
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-white/70 px-2.5 py-1 text-xs text-ink-soft transition hover:bg-white"
+        >
+          <MessageCircle className="h-3 w-3" />
+          留言{commentCount > 0 && <span className="tabular-nums text-ink-faint">{commentCount}</span>}
+        </Link>
       </div>
     </article>
   );

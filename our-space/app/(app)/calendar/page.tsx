@@ -15,7 +15,6 @@ export default async function CalendarPage() {
     supabase,
     user,
     profile,
-    group,
   } = await requireGroup();
 
   const tz =
@@ -27,8 +26,7 @@ export default async function CalendarPage() {
   /*
    * Calendar 需要所有还没完成的任务：
    *
-   * 1. 私人任务
-   * 2. 当前 Space 任务
+   * 自己的全部任务（不论分享到哪个 Space）
    *
    * 包括：
    * - 未排期
@@ -74,9 +72,6 @@ export default async function CalendarPage() {
     .neq(
       "status",
       "completed"
-    )
-    .or(
-      `group_id.is.null,group_id.eq.${group.id}`
     )
     .order(
       "created_at",

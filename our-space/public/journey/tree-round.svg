@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 120" width="90" height="120">
+  <!-- 圆冠树 -->
+  <ellipse cx="45" cy="114" rx="26" ry="4.5" fill="#6F8C6A" opacity=".18"/>
+  <path d="M42 112 L44 70 L48 70 L50 112 Z" fill="#9C7F68"/>
+  <path d="M46 84 L60 70 M45 92 L32 80" stroke="#9C7F68" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="45" cy="44" r="30" fill="#9DB894"/>
+  <circle cx="26" cy="60" r="18" fill="#8FAE88"/>
+  <circle cx="66" cy="58" r="19" fill="#8FAE88"/>
+  <circle cx="52" cy="34" r="16" fill="#B3CAA9" opacity=".9"/>
+  <circle cx="34" cy="40" r="7" fill="#C5D7BB" opacity=".8"/>
+</svg>

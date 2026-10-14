@@ -1,3 +1,6 @@
+import MediaGallery from "@/components/MediaGallery";
+import LinkifiedText from "@/components/LinkifiedText";
+
 type Body = {
   today_tasks: string | null;
   today_note: string | null;
@@ -18,92 +21,23 @@ export type EntryMediaView = {
 
 export function EntryMediaGrid({
   media,
-  controls = true,
 }: {
   media: EntryMediaView[];
+  /** Kept for callers; videos now play in the lightbox with controls. */
   controls?: boolean;
 }) {
-  if (media.length === 0) {
-    return null;
-  }
-
-  if (
-    media.length === 1 &&
-    media[0].media_type ===
-      "video"
-  ) {
-    return (
-      <div className="mt-2 overflow-hidden rounded-xl border border-line bg-black/[0.03]">
-        <video
-          src={
-            media[0].signed_url
-          }
-          controls={controls}
-          preload="metadata"
-          className="max-h-[520px] w-full bg-black object-contain"
-        />
-      </div>
-    );
-  }
-
-  const gridClass =
-    media.length === 1
-      ? "grid-cols-1"
-      : media.length === 2
-        ? "grid-cols-2"
-        : "grid-cols-3";
-
-  return (
-    <div
-      className={`mt-2 grid gap-1.5 overflow-hidden rounded-xl ${gridClass}`}
-    >
-      {media.map(
-        (item) => (
-          <div
-            key={item.id}
-            className={`overflow-hidden bg-black/[0.03] ${
-              media.length ===
-              1
-                ? "aspect-[4/3]"
-                : "aspect-square"
-            }`}
-          >
-            {item.media_type ===
-            "video" ? (
-              <video
-                src={
-                  item.signed_url
-                }
-                controls={controls}
-                preload="metadata"
-                className="h-full w-full bg-black object-contain"
-              />
-            ) : (
-              <img
-                src={
-                  item.signed_url
-                }
-                alt=""
-                loading="lazy"
-                className="h-full w-full object-cover"
-              />
-            )}
-          </div>
-        )
-      )}
-    </div>
-  );
+  return <MediaGallery media={media} />;
 }
 
 export function EntryBody({
   entry,
   tint,
   media = [],
-  mediaControls = true,
 }: {
   entry: Body;
   tint: string;
   media?: EntryMediaView[];
+  /** No longer used: media always opens in the lightbox. */
   mediaControls?: boolean;
 }) {
   const sections = [
@@ -148,7 +82,7 @@ export function EntryBody({
 
   return (
     <div
-      className={`space-y-3 rounded-2xl ${tint} px-5 py-4`}
+      className={`space-y-2.5 rounded-2xl ${tint} px-4 py-3`}
     >
       {visible.length ===
         0 && (
@@ -177,19 +111,12 @@ export function EntryBody({
               </p>
 
               {section.value?.trim() && (
-                <p className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-relaxed">
-                  {section.value}
+                <p className="mt-0.5 whitespace-pre-wrap break-words text-[14px] leading-relaxed">
+                  <LinkifiedText text={section.value} />
                 </p>
               )}
 
-              <EntryMediaGrid
-                media={
-                  sectionMedia
-                }
-                controls={
-                  mediaControls
-                }
-              />
+              <EntryMediaGrid media={sectionMedia} />
             </div>
           );
         }
