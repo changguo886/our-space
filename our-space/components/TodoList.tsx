@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   Check,
@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import RoutineCheckIn from "@/components/RoutineCheckIn";
 import { useI18n } from "@/components/I18nProvider";
+import SpaceSharingPicker, { loadTaskSharing, sameSharing, saveTaskSharing, type TaskSharing } from "@/components/SpaceSharingPicker";
 import {taskCardCompactVisual,CATEGORY_VISUALS,CATEGORY_ORDER} from "@/lib/task-colors";
 import RowMenu from "@/components/ui/RowMenu";
 import { useNextPlans } from "@/components/useNextPlans";
@@ -60,6 +61,8 @@ export type Todo = {
   plan_start_date?: string | null;
   target_finish_date?: string | null;
   deadline_date?: string | null;
+  // Embedded by Today / Todo pages: the Spaces this task is shared to.
+  todo_space_shares?: { group_id: string }[] | null;
 };
 
 
@@ -274,6 +277,11 @@ export default function TodoList({
     setEditDescription,
   ] = useState("");
 
+  // null while loading (or if it failed): the picker is hidden and sharing is left untouched on save.
+  const [editSharing, setEditSharing] = useState<TaskSharing | null>(null);
+  const [originalSharing, setOriginalSharing] = useState<TaskSharing | null>(null);
+  const sharingFor = useRef<string | null>(null);
+
   const [
     editMinutes,
     setEditMinutes,
@@ -444,6 +452,14 @@ export default function TodoList({
     );
 
     setError(null);
+    setEditSharing(null);
+    setOriginalSharing(null);
+    sharingFor.current = todo.id;
+    void loadTaskSharing(createClient(), todo.id).then((loaded) => {
+      if (sharingFor.current !== todo.id) return; // another task was opened meanwhile
+      setEditSharing(loaded);
+      setOriginalSharing(loaded);
+    });
     setHabitLoaded(false);
     setHabitPeriod("week");setHabitMode("flexible");setEditRuleWeekdays([]);
     setEditRuleQuota(3);setHabitMonthDays([]);setHabitMonthEnd(false);
@@ -470,6 +486,9 @@ export default function TodoList({
     );
     setEditCategory(null);
     setEditCustomTag("");
+    sharingFor.current = null;
+    setEditSharing(null);
+    setOriginalSharing(null);
     setError(null);
   }
 
@@ -533,7 +552,8 @@ export default function TodoList({
         task_date:original?.task_date,
         category:editCategory,
         custom_tag:editCategory==="other"?editCustomTag.trim()||null:null,
-        group_id:original?.group_id??null,
+        // Sharing lives in todo_space_shares; retire the legacy column on edit.
+        group_id:null,
         ...(editType==="planned"?{
           plan_start_date:editPlanStart,target_finish_date:editTargetFinish,
           deadline_date:editDeadline||null,
@@ -547,6 +567,10 @@ export default function TodoList({
       },
     });
     if(saveError){setBusyId(null);setError(t.saveFailed+saveError.message);return;}
+    if(editSharing&&originalSharing&&!sameSharing(editSharing,originalSharing)){
+      const sharingError=await saveTaskSharing(supabase,todoId,editSharing);
+      if(sharingError){setBusyId(null);setError("任务已保存，但分享范围没保存成功："+sharingError);router.refresh();return;}
+    }
     setBusyId(null);
     cancelEditing();
     router.refresh();
@@ -821,6 +845,10 @@ export default function TodoList({
                   </div>
                 </details>
 
+                {editSharing&&<div className="rounded-xl border border-line p-3">
+                  <SpaceSharingPicker value={editSharing} onChange={setEditSharing} hasDescription={editDescription.trim().length>0} zh={common?.minutes==="分钟"} disabled={busy}/>
+                </div>}
+
                 <details className="rounded-xl border border-line p-3">
                   <summary className="cursor-pointer text-sm font-medium text-ink-soft">预计投入（可选）</summary>
                   <div className="mt-3">
@@ -916,6 +944,7 @@ export default function TodoList({
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs">
                   <span className="text-ink-faint">{typeText}</span>
+                  {(todo.todo_space_shares?.length ?? 0) > 0 && <span className="text-ink-faint" title={zhCard ? "空间成员可以看到这个任务" : "Visible to Space members"}>· {zhCard ? `已分享到 ${todo.todo_space_shares!.length} 个空间` : `Shared to ${todo.todo_space_shares!.length} space${todo.todo_space_shares!.length > 1 ? "s" : ""}`}</span>}
                   {!completed && <>
                     <span aria-hidden="true" className="text-ink-faint">·</span>
                     <span className={plan.tone === "todo" ? "font-medium text-amber-700" : plan.tone === "muted" ? "text-ink-faint" : "text-ink-soft"}>{plan.text}</span>

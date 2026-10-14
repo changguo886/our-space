@@ -1,6 +1,6 @@
 # Space 任务分享 V1 — 目标与修改方案（问题 15）
 
-状态：方案已确认，A1 已在 `fix/own-tasks-all-spaces` 分支完成，其余待实施。
+状态：P0、P1 已完成（数据库迁移已在生产运行；界面在 `fix/own-tasks-all-spaces` 分支，待合并）。P2、P3 未开始。
 
 ## 1. 目标
 
@@ -59,7 +59,7 @@
 | B4 | 朋友端读取函数 `get_space_shared_tasks(p_group_id uuid, p_date date)`，`security definer`：先校验 `is_group_member(p_group_id)`；只返回分享到该 Space 的任务；返回标题、类型、日期、周期规则、作者；`share_description=false` 时描述返回 null；`share_progress=true` 时才返回当天完成状态和专注分钟数。权限 `revoke from public, anon; grant to authenticated` | 中 |
 | B5 | 独立函数 `set_task_sharing(todo_id, group_ids[], share_description, share_progress)`：整组替换分享范围并更新两个开关，非成员 Space 报错。保存任务后由界面再调用一次；如果这一步失败，任务保持私密（安全的默认）。不改动 `save_task_v4`，降低风险 | 中 |
 
-### P1 — 界面
+### P1 — 界面（✅ C1–C4 已实现，分支 `fix/own-tasks-all-spaces`）
 
 | 编号 | 内容 | 难度 |
 |---|---|---|

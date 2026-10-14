@@ -214,7 +214,8 @@ export default async function TodayPage() {
       plan_start_date,
       target_finish_date,
       deadline_date,
-      custom_tag
+      custom_tag,
+      todo_space_shares ( group_id )
     `)
     .eq(
       "user_id",
