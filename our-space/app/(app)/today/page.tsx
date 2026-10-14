@@ -17,9 +17,8 @@ import {
 } from "@/lib/preferences";
 
 import EntryForm from "@/components/EntryForm";
-import AddTodoForm from "@/components/AddTodoForm";
 import { type Todo } from "@/components/TodoList";
-import TodayTodoWorkspace from "@/components/TodayTodoWorkspace";
+import TaskBoardV2 from "@/components/TaskBoardV2";
 
 import {
   MessageCircle,
@@ -206,6 +205,7 @@ export default async function TodayPage() {
       started_at,
       elapsed_seconds,
       completed_at,
+      created_at,
       scheduled_start,
       scheduled_end,
       category,
@@ -221,30 +221,14 @@ export default async function TodayPage() {
       "user_id",
       user.id
     )
-    .eq(
-      "task_date",
-      today
-    )
+    // All of the user's tasks: the board decides what belongs to "today"
+    // (one-time tasks dated today, projects spanning today, routines due today,
+    // anything with a plan today) — same rules as the Tasks page (issue 11).
     .order(
       "created_at",
       {
         ascending: false,
       }
-    );
-
-
-  const todayTodos =
-    (todos ?? []).filter(
-      (todo) =>
-        todo.status !==
-        "completed"
-    );
-
-  const todayCompleted =
-    (todos ?? []).filter(
-      (todo) =>
-        todo.status ===
-        "completed"
     );
 
 
@@ -299,47 +283,16 @@ export default async function TodayPage() {
       </header>
 
 
-      <TodayTodoWorkspace
-        todayTodos={
-          todayTodos as Todo[]
-        }
-        todayCompleted={
-          todayCompleted as Todo[]
-        }
-        title={todoText.title}
-        description={todoText.todayPlanDescription}
-        showProgress={false}
-      />
-
-
-      <section className="card mx-auto mt-6 max-w-2xl p-5">
-        <div className="mb-5">
-          <h2 className="font-medium">
-            {todoText.addTask}
-          </h2>
-
-          <p className="mt-1 text-xs text-ink-faint">
-            {todoText.addTaskDescription}
-          </p>
-        </div>
-
-        <AddTodoForm
-          userId={
-            user.id
-          }
-          activeSpaceId={
-            group.id
-          }
-          activeSpaceName={
-            group.name
-          }
-          taskDate={
-            today
-          }
+      <div className="mx-auto max-w-[1180px]">
+        <TaskBoardV2
+          todos={(todos ?? []) as Todo[]}
+          today={today}
+          userId={user.id}
+          activeSpaceId={group.id}
+          activeSpaceName={group.name}
+          showHeading={false}
         />
-      </section>
-
-
+      </div>
       <section className="mx-auto mt-8 max-w-2xl">
         <EntryForm
           groupId={
