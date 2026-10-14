@@ -198,7 +198,7 @@ export default async function FriendsPage({
 
       <h2 className="mt-8 text-sm font-medium text-ink-soft">日记</h2>
 
-      <div className="mt-3 space-y-4">
+      <div className="mt-3 space-y-3">
         {entries.length === 0 && (
           <div className="card px-6 py-12 text-center text-sm leading-relaxed text-ink-soft">
             这里还很安静。

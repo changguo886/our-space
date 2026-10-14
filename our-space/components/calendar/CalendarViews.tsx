@@ -64,6 +64,11 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
   function change(next:Mode){setMode(next);const url=new URLSearchParams();url.set("view",next);url.set("date",date);if(next==="journey"&&selectedTodo)url.set("todoId",selectedTodo);router.replace("/calendar?"+url.toString(),{scroll:false});}
   const [y,m]=date.split("-").map(Number);const month=date.slice(0,7);
   const monthly=Array.from({length:new Date(y,m,0).getDate()},(_,i)=>dateOf(y,m-1,i+1));
+  // Header for week/month views: show the actual range, and make "today" stand out once you navigate away (issue 01).
+  const weekDays=Array.from({length:7},(_,i)=>addDay(date,i-((new Date(y,m-1,Number(date.slice(-2))).getDay()+6)%7)));
+  const md=(d:string)=>`${Number(d.slice(5,7))}/${Number(d.slice(8,10))}`;
+  const showsToday=mode==="week"?weekDays.includes(initialDate):month===initialDate.slice(0,7);
+  const rangeLabel=mode==="week"?`${showsToday?"本周 · ":""}${md(weekDays[0])} – ${md(weekDays[6])}`:`${y} 年 ${m} 月`;
   const tasks=initialTodos as CalendarTask[];
   const eventVisual=(todoId:string)=>{const task=tasks.find(t=>t.id===todoId);return taskCardVisual(task?.category,task?.color_hex);};
   // A dated one-off schedule takes precedence over virtual recurring defaults
@@ -227,11 +232,11 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
     </div> :
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-medium text-ink">{mode==="week"?"本周":month+" 月"}</div>
+        <div className="text-sm font-medium text-ink">{rangeLabel}</div>
         <div className="flex gap-2">
           <button type="button" className="rounded-lg border border-line px-3 py-1" aria-label="上一段"
             onClick={()=>setDate(d=>mode==="week"?addDay(d,-7):addMonth(d,-1))}>‹</button>
-          <button type="button" className="rounded-lg border border-line px-3 py-1 text-xs" onClick={()=>setDate(initialDate)}>今天</button>
+          <button type="button" aria-label="回到今天" className={`rounded-lg border px-3 py-1 text-xs transition ${showsToday?"border-line text-ink-soft":"border-sage-400 bg-sage-50 font-medium text-sage-700"}`} onClick={()=>setDate(initialDate)}>{showsToday?"今天":"回到今天"}</button>
           <button type="button" className="rounded-lg border border-line px-3 py-1" aria-label="下一段"
             onClick={()=>setDate(d=>mode==="week"?addDay(d,7):addMonth(d,1))}>›</button>
         </div>
@@ -260,7 +265,7 @@ export default function CalendarViews({initialTodos,initialDate}:Props) {
       </div>:<div className="rounded-2xl border border-line bg-white p-4">
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-ink-faint">{["一","二","三","四","五","六","日"].map(x=><div key={x}>{x}</div>)}</div>
         <div className="mt-3 grid grid-cols-7 gap-1">
-          {(mode==="month"?[...Array.from({length:(new Date(y,m-1,1).getDay()+6)%7},()=>null),...monthly]:Array.from({length:7},(_,i)=>addDay(date,i-((new Date(y,m-1,Number(date.slice(-2))).getDay()+6)%7)))).map((d,i)=>
+          {(mode==="month"?[...Array.from({length:(new Date(y,m-1,1).getDay()+6)%7},()=>null),...monthly]:weekDays).map((d,i)=>
             <button key={d??"empty"+i} type="button" disabled={!d} onClick={()=>{if(d){setDate(d);setMode("day");router.replace("/calendar?view=day&date="+d,{scroll:false});}}}
               className="min-h-[76px] rounded-xl border border-line p-1.5 text-left text-xs hover:bg-sage-50 disabled:border-transparent sm:min-h-[108px]">
               {d&&<><span className="font-medium">{Number(d.slice(-2))}</span><div className="mt-2 space-y-1">{eventsOn(d).slice(0,3).map((e,j)=>

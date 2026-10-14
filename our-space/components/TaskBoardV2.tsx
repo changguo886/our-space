@@ -1,5 +1,6 @@
 "use client";
 
+import LinkifiedText from "@/components/LinkifiedText";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CalendarDays, CheckCircle2, ChevronRight, Plus, X } from "lucide-react";
@@ -178,6 +179,7 @@ export default function TaskBoardV2({ todos, today, userId, activeSpaceId, activ
             <span className="text-xs font-medium text-ink-faint">{zh?"任务工作区":"Task workspace"}</span>
             <button type="button" onClick={()=>setSelectedId(null)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-soft hover:bg-paper"><X className="h-3.5 w-3.5"/> {zh?"关闭详情":"Close details"}</button>
           </div>
+          {selected.description?.trim()&&<p className="mb-3 whitespace-pre-wrap break-words rounded-xl border border-line bg-white/70 px-4 py-3 text-sm leading-relaxed text-ink-soft"><LinkifiedText text={selected.description}/></p>}
           <TodayTodoWorkspace key={selected.id} todayTodos={selected.status==="completed"?[]:[selected]}
             todayCompleted={selected.status==="completed"?[selected]:[]}
             title={selected.title} description={displayType(selected)} showProgress={false}/>

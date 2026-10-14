@@ -1,4 +1,5 @@
 import Avatar from "@/components/Avatar";
+import LinkifiedText from "@/components/LinkifiedText";
 import { nameOf, type Profile } from "@/lib/utils";
 
 /** One row of get_space_shared_tasks(). Progress fields are null unless the owner shares progress. */
@@ -56,7 +57,7 @@ function TaskLine({ row }: { row: SharedTaskRow }) {
           {row.share_progress && (row.focus_minutes ?? 0) > 0 && <span>· 专注 {row.focus_minutes} 分钟</span>}
         </p>
         {row.description && (
-          <p className="mt-0.5 line-clamp-2 whitespace-pre-line break-words text-xs text-ink-soft">{row.description}</p>
+          <p className="mt-0.5 line-clamp-2 whitespace-pre-line break-words text-xs text-ink-soft"><LinkifiedText text={row.description} /></p>
         )}
       </div>
       {done && <span className="shrink-0 text-xs text-sage-700">✓</span>}
