@@ -1,5 +1,6 @@
 "use client";
 
+import MinutesField from "@/components/ui/MinutesField";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Repeat } from "lucide-react";
@@ -71,8 +72,8 @@ function DraftFields({ draft, setDraft, zh, showDate = true }: { draft: Draft; s
       <label className="text-xs text-ink-soft">{draft.mode === "window" ? (zh ? "最早" : "From") : (zh ? "开始" : "Start")}<AppTimePicker value={draft.start} onChange={(v) => setDraft({ ...draft, start: v })} /></label>
       <label className="text-xs text-ink-soft">{draft.mode === "window" ? (zh ? "最晚" : "Until") : (zh ? "结束" : "End")}<AppTimePicker value={draft.end} onChange={(v) => setDraft({ ...draft, end: v })} /></label>
     </div>}
-    {draft.mode !== "fixed" && <label className="block text-xs text-ink-soft">{zh ? "大概多久（分钟）" : "About how long (min)"}
-      <input className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink" type="number" min={1} max={1440} value={draft.minutes} onChange={(e) => setDraft({ ...draft, minutes: e.target.value })} /></label>}
+    {draft.mode !== "fixed" && <div className="text-xs text-ink-soft">{zh ? "大概多久" : "About how long"}
+      <MinutesField value={draft.minutes} onChange={(minutes) => setDraft({ ...draft, minutes })} zh={zh} label={zh ? "大概多久" : "About how long"} /></div>}
   </div>;
 }
 
@@ -178,7 +179,8 @@ export default function TodoExecutionSchedule({ todoId }: { todoId: string }) {
     || (pattern.period === "month" && (pattern.month_days.includes(Number(day.slice(-2))) || (pattern.include_month_end && Number(day.slice(-2)) === lastDayISO(day))));
 
   // ---------- single plan ----------
-  function openCompose() { setDraft({ day: todayISO, mode: "flexible", start: "19:00", end: "20:00", minutes: "45" }); setFollowUp(null); setPanel({ kind: "compose" }); }
+  // Default to the task's start date when it is still ahead (issue 08); the user can still pick any day.
+  function openCompose() { setDraft({ day: todoStart && todoStart > todayISO ? todoStart : todayISO, mode: "flexible", start: "19:00", end: "20:00", minutes: "45" }); setFollowUp(null); setPanel({ kind: "compose" }); }
   function saveOnce() {
     const problem = draftError(draft, zh);
     if (problem) { setError(problem); return; }
