@@ -14,6 +14,8 @@ edit everything there, then press Create. Nothing is saved until you do.
    subtask title/minutes). Anything it changed is shown to the user as a short note.
 4. `AddTodoForm.applyDraft()` fills the form. Steps appear in `TaskStepsEditor`
    (add, edit, reorder, delete, minutes), which manual creation uses too.
+   If the form already has the user's own input, nothing is overwritten: they choose
+   to replace it with the draft, add only the draft's new steps, or cancel.
 5. On Create, `save_task_v4` saves the task. Steps are then inserted into
    `todo_subtasks` in one statement (`source` = `ai` or `manual`). If that fails,
    the existing retry banner offers to save them again, like color, sharing and journey.

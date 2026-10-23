@@ -111,6 +111,8 @@ export default function AddTodoForm({
   const [partial,setPartial]=useState<null|{id:string;planNow:boolean;extras:Extras;message:string}>(null);
   const [steps,setSteps]=useState<StepDraft[]>([]);
   const [aiNotes,setAiNotes]=useState<string[]>([]);
+  // A draft waiting for the user's choice because the form already has their own input.
+  const [pendingDraft,setPendingDraft]=useState<TaskDraft|null>(null);
   const [busy, setBusy] =
     useState(false);
 
@@ -265,7 +267,23 @@ export default function AddTodoForm({
     const done = partial; setPartial(null); onCreated?.(done.id, done.planNow);
   }
 
+  const hasUserInput = () => Boolean(title.trim() || description.trim() || steps.some(s=>s.title.trim()));
+
+  function receiveDraft(d: TaskDraft) {
+    if (hasUserInput()) { setPendingDraft(d); return; }
+    applyDraft(d);
+  }
+
+  /** Keep everything already filled in; only append the AI steps that are not there yet. */
+  function addDraftSteps(d: TaskDraft) {
+    const existing = new Set(steps.map(s=>s.title.trim()));
+    const extra = d.steps.filter(s=>!existing.has(s.title)).map(s=>({key:newStepKey(),title:s.title,minutes:s.estimated_minutes,source:"ai" as const}));
+    setSteps([...steps, ...extra]);
+    setPendingDraft(null);
+  }
+
   function applyDraft(d: TaskDraft) {
+    setPendingDraft(null);
     setError(null);
     setTitle(d.title);
     setDescription(d.description);
@@ -312,6 +330,7 @@ export default function AddTodoForm({
     setDayChoice("today");
     setPickedDay(taskDate);
     setSteps([]);
+    setPendingDraft(null);
     setAiNotes([]);
     // category and sharing are kept on purpose for consecutive creation.
   }
@@ -322,7 +341,15 @@ export default function AddTodoForm({
   const countFromPattern = cadence==="daily" ? 1 : cadence==="weekly_days" ? weekdays.length : timesPerWeek;
   return (
     <form onSubmit={submit} className="space-y-5 pb-4">
-      <AITaskCreator onDraft={applyDraft} disabled={busy||Boolean(partial)} zh={zh}/>
+      <AITaskCreator onDraft={receiveDraft} disabled={busy||Boolean(partial)||Boolean(pendingDraft)} zh={zh}/>
+      {pendingDraft&&<div role="dialog" aria-label={zh?"AI 草稿":"AI draft"} className="-mt-3 space-y-2 rounded-xl border border-line bg-white p-3 text-xs">
+        <p className="text-ink-soft">{zh?`AI 生成了「${pendingDraft.title}」${pendingDraft.steps.length?`（${pendingDraft.steps.length} 个步骤）`:""}，表单里已有你填的内容。`:`AI drafted "${pendingDraft.title}", but the form already has your input.`}</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={()=>applyDraft(pendingDraft)} className="rounded-lg bg-sage-700 px-3 py-1.5 font-medium text-white">{zh?"替换为 AI 草稿":"Replace with draft"}</button>
+          {pendingDraft.steps.length>0&&<button type="button" onClick={()=>addDraftSteps(pendingDraft)} className="rounded-lg border border-line px-3 py-1.5 text-ink">{zh?"只添加步骤":"Add steps only"}</button>}
+          <button type="button" onClick={()=>setPendingDraft(null)} className="rounded-lg px-3 py-1.5 text-ink-soft">{zh?"取消":"Cancel"}</button>
+        </div>
+      </div>}
       {aiNotes.length>0&&<ul className="-mt-3 space-y-0.5 text-[11px] text-amber-700">{aiNotes.map((n,i)=><li key={i}>· {n}</li>)}</ul>}
       <div>
         <label className="mb-2 block text-xs font-medium text-ink-soft">{zh?"任务名称":"Task name"} *</label>
