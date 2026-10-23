@@ -8,6 +8,12 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/components/I18nProvider";
 import SpaceSharingPicker, { PRIVATE_SHARING, saveTaskSharing, type TaskSharing } from "@/components/SpaceSharingPicker";
+import TaskStepsEditor, { newStepKey, type StepDraft } from "@/components/TaskStepsEditor";
+import AITaskCreator from "@/components/ai/AITaskCreator";
+import type { TaskDraft } from "@/lib/ai/task-draft";
+
+type StepRow = { title: string; sort_order: number; source: "manual" | "ai"; estimated_minutes: number | null };
+type Extras = { color: string|null; sharing: TaskSharing|null; journey: Record<string, unknown>|null; steps: StepRow[]|null };
 
 
 function formatWorkDate(value: string, chinese: boolean): string {
@@ -102,7 +108,9 @@ export default function AddTodoForm({
   const [dayChoice,setDayChoice]=useState<"today"|"pick"|"none">("today");
   const [pickedDay,setPickedDay]=useState(taskDate);
   const [dateNotice,setDateNotice]=useState<null|{id:string;planNow:boolean}>(null);
-  const [partial,setPartial]=useState<null|{id:string;planNow:boolean;extras:{color:string|null;sharing:TaskSharing|null;journey:Record<string,unknown>|null};message:string}>(null);
+  const [partial,setPartial]=useState<null|{id:string;planNow:boolean;extras:Extras;message:string}>(null);
+  const [steps,setSteps]=useState<StepDraft[]>([]);
+  const [aiNotes,setAiNotes]=useState<string[]>([]);
   const [busy, setBusy] =
     useState(false);
 
@@ -193,7 +201,11 @@ export default function AddTodoForm({
     }
     const createdId = savedId as string;
     const wantedNoDate = taskType==="one_time" && dayChoice==="none";
+    const stepRows: StepRow[] = taskType==="habit" ? [] : steps
+      .map(s=>({...s,title:s.title.trim()})).filter(s=>s.title)
+      .map((s,i)=>({title:s.title,sort_order:i,source:s.source,estimated_minutes:s.minutes}));
     const extras: Extras = {
+      steps: stepRows.length ? stepRows : null,
       color: taskColor,
       sharing: sharing.groupIds.length ? sharing : null,
       journey: taskType==="planned" ? {todo_id:createdId,start_date:startDate,target_date:targetFinish,animal_type:"cat",journey_type:"swim",color_key:Object.entries(LEGACY_JOURNEY_COLORS).find(([,hex])=>hex.toUpperCase()===taskColor.toUpperCase())?.[0]??"green"} : null,
@@ -212,11 +224,15 @@ export default function AddTodoForm({
     onCreated?.(createdId, planNow);
   }
 
-  type Extras = { color: string|null; sharing: TaskSharing|null; journey: Record<string, unknown>|null };
   async function saveExtras(id: string, extras: Extras): Promise<null|{pending:Extras;message:string}> {
     const supabase = createClient();
-    const pending: Extras = { color: null, sharing: null, journey: null };
+    const pending: Extras = { color: null, sharing: null, journey: null, steps: null };
     const problems: string[] = [];
+    if (extras.steps) {
+      // One statement, so the steps are saved all together or not at all.
+      const { error: stepsError } = await supabase.from("todo_subtasks").insert(extras.steps.map(s => ({ ...s, todo_id: id })));
+      if (stepsError) { pending.steps = extras.steps; problems.push(zh ? "步骤" : "steps"); }
+    }
     if (extras.color) {
       const { error: colorError } = await supabase.from("todos").update({ color_hex: extras.color }).eq("id", id);
       if (colorError) { pending.color = extras.color; problems.push(zh ? "颜色" : "color"); }
@@ -249,6 +265,38 @@ export default function AddTodoForm({
     const done = partial; setPartial(null); onCreated?.(done.id, done.planNow);
   }
 
+  function applyDraft(d: TaskDraft) {
+    setError(null);
+    setTitle(d.title);
+    setDescription(d.description);
+    if (d.category) setCategory(d.category);
+    setAiNotes(d.notes);
+    setSteps(d.steps.map(s=>({key:newStepKey(),title:s.title,minutes:s.estimated_minutes,source:"ai"})));
+    if (d.task_type==="project") {
+      setTaskType("planned");
+      setStartDate(d.plan_start_date ?? taskDate);
+      setTargetFinish(d.target_finish_date ?? "");
+      setOfficialDeadline(d.deadline_date ?? "");
+    } else if (d.task_type==="routine") {
+      const period = d.routine_period ?? "week";
+      const count = d.routine_target_count ?? (period==="day"?1:3);
+      setTaskType("habit");
+      setGoalPeriod(period);
+      setHabitArrangement("flexible");
+      setMonthDays([]); setIncludeMonthEnd(false);
+      if (period==="week" && d.routine_arrangement==="fixed" && d.routine_weekdays.length) {
+        setCadence("weekly_days"); setWeekdays(d.routine_weekdays); setGoalValue(String(d.routine_weekdays.length));
+      } else {
+        setCadence(period==="day"?"daily":"weekly_quota"); setWeekdays([]);
+        setGoalValue(String(count)); setTimesPerWeek(Math.min(7,Math.max(1,count)));
+      }
+    } else {
+      setTaskType("one_time");
+      if (!d.task_date || d.task_date===taskDate) setDayChoice("today");
+      else { setDayChoice("pick"); setPickedDay(d.task_date); }
+    }
+  }
+
   function resetForm() {
     setTitle("");
     setDescription("");
@@ -263,6 +311,8 @@ export default function AddTodoForm({
     setOfficialDeadline("");
     setDayChoice("today");
     setPickedDay(taskDate);
+    setSteps([]);
+    setAiNotes([]);
     // category and sharing are kept on purpose for consecutive creation.
   }
 
@@ -272,6 +322,8 @@ export default function AddTodoForm({
   const countFromPattern = cadence==="daily" ? 1 : cadence==="weekly_days" ? weekdays.length : timesPerWeek;
   return (
     <form onSubmit={submit} className="space-y-5 pb-4">
+      <AITaskCreator onDraft={applyDraft} disabled={busy||Boolean(partial)} zh={zh}/>
+      {aiNotes.length>0&&<ul className="-mt-3 space-y-0.5 text-[11px] text-amber-700">{aiNotes.map((n,i)=><li key={i}>· {n}</li>)}</ul>}
       <div>
         <label className="mb-2 block text-xs font-medium text-ink-soft">{zh?"任务名称":"Task name"} *</label>
         <input className={field} value={title} onChange={e=>setTitle(e.target.value)} placeholder={zh?"例如：完成论文":"e.g. Finish paper"} disabled={busy} autoFocus/>
@@ -301,7 +353,7 @@ export default function AddTodoForm({
       </div>
       {taskType==="planned" ? (
         <section className="space-y-3 rounded-xl border border-line bg-paper/30 p-3">
-          <p className="text-xs text-ink-faint">{zh?"围绕一个成果制定计划，不是重复打卡。具体步骤与时间可创建后再安排。":"Plan toward one outcome, not recurring check-ins."}</p>
+          <p className="text-xs text-ink-faint">{zh?"围绕一个成果制定计划，不是重复打卡。":"Plan toward one outcome, not recurring check-ins."}</p>
           <label className="block text-xs text-ink-soft">{zh?"计划开始":"Plan start"}<input type="hidden" value={startDate} readOnly/><AppDatePicker value={startDate} onChange={setStartDate} disabled={busy}/></label>
           <label className="block text-xs text-ink-soft">{zh?"目标完成":"Target finish"}<input type="hidden" value={targetFinish} readOnly/><AppDatePicker value={targetFinish} onChange={setTargetFinish} min={startDate} disabled={busy} required/></label>
           <details><summary className="cursor-pointer text-xs text-ink-soft">{zh?"正式截止日期（可选）":"Official deadline (optional)"}</summary>
@@ -348,6 +400,7 @@ export default function AddTodoForm({
           <p className="text-xs text-ink-faint">{zh?"这里只制定执行频率；每次投入时间可在任务的执行安排中单独设置。":"Set the frequency here; choose execution times later."}</p>
         </section>
       )}
+      {taskType!=="habit"&&<TaskStepsEditor steps={steps} onChange={setSteps} disabled={busy} zh={zh}/>}
       {taskType!=="planned"&&<TaskColorPicker value={taskColor} onChange={setTaskColor} disabled={busy}/>}
       <SpaceSharingPicker value={sharing} onChange={setSharing} hasDescription={description.trim().length>0} zh={zh} disabled={busy}/>
       {dateNotice ? <div role="status" className="space-y-3 rounded-xl border border-line bg-paper p-3 text-sm">
