@@ -17,6 +17,7 @@ import {
 } from "@/lib/preferences";
 
 import EntryForm from "@/components/EntryForm";
+import MochiWidget from "@/components/companion/MochiWidget";
 import { type Todo } from "@/components/TodoList";
 import TaskBoardV2 from "@/components/TaskBoardV2";
 
@@ -353,6 +354,8 @@ export default async function TodayPage() {
           </Link>
         )}
 
+
+      <MochiWidget />
 
       <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-ink-faint">
         {todayText.footer}
